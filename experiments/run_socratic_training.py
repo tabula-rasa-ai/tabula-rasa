@@ -7,6 +7,9 @@ evaluates → compares.
 
 Usage:
     python experiments/run_socratic_training.py
+
+(3000-step baseline takes ~15 min on CPU. For faster testing,
+set N_BASELINE_STEPS=500 but expect low baseline accuracy.)
 """
 import sys, os, json, time, random, math
 from pathlib import Path
@@ -28,11 +31,11 @@ from tabula_rasa.dataset import generate_problem
 # ─── Constants ───────────────────────────────────────────────────────
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 SEED = 42
-N_BASELINE_STEPS = 500           # Quick-mode baseline (2000 for full)
+N_BASELINE_STEPS = 3000         # Steps for baseline training (3000 = ~100% 1-digit)
 N_PROBLEMS = 100              # Problems for evaluation
-N_SOCRATIC_ROUNDS = 3         # Dialogue rounds per problem
-N_SOCRATIC_PROBLEMS = 50      # Problems to run Socratic dialogue on
-N_FINETUNE_EPOCHS = 2         # Fine-tuning epochs on Socratic data
+N_SOCRATIC_ROUNDS = 5         # Dialogue rounds per problem
+N_SOCRATIC_PROBLEMS = 100     # Problems to run Socratic dialogue on
+N_FINETUNE_EPOCHS = 3         # Fine-tuning epochs on Socratic data
 BASELINE_DIR = Path('specialists') / 'socratic_baseline'
 OUTPUT_PATH = Path('experiments') / 'socratic_training_results.json'
 
