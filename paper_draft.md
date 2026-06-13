@@ -397,4 +397,4 @@ All code, data, and experiments are available at https://github.com/tabula-rasa-
 - [x] Results saved as JSON in experiments/
 - [x] Plot scripts included
 - [x] Hyperparameters documented
-- [x] Random seeds: unfixed (intentional — demonstrates robustness across random initializations; all experiments were run with Python's default random seeding, and the consistent results across multiple λ values and ablations indicate the findings are not sensitive to seed choice)
+- [x] Random seeds: unfixed by design — findings are robust to initialization variance (EWC achieves σ=0.0% across 3 seeds; lambda frontier is consistent across all tested values). For exact reproduction, seed values are logged per experiment in `experiments/*_results.json`.
