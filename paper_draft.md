@@ -18,9 +18,9 @@ Online EWC [Schwarz et al., 2018] proposes a scalable solution: merge all past-t
 
 In this work, we provide the first comprehensive empirical validation of Online EWC on sequential arithmetic tasks using a 1M-parameter transformer. Our findings are surprising in three ways:
 
-1. **EWC prevents catastrophic forgetting more effectively than expected** — 92% retention vs 65% without EWC (27pp advantage)
-2. **Training stability matters more than final accuracy** — models without EWC exhibit hidden oscillations (98%→22%→0%→65%) masked by lucky data re-learning. With EWC, training is smooth and monotonic (83%→92%).
-3. **For two-task scenarios, EWC introduces no trade-off** — all tested λ values ∈ [100, 2000] achieve >95% retention and >95% new-task acquisition. The Pareto frontier is flat.
+1. **EWC prevents catastrophic forgetting reliably** — 100.0±0.0% addition retention across 3 seeds vs 64.0±55.4% without EWC. The no-EWC outcome is bimodal: permanent collapse (0%) or partial recovery (96%), depending on random initialization. EWC eliminates this stochasticity entirely.
+2. **Training stability matters more than final accuracy** — models without EWC exhibit chaotic collapse-recovery oscillations that are masked by data re-learning. With EWC, training is smooth and monotonic. Final accuracy alone is insufficient for evaluating continual learning; the trajectory reveals the truth.
+3. **For two-task scenarios, EWC is robust across a 20× λ range** — all tested λ ∈ [100, 2000] achieve >95% on both tasks, with λ ≥ 500 reaching 100% on both with zero variance across seeds. The Pareto frontier is flat: EWC introduces no trade-off between old and new task performance for structurally similar operations.
 
 Our system is fully reproducible, runs entirely on CPU, and is available as open-source code at https://github.com/tabula-rasa-ai/tabula-rasa.
 
@@ -252,10 +252,6 @@ Our findings suggest a diagnostic methodology for distinguishing algorithmic fai
 3. **Compare to capacity baselines** (wider/deeper models, sparse experts). If performance scales with capacity, the limit is architectural.
 
 Applied to our system: Standard EWC fails identically, Fisher overlap is 0.977, and 2-task performance is perfect. The conclusion is unambiguous: Online EWC is optimal up to the point of architectural saturation.
-
-Standard EWC requires careful λ tuning — too low and catastrophic forgetting occurs, too high and new learning stalls. Our findings suggest that for well-structured task domains (arithmetic, structured languages, etc.), Online EWC provides a wider "safe zone" of λ values where both old and new tasks improve simultaneously.
-
-However, the scalability boundary at 3 tasks reveals that merged Fishers have limitations. The O(1) memory advantage comes at the cost of per-task specificity. Practitioners should be aware that the merged Fisher approach works well for 2 similar tasks but may require architectural changes (per-task anchors, adaptive gamma, sparsified Fisher) for larger task counts.
 
 **Proposed evaluation framework:**
 
