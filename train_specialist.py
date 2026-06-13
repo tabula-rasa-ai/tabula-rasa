@@ -20,6 +20,7 @@ from torch import optim
 from config import Config
 from tokenizer import MathTokenizer
 from model import MathTransformer, count_parameters
+from egefalos.online_ewc import OnlineEWC
 
 OPS = {'add': '+', 'sub': '-', 'mul': '*', 'div': '/'}
 OP_NAMES = {'add': 'Addition', 'sub': 'Subtraction', 'mul': 'Multiplication', 'div': 'Division'}
@@ -329,9 +330,10 @@ def _log_experiment(exp):
         pass  # Server not running is fine
 
 
-def train_specialist(op: str, steps=0, batch_size=0, lr=0,
-                     use_reversed=None, use_loss_masking=None,
-                     quick=False, resume=False, test_hard=False, deep=False):
+def train_specialist(op, steps=0, batch_size=0, lr=0,
+                    use_reversed=None, use_loss_masking=None,
+                    quick=False, resume=False, test_hard=False, deep=False,
+                    use_ewc=False, ewc_lambda=1000.0, ewc_gamma=0.9):
     """Train a specialist for one arithmetic operation.
 
     Args:
@@ -452,6 +454,18 @@ def train_specialist(op: str, steps=0, batch_size=0, lr=0,
     op_dir.mkdir(parents=True, exist_ok=True)
     tok.save(str(op_dir / 'tokenizer.json'))
 
+    # ── EWC (continual learning) ──
+    ewc = None
+    if use_ewc:
+        ewc = OnlineEWC(model, gamma=ewc_gamma)
+        ewc_path = op_dir / 'ewc_fisher.pt'
+        if ewc_path.exists():
+            ewc.load(ewc_path)
+            print(f'  EWC loaded: {ewc.task_count} prior tasks, {ewc.consolidation_steps} consolidations')
+        # Save anchor weights before training begins
+        ewc.save_anchor_weights()
+        print(f'  EWC enabled (λ={ewc_lambda}, γ={ewc_gamma})')
+
     # ── Resume or fresh start ──
     global_step = 0
     best_acc = 0.0
@@ -526,8 +540,15 @@ def train_specialist(op: str, steps=0, batch_size=0, lr=0,
                 x, y = x.to(device), y.to(device)
                 _, loss, _ = model(x, y)
 
+                # EWC penalty for continual learning
+                if ewc is not None:
+                    ewc_penalty = ewc.compute_ewc_penalty(lambda_ewc=ewc_lambda)
+                    total_loss = loss + ewc_penalty
+                else:
+                    total_loss = loss
+
                 optimizer.zero_grad()
-                loss.backward()
+                total_loss.backward()
                 if cfg.grad_clip_norm > 0:
                     torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip_norm)
                 optimizer.step()
@@ -619,6 +640,12 @@ def train_specialist(op: str, steps=0, batch_size=0, lr=0,
     log_file.write(done_line + '\n')
     log_file.close()
 
+    # ── Save EWC state ──
+    if ewc is not None:
+        ewc_path = op_dir / 'ewc_fisher.pt'
+        ewc.save(ewc_path)
+        print(f'  EWC saved ({ewc.task_count} tasks, {ewc.consolidation_steps} consolidations)')
+
     # ── Log experiment for comparator ──
     _log_experiment({
         'operation': op,
@@ -689,6 +716,12 @@ Examples:
                        help='Also test on max_digits+1 (generalization check)')
     parser.add_argument('--deep', action='store_true',
                        help='Use deeper model: d=64 L=8 ff=256 (better for algorithms)')
+    parser.add_argument('--ewc', action='store_true',
+                       help='Enable Online EWC for continual learning (preserves prior tasks)')
+    parser.add_argument('--ewc-lambda', type=float, default=1000.0,
+                       help='EWC penalty strength (default: 1000)')
+    parser.add_argument('--ewc-gamma', type=float, default=0.9,
+                       help='Fisher merge decay rate (default: 0.9)')
 
     args = parser.parse_args()
 
@@ -711,6 +744,9 @@ Examples:
                 resume=args.resume,
                 test_hard=args.test_hard,
                 deep=args.deep,
+                use_ewc=args.ewc,
+                ewc_lambda=args.ewc_lambda,
+                ewc_gamma=args.ewc_gamma,
             )
             results[op_name] = 'OK' if model is not None else 'FAILED'
         print(f'\n  Results: {results}')
@@ -733,4 +769,7 @@ Examples:
         resume=args.resume,
         test_hard=args.test_hard,
         deep=args.deep,
+        use_ewc=args.ewc,
+        ewc_lambda=args.ewc_lambda,
+        ewc_gamma=args.ewc_gamma,
     )
