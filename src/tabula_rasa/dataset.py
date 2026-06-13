@@ -6,7 +6,7 @@ from pathlib import Path
 
 import torch
 from torch.utils.data import Dataset
-from tokenizer import MathTokenizer
+from tabula_rasa.tokenizer import MathTokenizer
 
 
 OPERATIONS = ['+', '-', '*', '/']
@@ -104,7 +104,7 @@ def generate_test_set(num_samples=100, seed=123):
 
 
 if __name__ == '__main__':
-    from config import Config
+    from tabula_rasa.config import Config
     cfg = Config()
     tok = MathTokenizer()
     # Test dataset creation

@@ -13,6 +13,7 @@ Usage:
     python3 run_stage.py --check                   # Run graduation check on current stage
 """
 
+import sys, os; sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 import argparse
 import sys
 from pathlib import Path
@@ -120,9 +121,9 @@ def main():
     # Create directory
     Path(info['dir']).mkdir(parents=True, exist_ok=True)
     
-    from config import Config
-    from tokenizer import MathTokenizer
-    from model import MathTransformer
+    from tabula_rasa.config import Config
+    from tabula_rasa.tokenizer import MathTokenizer
+    from tabula_rasa.model import MathTransformer
     
     cfg = Config()
     cfg.d_model = 128

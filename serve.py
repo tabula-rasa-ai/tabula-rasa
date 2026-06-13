@@ -10,6 +10,7 @@ Then:
     curl http://localhost:8000/train    -d '{"pairs":[["12+34","46"]]}'
 """
 
+import sys, os; sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 import argparse
 import json
 import time
@@ -31,9 +32,9 @@ import torch
 import torch.nn as nn
 from torch.optim import AdamW
 
-from config import Config
-from tokenizer import MathTokenizer
-from model import MathTransformer, count_parameters
+from tabula_rasa.config import Config
+from tabula_rasa.tokenizer import MathTokenizer
+from tabula_rasa.model import MathTransformer, count_parameters
 
 
 class ModelHandler:

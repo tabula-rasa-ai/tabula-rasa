@@ -4,9 +4,9 @@ import torch
 import sys
 from pathlib import Path
 
-from config import Config
-from tokenizer import MathTokenizer
-from model import MathTransformer, count_parameters
+from tabula_rasa.config import Config
+from tabula_rasa.tokenizer import MathTokenizer
+from tabula_rasa.model import MathTransformer, count_parameters
 
 
 def load_model(checkpoint_path):

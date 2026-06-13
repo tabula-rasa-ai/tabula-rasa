@@ -11,9 +11,9 @@ from pathlib import Path
 import torch
 from torch.optim import AdamW
 
-from config import Config
-from tokenizer import MathTokenizer
-from model import MathTransformer, count_parameters
+from tabula_rasa.config import Config
+from tabula_rasa.tokenizer import MathTokenizer
+from tabula_rasa.model import MathTransformer, count_parameters
 
 
 CRITIC_PROMPT = "Find the logical flaw, missing premise, or contradiction in the following statement:"

@@ -5,11 +5,12 @@ Usage:
     python3 prepare_dataset.py --op add  # Tokenize addition only
 """
 
+import sys, os; sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 import sys, torch, json
 from pathlib import Path
-from config import Config
-from tokenizer import MathTokenizer
-from dataset import MathDataset
+from tabula_rasa.config import Config
+from tabula_rasa.tokenizer import MathTokenizer
+from tabula_rasa.dataset import MathDataset
 
 
 def prepare_dataset(op: str = None, num_samples=100000, min_digits=1, max_digits=4):

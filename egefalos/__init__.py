@@ -4,7 +4,7 @@ Greek for "brain." Contains all cognitive architecture files:
 hippocampus, neocortex, sleep cycle, Socratic engine, memory,
 and the Tabula Rasa AI consciousness.
 
-|All files in this package import from the parent directory
+|All files in this package import from tabula_rasa package
 for core components (model.py, config.py, tokenizer.py).
 
 Exposed modules:

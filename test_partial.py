@@ -1,9 +1,10 @@
 """Batch test a partial checkpoint with sample problems."""
+import sys, os; sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 import torch, sys
 sys.path.insert(0, '.')
-from config import Config
-from tokenizer import MathTokenizer
-from model import MathTransformer
+from tabula_rasa.config import Config
+from tabula_rasa.tokenizer import MathTokenizer
+from tabula_rasa.model import MathTransformer
 
 ckpt = sys.argv[1] if len(sys.argv) > 1 else 'checkpoints/best.pt'
 

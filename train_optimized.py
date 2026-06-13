@@ -1,15 +1,16 @@
 """Optimized training — reads all settings from Config.
 Easy to customize: just edit config.py or use Model Config dashboard.
 """
+import sys, os; sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 import sys, time, math, json, random
 from pathlib import Path
 import torch
 import torch.nn as nn
 from torch import optim
 
-from config import Config
-from tokenizer import MathTokenizer
-from model import MathTransformer, count_parameters
+from tabula_rasa.config import Config
+from tabula_rasa.tokenizer import MathTokenizer
+from tabula_rasa.model import MathTransformer, count_parameters
 
 LOG_FILE = Path('training.log')
 OPS = {'add': '+', 'sub': '-', 'mul': '*', 'div': '/'}

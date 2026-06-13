@@ -1,4 +1,5 @@
 """Launch subtraction training in background."""
+import sys, os; sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 import subprocess, sys, os, time
 
 log_path = os.path.join(os.path.dirname(__file__), 'specialists', 'math', 'sub', 'training.log')

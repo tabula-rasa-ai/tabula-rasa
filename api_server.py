@@ -1,4 +1,5 @@
 """API server — dashboard + model inference + training progress."""
+import sys, os; sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 import json, re, mimetypes, sys, time, math, os, subprocess
 from pathlib import Path
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -344,9 +345,9 @@ def load_model():
     if MODEL_CACHE[0] is not None:
         return MODEL_CACHE
     import torch
-    from tokenizer import MathTokenizer
-    from model import MathTransformer
-    from config import Config
+    from tabula_rasa.tokenizer import MathTokenizer
+    from tabula_rasa.model import MathTransformer
+    from tabula_rasa.config import Config
 
     # Prefer specialized checkpoints, then general, then periodic checkpoints
     candidates = [
@@ -783,9 +784,9 @@ def get_system_resources():
 def load_checkpoint(checkpoint_path: str):
     """Load a specific checkpoint, update MODEL_CACHE."""
     import torch
-    from tokenizer import MathTokenizer
-    from model import MathTransformer
-    from config import Config
+    from tabula_rasa.tokenizer import MathTokenizer
+    from tabula_rasa.model import MathTransformer
+    from tabula_rasa.config import Config
 
     path = Path(checkpoint_path)
     if not path.exists():

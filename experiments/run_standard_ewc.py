@@ -16,9 +16,9 @@ import torch
 from torch.utils.data import DataLoader
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from config import Config
-from tokenizer import MathTokenizer
-from model import MathTransformer
+from tabula_rasa.config import Config
+from tabula_rasa.tokenizer import MathTokenizer
+from tabula_rasa.model import MathTransformer
 from train_specialist import evaluate, evaluate_per_digit, generate_problem, SpecialistDataset, _get_lr
 from egefalos.online_ewc import OnlineEWC
 

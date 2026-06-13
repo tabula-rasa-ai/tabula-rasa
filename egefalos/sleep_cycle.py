@@ -19,9 +19,9 @@ from typing import Optional
 import argparse
 import time
 
-from model import MathTransformer
-from config import Config
-from tokenizer import MathTokenizer
+from tabula_rasa.model import MathTransformer
+from tabula_rasa.config import Config
+from tabula_rasa.tokenizer import MathTokenizer
 from egefalos.online_ewc import OnlineEWC
 from egefalos.hippocampus import get_unconsolidated, get_stats, mark_consolidated
 

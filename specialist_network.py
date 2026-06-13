@@ -17,6 +17,7 @@ Usage:
     python3 specialist_network.py watch D:/shared --heartbeats # + monitor heartbeats
 """
 
+import sys, os; sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 import sys, json, subprocess, shutil, time, socket, os
 from pathlib import Path
 from datetime import datetime, timezone

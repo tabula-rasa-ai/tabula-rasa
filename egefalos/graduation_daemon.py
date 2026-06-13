@@ -453,8 +453,8 @@ def spawn_stage(stage_number: int) -> tuple:
     Returns:
         (model, tokenizer) tuple
     """
-    from config import Config
-    from tokenizer import MathTokenizer
+    from tabula_rasa.config import Config
+    from tabula_rasa.tokenizer import MathTokenizer
     
     if stage_number < 1 or stage_number > 6:
         raise ValueError(f'Invalid stage: {stage_number}')

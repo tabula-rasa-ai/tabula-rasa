@@ -25,9 +25,9 @@ import torch
 import torch.nn.functional as F
 from torch.optim import AdamW
 
-from model import MathTransformer, count_parameters
-from config import Config
-from tokenizer import MathTokenizer
+from tabula_rasa.model import MathTransformer, count_parameters
+from tabula_rasa.config import Config
+from tabula_rasa.tokenizer import MathTokenizer
 
 
 # ═════════════════════════════════════════════════════════════════════
@@ -353,8 +353,8 @@ def evaluate_taxonomy(model, tokenizer, num_problems: int = 200,
 # ═════════════════════════════════════════════════════════════════════
 
 if __name__ == '__main__':
-    from config import Config
-    from tokenizer import MathTokenizer
+    from tabula_rasa.config import Config
+    from tabula_rasa.tokenizer import MathTokenizer
     
     cfg = Config()
     cfg.d_model = 128

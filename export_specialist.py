@@ -5,6 +5,7 @@ Usage:
     python3 export_specialist.py math/addition --out \\\\other-pc\\shared\\specialists\\
 """
 
+import sys, os; sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 import sys, json, zipfile, shutil
 from pathlib import Path
 

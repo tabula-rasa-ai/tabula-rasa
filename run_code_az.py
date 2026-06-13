@@ -7,6 +7,7 @@ Usage:
 Called by the Specialist Trainer dashboard's "Start Code Self-Play" button.
 """
 
+import sys, os; sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 import argparse
 import json
 import sys
@@ -30,8 +31,8 @@ def main():
         run_syntax_session, run_fuzzing_session, run_algorithm_session,
         full_code_training_session,
     )
-    from config import Config
-    from tokenizer import MathTokenizer
+    from tabula_rasa.config import Config
+    from tabula_rasa.tokenizer import MathTokenizer
 
     cfg = Config()
     cfg.use_value_head = True

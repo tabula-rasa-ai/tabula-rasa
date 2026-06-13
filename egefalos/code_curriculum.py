@@ -443,8 +443,8 @@ def pythagorean_code_review(code_history: list) -> dict:
 # ═════════════════════════════════════════════════════════════════════
 
 if __name__ == '__main__':
-    from config import Config
-    from tokenizer import MathTokenizer
+    from tabula_rasa.config import Config
+    from tabula_rasa.tokenizer import MathTokenizer
     
     cfg = Config()
     cfg.use_value_head = True

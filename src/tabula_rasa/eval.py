@@ -3,10 +3,10 @@
 import torch
 from pathlib import Path
 
-from config import Config
-from tokenizer import MathTokenizer
-from model import MathTransformer, count_parameters
-from dataset import generate_problem
+from tabula_rasa.config import Config
+from tabula_rasa.tokenizer import MathTokenizer
+from tabula_rasa.model import MathTransformer, count_parameters
+from tabula_rasa.dataset import generate_problem
 
 # Operations and their expected formats
 MULTI_STEP_PROBLEMS = [

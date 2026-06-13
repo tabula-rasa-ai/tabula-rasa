@@ -18,9 +18,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim import AdamW
 
-from config import Config
-from tokenizer import MathTokenizer
-from model import MathTransformer
+from tabula_rasa.config import Config
+from tabula_rasa.tokenizer import MathTokenizer
+from tabula_rasa.model import MathTransformer
 
 
 # ─── Online Elastic Weight Consolidation (EWC) ────────────────────

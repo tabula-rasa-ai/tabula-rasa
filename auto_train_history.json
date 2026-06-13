@@ -1,22 +1,70 @@
 {
   "target": 50.0,
-  "budget": 500,
+  "budget": 50000,
   "deep": false,
   "final_accuracies": {
-    "add": 6.0
+    "add": 8.0,
+    "sub": 10.0,
+    "mul": 3.0,
+    "div": 17.0
   },
   "passed": 0,
-  "total": 1,
+  "total": 4,
   "history": [
     {
       "round": 1,
-      "trained_op": "add",
-      "before_acc": 6.0,
-      "steps_used": 500,
-      "total_steps": 500,
-      "time_seconds": 72,
+      "trained_op": "sub",
+      "before_acc": 0.0,
+      "steps_used": 15000,
+      "total_steps": 15000,
+      "time_seconds": 3052,
       "all_accuracies": {
-        "add": 6.0
+        "add": 6.0,
+        "sub": 0.0,
+        "mul": 0.0,
+        "div": 0.0
+      }
+    },
+    {
+      "round": 2,
+      "trained_op": "div",
+      "before_acc": 0.0,
+      "steps_used": 15000,
+      "total_steps": 30000,
+      "time_seconds": 3404,
+      "all_accuracies": {
+        "add": 2.0,
+        "sub": 10.0,
+        "mul": 3.0,
+        "div": 0.0
+      }
+    },
+    {
+      "round": 3,
+      "trained_op": "mul",
+      "before_acc": 3.0,
+      "steps_used": 15000,
+      "total_steps": 45000,
+      "time_seconds": 1659,
+      "all_accuracies": {
+        "add": 6.0,
+        "sub": 10.0,
+        "mul": 3.0,
+        "div": 17.0
+      }
+    },
+    {
+      "round": 4,
+      "trained_op": "mul",
+      "before_acc": 2.0,
+      "steps_used": 5000,
+      "total_steps": 50000,
+      "time_seconds": 2789,
+      "all_accuracies": {
+        "add": 6.666666666666667,
+        "sub": 10.0,
+        "mul": 2.0,
+        "div": 17.0
       }
     }
   ]

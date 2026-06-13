@@ -24,9 +24,9 @@ import torch
 import torch.nn.functional as F
 from torch.optim import AdamW
 
-from model import MathTransformer, count_parameters
-from config import Config
-from tokenizer import MathTokenizer
+from tabula_rasa.model import MathTransformer, count_parameters
+from tabula_rasa.config import Config
+from tabula_rasa.tokenizer import MathTokenizer
 from egefalos.code_sandbox import PythonEnvironment
 
 

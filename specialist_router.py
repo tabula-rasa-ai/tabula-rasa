@@ -8,15 +8,16 @@ Then:
     curl http://localhost:8001/health
 """
 
+import sys, os; sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 import argparse, json, time, sys, re
 from pathlib import Path
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse
 
 import torch
-from config import Config
-from tokenizer import MathTokenizer
-from model import MathTransformer, count_parameters
+from tabula_rasa.config import Config
+from tabula_rasa.tokenizer import MathTokenizer
+from tabula_rasa.model import MathTransformer, count_parameters
 
 OPS = {'+': 'add', '-': 'sub', '*': 'mul', '/': 'div'}
 

@@ -8,6 +8,7 @@ This script is called by the Specialist Trainer dashboard's "Start Self-Play" bu
 Avoids inline escaping issues by being a proper script file.
 """
 
+import sys, os; sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 import argparse
 import json
 import sys
@@ -32,8 +33,8 @@ def main():
     from egefalos.semantic_game import alphazero_gymnasium_session
     from egefalos.grammar_engine import create_grammar_rules
     from egefalos.mcts import create_mcts_fn
-    from config import Config
-    from tokenizer import MathTokenizer
+    from tabula_rasa.config import Config
+    from tabula_rasa.tokenizer import MathTokenizer
 
     cfg = Config()
     cfg.use_value_head = args.value_head

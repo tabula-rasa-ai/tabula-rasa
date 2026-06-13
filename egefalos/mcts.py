@@ -421,8 +421,8 @@ def create_mcts_fn(model, tokenizer, grammar_rules: list = None,
 # ═════════════════════════════════════════════════════════════════════
 
 if __name__ == '__main__':
-    from config import Config
-    from tokenizer import MathTokenizer
+    from tabula_rasa.config import Config
+    from tabula_rasa.tokenizer import MathTokenizer
     from language_az import LanguageAlphaZero, ConceptNode, concept_to_string
     
     cfg = Config()

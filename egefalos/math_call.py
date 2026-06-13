@@ -101,7 +101,7 @@ def extract_and_solve(math_call_text: str, math_specialist=None, tokenizer=None)
         # If we have a math specialist, use it for verification
         if math_specialist and tokenizer:
             try:
-                from model import MathTransformer
+                from tabula_rasa.model import MathTransformer
                 prompt = f'{expr}='
                 out = math_specialist.generate(tokenizer, prompt, max_new_tokens=10,
                                                temperature=0.1, top_k=3)

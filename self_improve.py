@@ -8,6 +8,7 @@ Includes Hard Negative Mining — entropy-based blind-spot detection
 that biases the curriculum toward the model's hardest examples.
 """
 
+import sys, os; sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 import math
 import json
 import time
@@ -20,10 +21,10 @@ import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 from torch.optim import AdamW
 
-from config import Config
-from tokenizer import MathTokenizer
-from dataset import generate_problem, format_math_sample
-from model import MathTransformer
+from tabula_rasa.config import Config
+from tabula_rasa.tokenizer import MathTokenizer
+from tabula_rasa.dataset import generate_problem, format_math_sample
+from tabula_rasa.model import MathTransformer
 
 
 # ─── Hard Negative Miner ─────────────────────────────────────────────
@@ -356,7 +357,7 @@ class SelfImprovementLoop:
     @torch.no_grad()
     def evaluate(self, num_problems: int = 200) -> float:
         """Evaluate current accuracy."""
-        from eval import evaluate_accuracy
+        from tabula_rasa.eval import evaluate_accuracy
         return evaluate_accuracy(
             self.model, self.tokenizer,
             num_problems=num_problems,

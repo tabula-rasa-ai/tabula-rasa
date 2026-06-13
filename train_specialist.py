@@ -11,15 +11,16 @@ Usage:
     python3 train_specialist.py add --resume        # Resume from checkpoint
     python3 train_specialist.py add --steps 5000    # Custom step count
 """
+import sys, os; sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 import sys, time, math, json, random, urllib.request, signal
 from pathlib import Path
 import torch, torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 from torch import optim
 
-from config import Config
-from tokenizer import MathTokenizer
-from model import MathTransformer, count_parameters
+from tabula_rasa.config import Config
+from tabula_rasa.tokenizer import MathTokenizer
+from tabula_rasa.model import MathTransformer, count_parameters
 from egefalos.online_ewc import OnlineEWC
 
 OPS = {'add': '+', 'sub': '-', 'mul': '*', 'div': '/'}

@@ -26,15 +26,15 @@ import torch, torch.nn as nn
 from torch.utils.data import DataLoader
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from config import Config
-from tokenizer import MathTokenizer
-from model import MathTransformer
+from tabula_rasa.config import Config
+from tabula_rasa.tokenizer import MathTokenizer
+from tabula_rasa.model import MathTransformer
 from train_specialist import evaluate, evaluate_per_digit, generate_problem, SpecialistDataset, _get_lr
 from egefalos.online_ewc import OnlineEWC
 
 DEVICE = 'cpu'
 ADD_DIR = Path('specialists/math/add')
-LAMBDA_EWC = 1000   # Use the known-good value
+LAMBDA_EWC = 500   # Use the discovered optimum from lambda sweep
 GAMMA = 0.9
 STEPS_PER_TASK = 2000
 

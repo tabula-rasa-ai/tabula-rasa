@@ -8,6 +8,7 @@ Trains: generalist (all 4 ops) + each individual specialist.
 Saves: portable checkpoint zips + training logs to /output/
 """
 
+import sys, os; sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 import os, sys, time, math, json, shutil, zipfile
 from pathlib import Path
 import torch
@@ -26,9 +27,9 @@ print()
 # Add project root
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from config import Config
-from tokenizer import MathTokenizer
-from model import MathTransformer, count_parameters
+from tabula_rasa.config import Config
+from tabula_rasa.tokenizer import MathTokenizer
+from tabula_rasa.model import MathTransformer, count_parameters
 from mmap_dataset import get_loader
 from train_optimized import quick_eval
 

@@ -1,5 +1,6 @@
 """Training loop for tiny math transformer."""
 
+import sys, os; sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 import time
 import math
 import json
@@ -11,10 +12,10 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from torch.optim import AdamW
 
-from config import Config
-from tokenizer import MathTokenizer
-from dataset import MathDataset, generate_problem, format_math_sample
-from model import MathTransformer, count_parameters
+from tabula_rasa.config import Config
+from tabula_rasa.tokenizer import MathTokenizer
+from tabula_rasa.dataset import MathDataset, generate_problem, format_math_sample
+from tabula_rasa.model import MathTransformer, count_parameters
 
 
 def get_lr_scheduler(optimizer, warmup_steps, max_steps):

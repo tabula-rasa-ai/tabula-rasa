@@ -22,8 +22,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from model import MathTransformer, count_parameters
-from config import Config
+from tabula_rasa.model import MathTransformer, count_parameters
+from tabula_rasa.config import Config
 
 
 # ═════════════════════════════════════════════════════════════════════
@@ -774,8 +774,8 @@ def language_self_play_session(model, tokenizer, num_games: int = 200,
 if __name__ == '__main__':
     print('Testing LanguageAlphaZero...')
     
-    from config import Config
-    from tokenizer import MathTokenizer
+    from tabula_rasa.config import Config
+    from tabula_rasa.tokenizer import MathTokenizer
     
     cfg = Config()
     cfg.use_value_head = True

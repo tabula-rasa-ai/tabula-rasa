@@ -14,13 +14,14 @@ How it works:
     4. Train it with curriculum learning
     5. Repeat until all ops pass or budget exhausted
 """
+import sys, os; sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 import sys, time, json, argparse
 from pathlib import Path
 import torch
 
-from config import Config
-from tokenizer import MathTokenizer
-from model import MathTransformer, count_parameters
+from tabula_rasa.config import Config
+from tabula_rasa.tokenizer import MathTokenizer
+from tabula_rasa.model import MathTransformer, count_parameters
 from train_specialist import (
     OP_NAMES, OPS, _INTERRUPTED, evaluate,
     train_specialist, _signal_handler

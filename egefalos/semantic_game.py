@@ -305,8 +305,8 @@ def alphazero_gymnasium_session(model, tokenizer,
 if __name__ == '__main__':
     print('Testing Semantic Reconstruction Game...')
     
-    from config import Config
-    from tokenizer import MathTokenizer
+    from tabula_rasa.config import Config
+    from tabula_rasa.tokenizer import MathTokenizer
     
     cfg = Config()
     cfg.use_value_head = True

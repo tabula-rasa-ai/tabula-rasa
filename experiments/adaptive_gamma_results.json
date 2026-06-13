@@ -1,0 +1,15 @@
+{
+  "add_before": 98.0,
+  "add_after_sub": 97.0,
+  "sub_after_sub": 100.0,
+  "add_after_mul": 0.0,
+  "sub_after_mul": 5.0,
+  "mul_after_mul": 37.0,
+  "fisher_add_norm": 101.713618789463,
+  "fisher_sub_norm": 87.40407987152139,
+  "fisher_merged_norm": 99.83144453422392,
+  "overlap": 0.9765494465827942,
+  "gamma_adaptive": 0.8859296679496765,
+  "gamma_base": 0.9,
+  "all_tasks_above_85": false
+}
