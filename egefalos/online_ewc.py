@@ -83,11 +83,18 @@ class OnlineEWC:
 
         return fisher
 
-    def merge_fisher(self, new_fisher: Dict[str, torch.Tensor]):
+    def merge_fisher(self, new_fisher: Dict[str, torch.Tensor], gamma: Optional[float] = None):
         """Merge new Fisher into running total using exponential decay.
 
         F_combined = gamma * F_old + (1 - gamma) * F_new
+
+        Args:
+            new_fisher: Fisher matrix for the new task
+            gamma: Optional override for self.gamma. If provided, uses this
+                   value for the merge (enables adaptive gamma per-merge).
         """
+        gamma = self.gamma if gamma is None else gamma
+
         if not self.fisher_dict:
             # First task: just use the new Fisher
             self.fisher_dict = {k: v.clone() for k, v in new_fisher.items()}
@@ -96,11 +103,46 @@ class OnlineEWC:
             for name in self.fisher_dict:
                 if name in new_fisher:
                     self.fisher_dict[name] = (
-                        self.gamma * self.fisher_dict[name] +
-                        (1.0 - self.gamma) * new_fisher[name]
+                        gamma * self.fisher_dict[name] +
+                        (1.0 - gamma) * new_fisher[name]
                     )
 
         self.task_count += 1
+
+    @staticmethod
+    def compute_fisher_overlap(fisher_a: Dict[str, torch.Tensor],
+                                fisher_b: Dict[str, torch.Tensor]) -> float:
+        """Compute cosine similarity between two Fisher matrices as a measure of task overlap.
+
+        Returns a value in [0, 1] where:
+        - 1.0 = identical Fisher structure (tasks share all parameter importance)
+        - 0.0 = completely orthogonal Fisher structure (no parameter overlap)
+
+        Uses the normalized inner product of flattened Fisher diagonals.
+        """
+        a_flat = torch.cat([v.flatten() for v in fisher_a.values()])
+        b_flat = torch.cat([v.flatten() for v in fisher_b.values()])
+        cos_sim = torch.nn.functional.cosine_similarity(a_flat.unsqueeze(0), b_flat.unsqueeze(0))
+        return cos_sim.item()
+
+    @staticmethod
+    def compute_adaptive_gamma(base_gamma: float, overlap: float,
+                                min_gamma: float = 0.3, max_gamma: float = 0.95) -> float:
+        """Compute adaptive gamma based on Fisher overlap.
+
+        When overlap is high (similar tasks), keep gamma close to base_gamma.
+        When overlap is low (divergent tasks), reduce gamma to blend more new info.
+
+        gamma_adaptive = base_gamma * overlap + min_gamma * (1 - overlap)
+
+        Args:
+            base_gamma: The user-specified base decay rate (e.g., 0.9)
+            overlap: Fisher cosine similarity in [0, 1]
+            min_gamma: Minimum gamma when overlap → 0
+            max_gamma: Maximum gamma (clamped)
+        """
+        adaptive = base_gamma * overlap + min_gamma * (1 - overlap)
+        return max(min_gamma, min(max_gamma, adaptive))
 
     def save_anchor_weights(self):
         """Save current model weights as anchor (theta*) for EWC penalty."""
