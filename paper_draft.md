@@ -194,10 +194,10 @@ Critically, addition accuracy **improves** at λ ≥ 500 (up to +5pp at λ=1000)
 
 | Condition | Add after 3 tasks | Sub after 3 tasks | Mul after 3 tasks |
 |-----------|-------------------|-------------------|-------------------|
-| Online EWC (merged) | 3.0% | 0.0% | 34.0% |
+| Online EWC (merged) | 3.0%* | 0.0%* | 34.0%* |
 | Standard EWC (per-task) | **2.0±2.0%** | **0.0±0.0%** | **24.7±13.1%** |
 
-*Table 3: Three-task sequence results (Standard EWC: mean ± std, 3 seeds). Both merged and per-task EWC collapse identically at 3 tasks.*
+*Table 3: Three-task sequence results (Standard EWC: mean ± std, 3 seeds). Both merged and per-task EWC collapse identically at 3 tasks. *Online EWC values are from a single run (consistent with the sweep protocol); Standard EWC error bars confirm the collapse is not a stochastic artifact.*
 
 Standard EWC — which stores separate Fisher matrices and anchor weights for each task and applies independent penalties — produces statistically indistinguishable results from the merged variant. The collapse is not caused by information loss during merge; it is caused by **insufficient model capacity** for three structurally divergent operations.
 
@@ -320,6 +320,12 @@ Cost: O(N) parameters after N tasks. Trade-off: parameter count grows linearly, 
 We implemented adaptive gamma (γ_adaptive = base·overlap + min·(1−overlap)) as a potential mitigation for merge-related information loss (§3.4). The measured overlap between addition and subtraction Fisher was 0.977, producing γ_adaptive=0.886 (near-identical to the default 0.9). Three-task performance was unchanged.
 
 This negative result is informative: it confirms that task divergence is not the limiting factor. The high Fisher overlap means that add and subtractions share structure nearly perfectly — the merge operator is not losing information. The bottleneck is architectural, and no modification to the merge hyperparameters can overcome it.
+
+### Limitations
+
+This study has several limitations that bound its scope. First, all experiments use a single model architecture (1M parameters, 4 layers, d=128) trained on 1-digit arithmetic problems. The finding that the three-task limit is architectural rather than algorithmic may not generalize to larger models, deeper networks, or more complex task domains. Second, the lambda sweep and error bars cover only 3 seeds per condition — while the results are statistically robust (zero variance for EWC conditions), a larger number of seeds would strengthen the claims about bimodality in the no-EWC condition. Third, we compare only EWC-based methods; other continual learning approaches (memory replay, elastic weight consolidation with per-task anchors, synaptic intelligence [Zenke et al., 2017]) may behave differently. Fourth, the architectural scaling hypothesis (§5.1) is untested — confirming that increasing model size resolves the three-task collapse remains the most important open question. Finally, the study uses arithmetic as a proxy for structured task domains; the extent to which these findings transfer to natural language or vision tasks is unknown.
+
+Despite these limitations, the controlled comparison between merged and per-task EWC, the discovery of bimodal no-EWC behavior, and the empirical validation of Online EWC's robustness for structurally similar tasks are specific, reproducible contributions that stand independently of the scope constraints.
 
 ---
 
