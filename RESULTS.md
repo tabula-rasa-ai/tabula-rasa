@@ -60,17 +60,32 @@ Token  ID
 
 ---
 
-## 1C. Online EWC Fisher Matrix Persistence
+### 1C. Online EWC Fisher Matrix Persistence
 
 **Claim:** EWC Fisher matrix saved at `specialists/math/addition/ewc_fisher.pt`
 
-**Result: ❌ NOT IMPLEMENTED**
+**Initial Result: ❌ NOT IMPLEMENTED** (as of initial validation)
 
-- File `specialists/math/add/ewc_fisher.pt` does not exist
-- No EWC (Elastic Weight Consolidation) code found anywhere in the project
-- No Fisher matrix computation or persistence exists in `train_specialist.py`, `model.py`, or any other file
+**Current Status: ✅ IMPLEMENTED** (as of 2026-06-13)
 
-**Severity:** Missing feature. Online EWC for continual learning is not yet implemented in the codebase. If EWC is required for multi-specialist training without catastrophic forgetting, this needs to be added.
+The following components were built:
+
+| Component | File | Lines | Status |
+|-----------|------|-------|--------|
+| Online EWC module | `egefalos/online_ewc.py` | ~175 | ✅ Tested |
+| EWC integration in trainer | `train_specialist.py` | +50 | ✅ Tested |
+| Hippocampus (SQLite) | `egefalos/hippocampus.py` | ~180 | ✅ Pre-existing |
+| Sleep cycle daemon | `egefalos/sleep_cycle.py` | ~220 | ✅ Tested |
+
+**Verified functionality:**
+- [x] Fisher matrix computation on data samples
+- [x] Merge with exponential decay: F_combined = γ·F_old + (1-γ)·F_new
+- [x] EWC penalty term in training loss: (λ/2)·ΣF·(θ-θ*)²
+- [x] Save/load `ewc_fisher.pt` (39 param groups saved)
+- [x] Anchor weight save/restore
+- [x] Sleep cycle: replay → Fisher compute → merge → train → consolidate
+- [x] `--ewc` CLI flag on `train_specialist.py`
+- [x] Hippocampus SQLite: store, sample, mark consolidated
 
 ---
 
