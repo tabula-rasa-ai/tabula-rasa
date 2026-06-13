@@ -1,0 +1,7 @@
+{
+  "100": {"lambda": 100, "addition_baseline_1d": 97.0, "addition_final_1d": 96.0, "subtraction_final_1d": 95.0, "retention_drop_pp": 1.0},
+  "250": {"lambda": 250, "addition_baseline_1d": 98.0, "addition_final_1d": 97.0, "subtraction_final_1d": 100.0, "retention_drop_pp": 1.0},
+  "500": {"lambda": 500, "addition_baseline_1d": 97.0, "addition_final_1d": 100.0, "subtraction_final_1d": 100.0, "retention_drop_pp": -3.0},
+  "1000": {"lambda": 1000, "addition_baseline_1d": 95.0, "addition_final_1d": 100.0, "subtraction_final_1d": 100.0, "retention_drop_pp": -5.0},
+  "2000": {"lambda": 2000, "addition_baseline_1d": 98.0, "addition_final_1d": 100.0, "subtraction_final_1d": 100.0, "retention_drop_pp": -2.0}
+}
