@@ -17,6 +17,7 @@ from pathlib import Path
 import torch, torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 from torch import optim
+from torch.cuda.amp import autocast, GradScaler
 
 from tabula_rasa.config import Config
 from tabula_rasa.tokenizer import MathTokenizer
@@ -334,7 +335,8 @@ def _log_experiment(exp):
 def train_specialist(op, steps=0, batch_size=0, lr=0,
                     use_reversed=None, use_loss_masking=None,
                     quick=False, resume=False, test_hard=False, deep=False,
-                    use_ewc=False, ewc_lambda=1000.0, ewc_gamma=0.9):
+                    use_ewc=False, ewc_lambda=1000.0, ewc_gamma=0.9,
+                    use_amp=False, gradient_accumulation_steps=0):
     """Train a specialist for one arithmetic operation.
 
     Args:
@@ -410,6 +412,20 @@ def train_specialist(op, steps=0, batch_size=0, lr=0,
     tok = MathTokenizer()
     cfg.vocab_size = tok.vocab_size
     tok.max_seq_len = cfg.max_seq_len
+
+    # ── Mixed precision (AMP) ──
+    cfg.use_amp = use_amp or cfg.use_amp
+    use_amp_enabled = cfg.use_amp and device.type == 'cuda'
+    if use_amp_enabled:
+        print(f'  AMP: enabled (mixed precision)')
+    elif cfg.use_amp and device.type != 'cuda':
+        print(f'  AMP: disabled (requires CUDA device)')
+
+    # ── Gradient accumulation ──
+    if gradient_accumulation_steps > 0:
+        cfg.gradient_accumulation_steps = gradient_accumulation_steps
+    if cfg.gradient_accumulation_steps > 1:
+        print(f'  Grad Accum: {cfg.gradient_accumulation_steps} steps (effective batch: {cfg.batch_size * cfg.gradient_accumulation_steps})')
 
     # ── Disable scratchpad/reversed for mul/div ──
     if op not in ('add', 'sub'):
@@ -531,94 +547,128 @@ def train_specialist(op, steps=0, batch_size=0, lr=0,
                     log_file.write(rebuild_msg + '\n')
                     log_file.flush()
 
+            # ── AMP setup ──
+            scaler = GradScaler() if use_amp_enabled else None
+            grad_accum_steps = cfg.gradient_accumulation_steps
+            acc_counter = 0  # micro-batch counter within current optimizer step
+            last_micro_loss = 0.0  # track per-micro-batch loss for logging
+
             loader = DataLoader(train_ds, batch_size=cfg.batch_size, shuffle=True,
                               num_workers=0, drop_last=True)
+            optimizer.zero_grad()
             for batch in loader:
                 if global_step >= cfg.max_steps or _INTERRUPTED:
                     break
 
                 x, y = batch
                 x, y = x.to(device), y.to(device)
-                _, loss, _ = model(x, y)
+
+                # ── Forward pass (with AMP autocast on CUDA) ──
+                if scaler is not None:
+                    with autocast():
+                        _, loss, _ = model(x, y)
+                else:
+                    _, loss, _ = model(x, y)
+
+                last_micro_loss = loss.item()
+
+                # Scale loss for gradient accumulation — divide so gradients sum correctly
+                loss_for_backward = loss / grad_accum_steps
 
                 # EWC penalty for continual learning
                 if ewc is not None:
                     ewc_penalty = ewc.compute_ewc_penalty(lambda_ewc=ewc_lambda)
-                    total_loss = loss + ewc_penalty
+                    total_loss = loss_for_backward + ewc_penalty / grad_accum_steps
                 else:
-                    total_loss = loss
+                    total_loss = loss_for_backward
 
-                optimizer.zero_grad()
-                total_loss.backward()
-                if cfg.grad_clip_norm > 0:
-                    torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip_norm)
-                optimizer.step()
+                # ── Backward pass (with GradScaler if AMP) ──
+                if scaler is not None:
+                    scaler.scale(total_loss).backward()
+                else:
+                    total_loss.backward()
 
-                # Learning rate schedule
-                for pg in optimizer.param_groups:
-                    pg['lr'] = cfg.learning_rate * _get_lr(
-                        global_step, cfg.warmup_steps, cfg.max_steps, cfg.lr_schedule)
+                acc_counter += 1
 
-                global_step += 1
+                # ── Optimizer step only when accumulation is complete ──
+                if acc_counter % grad_accum_steps == 0:
+                    if cfg.grad_clip_norm > 0:
+                        if scaler is not None:
+                            scaler.unscale_(optimizer)
+                        torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip_norm)
 
-                # ── Progress logging ──
-                if global_step % cfg.log_every == 0:
-                    elapsed = time.time() - t_start
-                    sps = global_step / max(1, elapsed)
-                    eta = (cfg.max_steps - global_step) / max(0.1, sps)
-                    current_lr = cfg.learning_rate * _get_lr(global_step, cfg.warmup_steps, cfg.max_steps, cfg.lr_schedule)
-                    phase_info = f' P{curriculum_phase+1}' if use_curriculum else ''
-                    line = (f'  Step {global_step:>6}/{cfg.max_steps} | '
-                           f'loss={loss.item():.4f} | lr={current_lr:.6f} | '
-                           f'{sps:.1f} st/s | ETA: {eta/60:.0f}m{phase_info}')
-                    print(line, flush=True)
-                    log_file.write(line + '\n')
-                    log_file.flush()
-
-                # ── Periodic checkpoint (for resume) ──
-                if global_step % cfg.save_every == 0:
-                    _save_checkpoint(model, optimizer, global_step, best_acc, op_dir)
-
-                # ── Evaluation (with per-digit breakdown) ──
-                if global_step % cfg.eval_every == 0:
-                    eval_t = time.time()
-                    acc = evaluate(model, tok, cfg, op)
-                    elapsed = time.time() - t_start
-
-                    # Per-digit accuracy breakdown
-                    per_digit = evaluate_per_digit(model, tok, cfg, op, per_digit_samples=15, hard=cfg.test_hard)
-                    digit_str = ' '.join(f'{d}d:{v:.0f}%' for d, v in per_digit.items())
-
-                    eval_history.append(acc)
-                    eval_line = f'    Eval step {global_step}: {acc:.1f}% (best: {max(best_acc, acc):.1f}%) | {digit_str} [{elapsed:.0f}s]'
-                    print(eval_line, flush=True)
-                    log_file.write(eval_line + '\n')
-                    log_file.flush()
-
-                    if acc > best_acc:
-                        best_acc = acc
-                        loss_streak_count = 0
-                        torch.save({
-                            'model_state_dict': model.state_dict(),
-                            'acc': acc,
-                            'global_step': global_step,
-                            'per_digit': per_digit,
-                            'config': {k: getattr(cfg, k, None) for k in [
-                                'd_model', 'n_layers', 'n_heads', 'd_ff',
-                                'use_reversed', 'use_loss_masking', 'use_scratchpad'
-                            ]}
-                        }, op_dir / 'best.pt')
+                    if scaler is not None:
+                        scaler.step(optimizer)
+                        scaler.update()
                     else:
-                        loss_streak_count += 1
+                        optimizer.step()
 
-                    # ── Early stopping: 5 evals with no improvement ──
-                    if loss_streak_count >= 5 and global_step > cfg.max_steps * 0.3:
-                        early_msg = f'  [!] Early stop at step {global_step} — no improvement for {loss_streak_count} evals (best: {best_acc:.1f}%)'
-                        print(early_msg, flush=True)
-                        log_file.write(early_msg + '\n')
+                    optimizer.zero_grad()
+                    global_step += 1
+
+                    # Learning rate schedule (based on optimizer steps)
+                    for pg in optimizer.param_groups:
+                        pg['lr'] = cfg.learning_rate * _get_lr(
+                            global_step, cfg.warmup_steps, cfg.max_steps, cfg.lr_schedule)
+
+                    # ── Progress logging (per-micro-batch loss) ──
+                    if global_step % cfg.log_every == 0:
+                        elapsed = time.time() - t_start
+                        sps = global_step / max(1, elapsed)
+                        eta = (cfg.max_steps - global_step) / max(0.1, sps)
+                        current_lr = cfg.learning_rate * _get_lr(global_step, cfg.warmup_steps, cfg.max_steps, cfg.lr_schedule)
+                        phase_info = f' P{curriculum_phase+1}' if use_curriculum else ''
+                        line = (f'  Step {global_step:>6}/{cfg.max_steps} | '
+                               f'loss={last_micro_loss:.4f} | lr={current_lr:.6f} | '
+                               f'{sps:.1f} st/s | ETA: {eta/60:.0f}m{phase_info}')
+                        print(line, flush=True)
+                        log_file.write(line + '\n')
                         log_file.flush()
-                        _INTERRUPTED = True
-                        break
+
+                    # ── Periodic checkpoint (for resume) ──
+                    if global_step % cfg.save_every == 0:
+                        _save_checkpoint(model, optimizer, global_step, best_acc, op_dir)
+
+                    # ── Evaluation (with per-digit breakdown) ──
+                    if global_step % cfg.eval_every == 0:
+                        eval_t = time.time()
+                        acc = evaluate(model, tok, cfg, op)
+                        elapsed = time.time() - t_start
+
+                        # Per-digit accuracy breakdown
+                        per_digit = evaluate_per_digit(model, tok, cfg, op, per_digit_samples=15, hard=cfg.test_hard)
+                        digit_str = ' '.join(f'{d}d:{v:.0f}%' for d, v in per_digit.items())
+
+                        eval_history.append(acc)
+                        eval_line = f'    Eval step {global_step}: {acc:.1f}% (best: {max(best_acc, acc):.1f}%) | {digit_str} [{elapsed:.0f}s]'
+                        print(eval_line, flush=True)
+                        log_file.write(eval_line + '\n')
+                        log_file.flush()
+
+                        if acc > best_acc:
+                            best_acc = acc
+                            loss_streak_count = 0
+                            torch.save({
+                                'model_state_dict': model.state_dict(),
+                                'acc': acc,
+                                'global_step': global_step,
+                                'per_digit': per_digit,
+                                'config': {k: getattr(cfg, k, None) for k in [
+                                    'd_model', 'n_layers', 'n_heads', 'd_ff',
+                                    'use_reversed', 'use_loss_masking', 'use_scratchpad'
+                                ]}
+                            }, op_dir / 'best.pt')
+                        else:
+                            loss_streak_count += 1
+
+                        # ── Early stopping: 5 evals with no improvement ──
+                        if loss_streak_count >= 5 and global_step > cfg.max_steps * 0.3:
+                            early_msg = f'  [!] Early stop at step {global_step} — no improvement for {loss_streak_count} evals (best: {best_acc:.1f}%)'
+                            print(early_msg, flush=True)
+                            log_file.write(early_msg + '\n')
+                            log_file.flush()
+                            _INTERRUPTED = True
+                            break
 
     except KeyboardInterrupt:
         _INTERRUPTED = True
@@ -723,6 +773,10 @@ Examples:
                        help='EWC penalty strength (default: 1000)')
     parser.add_argument('--ewc-gamma', type=float, default=0.9,
                        help='Fisher merge decay rate (default: 0.9)')
+    parser.add_argument('--amp', action='store_true',
+                       help='Enable mixed precision (AMP) training (requires CUDA)')
+    parser.add_argument('--grad-accum', type=int, default=0,
+                       help='Gradient accumulation steps (0=config default, default: 1)')
 
     args = parser.parse_args()
 
@@ -748,6 +802,8 @@ Examples:
                 use_ewc=args.ewc,
                 ewc_lambda=args.ewc_lambda,
                 ewc_gamma=args.ewc_gamma,
+                use_amp=args.amp,
+                gradient_accumulation_steps=args.grad_accum,
             )
             results[op_name] = 'OK' if model is not None else 'FAILED'
         print(f'\n  Results: {results}')
@@ -773,4 +829,6 @@ Examples:
         use_ewc=args.ewc,
         ewc_lambda=args.ewc_lambda,
         ewc_gamma=args.ewc_gamma,
+        use_amp=args.amp,
+        gradient_accumulation_steps=args.grad_accum,
     )

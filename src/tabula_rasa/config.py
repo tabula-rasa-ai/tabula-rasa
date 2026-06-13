@@ -65,6 +65,10 @@ class Config:
     use_value_head = False      # AlphaZero-style value head (-1 to +1 intuition)
     alphazero_loss_weight = 0.5 # Weight for value loss when use_value_head=True
 
+    # Mixed precision (AMP)
+    use_amp = False             # Enable torch.cuda.amp (only effective on CUDA)
+    gradient_accumulation_steps = 1  # Accumulate N micro-batches before optimizer step
+
     # Evaluation
     eval_temperature = 0.0      # 0=greedy, >0 adds randomness
     eval_max_tokens = 20        # Max tokens to generate per answer (longer for scratchpad)
