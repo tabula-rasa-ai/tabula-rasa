@@ -612,6 +612,9 @@ def train_specialist(
     dialectic_problems=50,
     eval_interval=0,
     patience=0,
+    use_rl=False,
+    rl_total_steps=0,
+    rl_lr=0,
 ):
     """Train a specialist for one arithmetic operation.
 
@@ -1266,6 +1269,77 @@ def train_specialist(
         except Exception as e:
             print(f"  [!] Socratic refinement failed: {e}")
 
+    # ── RL / PPO Training ──
+    if use_rl and not _INTERRUPTED:
+        print(f'\n{"="*60}')
+        print(f"  Reinforcement Learning Phase (PPO)")
+        print(f'{"="*60}')
+        try:
+            from egefalos.math_gym_env import MathGymEnv
+            from egefalos.ppo_trainer import PPOTrainer
+
+            # Enable value head for PPO
+            cfg.use_value_head = True
+            if model.value_head is None:
+                # Re-init model with value head
+                old_state = model.state_dict()
+                cfg.use_value_head = True
+                model.__init__(cfg)
+                model.load_state_dict(old_state, strict=False)
+                model.to(device)
+                print(f"  Value head enabled for PPO")
+
+            # Build environment with curriculum
+            env = MathGymEnv(
+                op=OPS.get(op, '+'),
+                max_digits=cfg.max_digits or 4,
+                tokenizer=tok,
+                model=model,
+                curriculum=True,
+                curriculum_min_digits=1,
+                curriculum_threshold=0.7,
+                curriculum_reward_window=10,
+            )
+
+            ppo = PPOTrainer(
+                model=model,
+                tokenizer=tok,
+                env=env,
+                lr=rl_lr or cfg.rl_lr,
+                clip_epsilon=cfg.rl_clip_epsilon,
+                gamma=cfg.rl_gamma,
+                gae_lambda=cfg.rl_gae_lambda,
+                value_coef=cfg.rl_value_coef,
+                entropy_coef=cfg.rl_entropy_coef,
+                update_epochs=cfg.rl_update_epochs,
+                batch_size=cfg.rl_batch_size,
+                horizon=cfg.rl_horizon,
+                max_grad_norm=cfg.rl_max_grad_norm,
+                device=device,
+            )
+
+            rl_stats = ppo.train(
+                total_steps=rl_total_steps or cfg.rl_total_steps,
+                log_interval=10,
+                eval_interval=50,
+            )
+
+            # Save RL-trained checkpoint
+            rl_checkpoint = {
+                "model_state_dict": model.state_dict(),
+                "rl_stats": rl_stats,
+                "global_step": global_step,
+                "config": {k: getattr(cfg, k, None) for k in
+                    ["d_model", "n_layers", "n_heads", "d_ff", "use_reversed",
+                     "use_loss_masking", "use_scratchpad", "cot_scratchpad"]},
+            }
+            torch.save(rl_checkpoint, op_dir / "best_rl.pt")
+            print(f"  RL checkpoint: {op_dir / 'best_rl.pt'}")
+
+        except ImportError as e:
+            print(f"  [!] PPO not available: {e}")
+            print(f"  Install: pip install gymnasium")
+
     # ── Dialectical Self-Play (Generator vs Critic debate) ──
     if dialectic and not _INTERRUPTED and best_acc > 30.0:
         print(f'\n{"="*60}')
@@ -1501,6 +1575,15 @@ Examples:
         "--dialectic-problems", type=int, default=50, help="Problems for dialectic critique (default: 50)"
     )
     parser.add_argument(
+        "--rl", action="store_true", help="Enable PPO reinforcement learning after supervised training"
+    )
+    parser.add_argument(
+        "--rl-steps", type=int, default=0, help="PPO total environment steps (0=config default 5000)"
+    )
+    parser.add_argument(
+        "--rl-lr", type=float, default=0, help="PPO learning rate (0=config default 3e-4)"
+    )
+    parser.add_argument(
         "--log-level",
         type=str,
         default="INFO",
@@ -1550,6 +1633,9 @@ Examples:
                 cot_scratchpad=args.cot,
                 eval_interval=args.eval_interval,
                 patience=args.patience,
+                use_rl=args.rl,
+                rl_total_steps=args.rl_steps,
+                rl_lr=args.rl_lr,
             )
             results[op_name] = "OK" if model is not None else "FAILED"
         print(f"\n  Results: {results}")
@@ -1645,4 +1731,7 @@ Examples:
         cot_scratchpad=args.cot,
         eval_interval=args.eval_interval,
         patience=args.patience,
+        use_rl=args.rl,
+        rl_total_steps=args.rl_steps,
+        rl_lr=args.rl_lr,
     )

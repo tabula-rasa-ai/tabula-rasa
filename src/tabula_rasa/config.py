@@ -96,6 +96,20 @@ class Config:
     use_value_head: bool = False  # AlphaZero-style value head (-1 to +1 intuition)
     alphazero_loss_weight: float = 0.5  # Weight for value loss when use_value_head=True
 
+    # ── PPO / RL ──────────────────────────
+    use_rl: bool = False  # Enable PPO reinforcement learning training
+    rl_total_steps: int = 5000  # Total environment steps for PPO
+    rl_lr: float = 3e-4  # PPO learning rate
+    rl_clip_epsilon: float = 0.2  # PPO clip range
+    rl_gamma: float = 0.99  # PPO discount factor
+    rl_gae_lambda: float = 0.95  # GAE lambda
+    rl_value_coef: float = 0.5  # Value loss coefficient
+    rl_entropy_coef: float = 0.01  # Entropy bonus coefficient
+    rl_update_epochs: int = 4  # PPO update epochs per batch
+    rl_batch_size: int = 64  # PPO minibatch size
+    rl_horizon: int = 512  # Steps between PPO updates
+    rl_max_grad_norm: float = 0.5  # PPO gradient clip norm
+
     # ── Low-Rank Adaptation (LoRA) ──────────────────────────
     use_lora: bool = False  # Enable LoRA fine-tuning
     lora_rank: int = 8  # LoRA rank (r)
