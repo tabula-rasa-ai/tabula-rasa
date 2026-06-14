@@ -8,7 +8,7 @@
 |-------|-------|--------|
 | **1** | Single-task arithmetic mastery | ✅ **COMPLETE** |
 | **2** | Continual learning via Online EWC | ✅ **COMPLETE** |
-| **3** | Reasoning — Socratic Engine, self-play | ❌ **FUTURE** |
+| **3** | Reasoning — Socratic Engine, self-play | 🚧 **IN PROGRESS** (critique loop, trainer, orchestrator live) |
 
 ---
 
@@ -60,7 +60,9 @@ Phase 3 pushes beyond arithmetic into general reasoning, self-play, and language
 - [x] **Stage 1 prototype** — `egefalos/socratic_stage1.py`: two agents, compare solutions
 - [x] **Stage 2 prototype** — `egefalos/socratic_stage2.py`: critique + refine
 - [x] **Stage 3 prototype** — `egefalos/socratic_stage3.py`: multi-turn dialectic
-- [ ] Integrate Socratic stages into training loop — verify improvement over baseline
+- [x] **Critique loop** — `egefalos/socratic_critique.py`: 5-round generate → critic → hint → revise → telemetry
+- [x] **Self-improvement trainer** — `egefalos/socratic_trainer.py`: extracts correction chains, trains on hint→correct pairs
+- [x] **Training integration** — `--socratic` flag on `train_specialist.py`; post-training refinement phase
 - [ ] Publish comparative results: Socratic-trained vs standard-trained specialist accuracy
 - [ ] Benchmark on held-out digit ranges (generalization test)
 
@@ -80,8 +82,10 @@ Phase 3 pushes beyond arithmetic into general reasoning, self-play, and language
 - [ ] Benchmark against supervised code generation baselines
 
 ### 3D. Multi-Specialist Orchestration
+- [x] **Micro-orchestrator** — `egefalos/micro_orchestrator.py`: routes queries with short-term success memory
+- [x] **Confidence tracking** — per-specialist success rates, confidence decay on consecutive failures
+- [x] **Automatic fallback** — cascades to next-best specialist when confidence drops below threshold
 - [ ] Formalize the "Hippocampus" memory architecture — working memory to long-term storage transition
-- [ ] Route queries across specialists with confidence scoring
 - [ ] Implement specialist merging (combine two specialists into one without retraining)
 - [ ] Achieve structured continual learning across 5+ tasks without forgetting
 
@@ -103,24 +107,33 @@ Phase 3 pushes beyond arithmetic into general reasoning, self-play, and language
 - [x] **CODE_OF_CONDUCT.md** — contributor covenant
 - [x] **CONTRIBUTING.md** — developer guide, style guide, PR process
 - [x] **CONTRIBUTING_EXTENDING.md** — step-by-step tutorial for adding new operations
+- [x] **QUICKSTART.md** — zero-context novice guide with expected outputs per step
+- [x] **GPU_BENCHMARKS.md** — hardware performance tables across CPU/CUDA/MPS
+- [x] **GOOD_FIRST_ISSUES.md** — 10 beginner-friendly tasks with scope and references
 - [ ] Add quickstart Jupyter notebook (`quickstart.ipynb`) — train, evaluate, visualize
 
 ### Code Quality
+- [x] **Causal mask regression test** — `TestCausalAttention` asserts token N cannot attend to N+1
+- [x] **Integration test** — `TestEndToEndQuickTraining` runs `--quick` as subprocess, verifies checkpoints
+- [x] **CI badge** — GitHub Actions test suite status in README header
+- [x] **Mixed precision training (AMP)** — `--amp` flag on `train_specialist.py`
+- [x] **Gradient accumulation** — `--grad-accum` flag for smaller GPU training
+- [x] **Structured logging** — `--log-level` flag (DEBUG/INFO/WARNING/ERROR)
+- [x] **Benchmarking suite** — `run_benchmarks.py` with --quick/--full/--eval modes
+- [x] **GPU benchmarks doc** — throughput tables, FlashAttention notes, MPS notes
 - [ ] Refactor to src-layout (`src/tabula_rasa/` package structure)
 - [ ] Add pre-commit hooks (formatting, linting)
-- [ ] Add CI pipeline (GitHub Actions): test, lint, experiment validation
-- [ ] Mixed precision training (AMP) support for GPU
-- [ ] Gradient accumulation for smaller GPU training
 - [ ] Weights & Biases integration as optional logger
 
 ### Community
+- [x] **Issue templates** — bug_report, feature_request, good_first_issue
+- [x] **PR template** — standardized pull request checklist
+- [x] **Telegram** — active community channel
 - [ ] Publish paper on arXiv
 - [ ] Create project logo and banner
 - [ ] Add GitHub release with version tags
-- [ ] Create GitHub Actions CI badge
 - [ ] Post on r/LocalLLaMA, r/MachineLearning
 - [ ] Share on Hacker News
-- [ ] Share on AI Discord communities
 
 ### Experiments
 - [ ] Profile inference speed (validate O(1) overhead claim)
