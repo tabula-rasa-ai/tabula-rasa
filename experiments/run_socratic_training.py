@@ -269,6 +269,7 @@ def socratic_dialogue(model_a, model_b, tok, expr, true_answer, rounds=N_SOCRATI
     answers_a, answers_b = [ans_a], [ans_b]
 
     # Dialogue rounds
+    round_accuracies = []  # accuracy at each round
     for r in range(rounds):
         if answers_a[-1] == answers_b[-1]:
             break  # Converged
@@ -278,6 +279,15 @@ def socratic_dialogue(model_a, model_b, tok, expr, true_answer, rounds=N_SOCRATI
         new_b = critique_answer(model_b, tok, expr, answers_a[-1])
         answers_a.append(new_a if new_a else answers_a[-1])
         answers_b.append(new_b if new_b else answers_b[-1])
+
+        # Telemetry: track accuracy at this round
+        round_correct_a = (answers_a[-1] == true_answer)
+        round_correct_b = (answers_b[-1] == true_answer)
+        # Use whichever answer we'd converge to (both if they agree)
+        best_round_answer = answers_a[-1] if answers_a[-1] == answers_b[-1] else (
+            answers_a[-1] if round_correct_a else answers_b[-1]
+        )
+        round_accuracies.append(best_round_answer == true_answer)
 
     # Converged answer: if models agree, use their answer; else use model_a's final
     if answers_a[-1] == answers_b[-1]:
@@ -302,6 +312,8 @@ def socratic_dialogue(model_a, model_b, tok, expr, true_answer, rounds=N_SOCRATI
         'baseline_correct': baseline_correct,
         'socratic_correct': socratic_correct,
         'improved': improved,
+        'round_accuracies': round_accuracies,  # per-round correctness
+        'rounds_used': len(round_accuracies) + 1,  # initial + rounds
     }
 
 
@@ -366,6 +378,18 @@ def run_socratic_dialogue(model, tok):
     print(f'    Socratic accuracy on dialogue set: {socratic_acc:.1f}%')
     print(f'    Problems improved by Socratic: {n_improved}/{N_SOCRATIC_PROBLEMS}')
     print(f'    Dialogues converged: {n_converged}/{N_SOCRATIC_PROBLEMS}')
+
+    # Per-round accuracy telemetry
+    max_rounds = max(len(r.get('round_accuracies', [])) for r in results) if results else 0
+    if max_rounds > 0:
+        print(f'\n  Per-round accuracy (across all dialogues):')
+        for r in range(max_rounds):
+            accurate = sum(1 for res in results
+                          if r < len(res.get('round_accuracies', []))
+                          and res['round_accuracies'][r])
+            total = sum(1 for res in results if r < len(res.get('round_accuracies', [])))
+            pct = accurate / total * 100 if total > 0 else 0
+            print(f'    Round {r + 1}: {accurate}/{total} = {pct:.1f}%')
 
     # Build training data: problems where Socratic improved the answer
     training_data = []

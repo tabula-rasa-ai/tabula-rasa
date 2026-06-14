@@ -102,8 +102,22 @@ def get_unconsolidated(limit: int = 100, tier: str = 'active') -> list[dict]:
     return [dict(r) for r in rows]
 
 
-def get_old_memories(limit: int = 50, tier: str = 'longterm') -> list[dict]:
-    """Get random consolidated memories from a tier (default: longterm)."""
+def get_old_memories(limit: int = 50, tier: str = 'longterm',
+                     use_per: bool = True) -> list[dict]:
+    """Get consolidated memories from a tier, optionally using Prioritized Experience Replay.
+
+    When use_per=True (default), samples are weighted by prediction_error (surprise),
+    so higher-error experiences are more likely to be replayed.
+    When use_per=False, uses uniform random sampling (ORDER BY RANDOM()).
+
+    Args:
+        limit: Maximum number of memories to return.
+        tier: Memory tier to sample from ('active', 'working', 'longterm').
+        use_per: If True, use prediction_error-weighted sampling. If False, uniform random.
+
+    Returns:
+        List of experience dicts.
+    """
     conn = get_db()
     total = conn.execute(
         "SELECT COUNT(*) FROM experiences WHERE consolidated = 1 AND tier = ?",
@@ -113,14 +127,40 @@ def get_old_memories(limit: int = 50, tier: str = 'longterm') -> list[dict]:
         conn.close()
         return []
 
+    # ── Uniform random sampling (legacy) ──────────────────────────
+    if not use_per:
+        rows = conn.execute("""
+            SELECT id, input_text, output_text, prediction_error,
+                   skill, is_correction, tier, access_count, last_access
+            FROM experiences WHERE consolidated = 1 AND tier = ?
+            ORDER BY RANDOM() LIMIT ?
+        """, (tier, limit)).fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
+
+    # ── Prioritized Experience Replay (PER) ───────────────────────
     rows = conn.execute("""
         SELECT id, input_text, output_text, prediction_error,
                skill, is_correction, tier, access_count, last_access
         FROM experiences WHERE consolidated = 1 AND tier = ?
-        ORDER BY RANDOM() LIMIT ?
-    """, (tier, limit)).fetchall()
+    """, (tier,)).fetchall()
     conn.close()
-    return [dict(r) for r in rows]
+
+    if not rows:
+        return []
+
+    records = [dict(r) for r in rows]
+    actual_limit = min(limit, len(records))
+
+    # Build weights: clamp negative/zero errors to a small epsilon
+    # so every experience has a non-zero chance of being sampled.
+    errors = torch.tensor(
+        [max(r['prediction_error'], 1e-8) for r in records]
+    )
+    weights = torch.softmax(errors, dim=0)
+
+    indices = torch.multinomial(weights, actual_limit, replacement=False)
+    return [records[i] for i in indices.tolist()]
 
 
 def mark_consolidated(ids: list[int]):
@@ -231,6 +271,31 @@ def get_tiered_stats() -> dict:
             'avg_error': round(r['avg_error'], 3) if r['avg_error'] else 0.0,
         }
     return stats
+
+
+def get_priority_stats() -> dict:
+    """Return min/mean/max prediction_error across all tiers.
+
+    Useful for monitoring the distribution of surprise values
+    and tuning PER sampling parameters.
+
+    Returns:
+        Dict with 'min_error', 'mean_error', 'max_error' keys.
+    """
+    conn = get_db()
+    row = conn.execute("""
+        SELECT MIN(prediction_error) AS min_error,
+               AVG(prediction_error) AS mean_error,
+               MAX(prediction_error) AS max_error
+        FROM experiences
+    """).fetchone()
+    conn.close()
+
+    return {
+        'min_error': round(row['min_error'], 4) if row['min_error'] is not None else 0.0,
+        'mean_error': round(row['mean_error'], 4) if row['mean_error'] is not None else 0.0,
+        'max_error': round(row['max_error'], 4) if row['max_error'] is not None else 0.0,
+    }
 
 
 def search_memories(query: str, tier: str = None, limit: int = 10) -> list[dict]:
