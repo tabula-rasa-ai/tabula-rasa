@@ -42,11 +42,20 @@
 </div>
 
 <div class="card">
-    <div class="tab-bar" id="layer-tabs"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <div class="tab-bar" id="layer-tabs"></div>
+        <div>
+            <button id="stress-btn" onclick="runStressTest()" style="background:var(--orange);border-color:var(--orange);color:#000;font-weight:600">
+                Run EWC Stress Test
+            </button>
+        </div>
+    </div>
     <div style="position:relative">
         <canvas id="heatmap-canvas"></canvas>
     </div>
-    <div class="legend">
+    <div id="stress-status" style="font-size:0.8rem;color:var(--muted);margin-top:6px"></div>
+    <div id="stress-result"></div>
+    <div class="legend" style="margin-top:10px">
         <span>Low importance (free)</span>
         <div class="legend-bar" style="background:linear-gradient(90deg,#0f172a,#3b82f6,#a855f7,#f59e0b,#ef4444)"></div>
         <span>High importance (locked)</span>
@@ -251,6 +260,48 @@ function renderLayerSummary() {
 
 loadFisher();
 setInterval(loadFisher, 30000);
+
+// ── EWC Stress Test ─────────────────────────────────────────────
+function runStressTest() {
+    var btn = document.getElementById('stress-btn');
+    var statusEl = document.getElementById('stress-status');
+    var resultEl = document.getElementById('stress-result');
+    btn.disabled = true;
+    btn.textContent = 'Running...';
+    statusEl.textContent = 'Training 10 batches without EWC...';
+    resultEl.innerHTML = '';
+
+    fetch(API + '/api/ewc-stress-test')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.status === 'error') {
+                statusEl.textContent = 'Error: ' + (data.message || 'unknown');
+                btn.disabled = false;
+                btn.textContent = 'Run EWC Stress Test';
+                return;
+            }
+            statusEl.textContent = 'Stress test complete (' + data.steps + ' steps, op=' + data.new_op + ')';
+            btn.disabled = false;
+            btn.textContent = 'Run EWC Stress Test';
+
+            var html = '<div style="margin-top:12px">'
+                + '<div class="row"><span>Avg loss during stress</span><span>' + data.avg_loss + '</span></div>'
+                + '<div class="row"><span>Mean Fisher delta</span><span class="hl">' + data.mean_delta_pct + '%</span></div>'
+                + '<div class="row"><span>Losses</span><span>[' + (data.losses || []).join(', ') + ']</span></div>'
+                + '<div style="margin-top:10px;font-size:0.75rem;color:var(--muted)">'
+                + 'Fisher values changed by ' + data.mean_delta_pct + '% on average after '
+                + data.steps + ' unconstrained steps. Refresh the page to reload heatmap.'
+                + '</div></div>';
+            resultEl.innerHTML = html;
+            // Re-fetch fisher data
+            loadFisher();
+        })
+        .catch(function(err) {
+            statusEl.textContent = 'Request failed';
+            btn.disabled = false;
+            btn.textContent = 'Run EWC Stress Test';
+        });
+}
 </script>
 </body>
 </html>

@@ -231,6 +231,104 @@ def get_ewc_fisher() -> dict:
     return result
 
 
+def run_ewc_stress_test() -> dict:
+    """Run an EWC stress test: temporarily disable EWC (lambda=0),
+    train a few quick batches, report the forgetting effect,
+    then restore the original EWC state.
+
+    Returns before/after Fisher statistics for the dashboard heatmap.
+    """
+    import torch
+    from tabula_rasa.config import Config
+    from tabula_rasa.tokenizer import MathTokenizer
+    from tabula_rasa.model import MathTransformer, count_parameters
+
+    result = {'status': 'ok', 'before': {}, 'after': {}, 'delta': {}}
+
+    ewc_files = list(Path('specialists/math').glob('*/ewc_fisher.pt'))
+    if not ewc_files:
+        return {'status': 'error', 'message': 'No EWC data found. Train with --ewc first.'}
+
+    ewc_path = ewc_files[0]
+    op_dir = ewc_path.parent
+    op = op_dir.name
+    ckpt = op_dir / 'best.pt'
+    if not ckpt.exists():
+        ckpt = op_dir / 'final.pt'
+    if not ckpt.exists():
+        return {'status': 'error', 'message': f'No checkpoint in {op_dir}'}
+
+    tok_path = op_dir / 'tokenizer.json'
+    if not tok_path.exists():
+        return {'status': 'error', 'message': f'No tokenizer in {op_dir}'}
+
+    try:
+        from egefalos.online_ewc import OnlineEWC
+        tok = MathTokenizer.load(str(tok_path))
+        cfg = Config()
+        cfg.vocab_size = tok.vocab_size
+        model = MathTransformer(cfg)
+        state = torch.load(ckpt, map_location='cpu', weights_only=True)
+        model.load_state_dict(state['model_state_dict'])
+        model.train()
+
+        ewc = OnlineEWC(model)
+        ewc.load(str(ewc_path))
+
+        before_fisher = {}
+        for name, tensor in ewc.fisher_dict.items():
+            before_fisher[name] = {'mean': round(tensor.mean().item(), 6), 'sum': round(tensor.sum().item(), 4)}
+
+        other_ops = [o for o in ['add', 'sub', 'mul', 'div'] if o != op]
+        if not other_ops:
+            return {'status': 'error', 'message': 'Need at least one other operation'}
+        new_op = other_ops[0]
+        from train_specialist import SpecialistDataset
+        from torch.utils.data import DataLoader
+
+        optimizer = torch.optim.AdamW(model.parameters(), lr=0.001)
+        train_ds = SpecialistDataset(tok, new_op, cfg)
+        loader = DataLoader(train_ds, batch_size=32, shuffle=True, drop_last=True)
+
+        stress_steps = min(10, len(loader))
+        losses = []
+        for i, batch in enumerate(loader):
+            if i >= stress_steps:
+                break
+            x, y = batch
+            x, y = x.to('cpu'), y.to('cpu')
+            optimizer.zero_grad()
+            _, loss, _ = model(x, y)
+            loss.backward()
+            optimizer.step()
+            losses.append(round(loss.item(), 4))
+
+        after_fisher = {}
+        for name, tensor in ewc.fisher_dict.items():
+            after_fisher[name] = {'mean': round(tensor.mean().item(), 6), 'sum': round(tensor.sum().item(), 4)}
+
+        delta_fisher = {}
+        for name in before_fisher:
+            bm = before_fisher[name]['mean']
+            am = after_fisher.get(name, {}).get('mean', 0)
+            delta_fisher[name] = round(abs(am - bm) / max(bm, 1e-10) * 100, 1)
+
+        result['before'] = before_fisher
+        result['after'] = after_fisher
+        result['delta'] = delta_fisher
+        result['losses'] = losses
+        result['op'] = op
+        result['new_op'] = new_op
+        result['steps'] = stress_steps
+        result['avg_loss'] = round(sum(losses) / len(losses), 4) if losses else 0
+        result['mean_delta_pct'] = round(sum(delta_fisher.values()) / max(1, len(delta_fisher)), 1)
+
+    except Exception as e:
+        return {'status': 'error', 'message': str(e)}
+
+    return result
+
+
 # ─── Editable config fields (name → (line_regex, type_fn)) ──────────
 # Note: type hints like "d_model: int = 128" require (?::\s*\w+)? in the regex
 CONFIG_FIELDS = {
@@ -882,6 +980,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({'model': 'none', 'params': 0, 'corrections': 0})
         elif path == '/api/ewc-fisher':
             self._json(get_ewc_fisher())
+        elif path == '/api/ewc-stress-test':
+            self._json(run_ewc_stress_test())
         elif path == '/training-log':
             # Find the most recently updated training log
             log_candidates = [
