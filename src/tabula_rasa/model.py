@@ -675,6 +675,67 @@ class MathTransformer(nn.Module):
         # Post-process: clean repeated trailing digits using math parser
         return self._clean_generated_output(raw)
 
+    @torch.no_grad()
+    def best_of_n(
+        self,
+        tokenizer: Any,
+        prompt: str,
+        n: int = 10,
+        max_new_tokens: int = 20,
+        temperature: float = 0.8,
+    ) -> str:
+        """Verifier-Guided Best-of-N sampling (o1-style).
+
+        Generates *n* distinct traces with high temperature, runs each
+        through ``math_parser.verify_equation``, and returns the first
+        trace that validates as mathematically correct. Falls back to
+        the greedy (temperature=0.0) trace if none validate.
+
+        Args:
+            tokenizer: A tokenizer with ``encode``, ``decode``, ``eos_id``.
+            prompt: Input prompt string.
+            n: Number of candidate traces (default: 10).
+            max_new_tokens: Max tokens per trace (default: 20).
+            temperature: Sampling temperature for diversity (default: 0.8).
+
+        Returns:
+            The winning trace string (or greedy fallback).
+        """
+        from tabula_rasa.math_parser import verify_equation, verify_scratchpad
+
+        def _verify(output: str) -> bool:
+            """Check if output is mathematically valid."""
+            if "=" in output:
+                if verify_equation(output).get("valid"):
+                    return True
+                if verify_scratchpad(output).get("valid"):
+                    return True
+                # CoT format: extract answer after <END>
+                if "<END>" in output:
+                    ans = output.split("<END>")[-1].strip().split("=")[-1].strip()
+                    eq = f"{output.split('=')[0]}={ans}"
+                    if verify_equation(eq).get("valid"):
+                        return True
+            return False
+
+        # Greedy baseline
+        greedy = self.generate(tokenizer, prompt, max_new_tokens, temperature=0.0)
+        result = self._clean_generated_output(greedy)
+        if _verify(result):
+            return result
+
+        # Generate N diverse candidates with high temperature
+        for i in range(n):
+            candidate = self.generate(
+                tokenizer, prompt, max_new_tokens, temperature=temperature
+            )
+            cleaned = self._clean_generated_output(candidate)
+            if _verify(cleaned):
+                return cleaned
+
+        # Fallback
+        return result
+
     def _clean_generated_output(self, raw: str) -> str:
         """Remove repeated trailing digits from model output.
 
