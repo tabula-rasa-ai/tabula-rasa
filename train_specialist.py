@@ -1067,6 +1067,14 @@ def train_specialist(
                 log_file.write(eval_line + "\n")
                 log_file.flush()
 
+                # ── Adaptive EWC: tune λ and γ based on loss trajectory ──
+                if ewc is not None and len(recent_losses) > 10:
+                    new_lambda = ewc.tune_lambda(recent_losses, base_lambda=ewc_lambda)
+                    if new_lambda != ewc_lambda:
+                        old_lambda = ewc_lambda
+                        ewc_lambda = new_lambda
+                        print(f"    [EWC] λ adjusted: {old_lambda:.0f} → {new_lambda:.0f}  (loss spike: {new_lambda > old_lambda})", flush=True)
+
                 # ── W&B logging (optional) ──
                 try:
                     wandb.log({
