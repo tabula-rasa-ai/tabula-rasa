@@ -11,13 +11,13 @@ from tabula_rasa.tokenizer import MathTokenizer
 
 class TestTokenizerInit:
     def test_vocab_size(self, tok):
-        """Tokenizer has expected vocabulary size."""
-        assert tok.vocab_size == 44
+        """Tokenizer has expected vocabulary size (+2 for CoT markers)."""
+        assert tok.vocab_size == 46, f"Expected 46 (+2 CoT markers), got {tok.vocab_size}"
 
     def test_special_token_ids(self, tok):
-        """Special tokens have distinct IDs."""
-        ids = {tok.pad_id, tok.bos_id, tok.eos_id, tok.unk_id}
-        assert len(ids) == 4
+        """Special tokens have distinct IDs (including CoT markers)."""
+        ids = {tok.pad_id, tok.bos_id, tok.eos_id, tok.unk_id, tok.step_id, tok.end_id}
+        assert len(ids) == 6
 
     def test_carry_tokens_present(self, tok):
         """All 20 carry-digit tokens exist in vocabulary."""

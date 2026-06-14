@@ -32,7 +32,7 @@ class TestModelInit:
         cfg.vocab_size = tok.vocab_size
         model = MathTransformer(cfg)
         params = count_parameters(model)
-        assert params == 1_060_992, f"Expected 1,060,992 params, got {params}"
+        assert params == 1_061_504, f"Expected 1,061,504 params (+2 CoT tokens), got {params}"
 
     def test_param_count_tiny(self, tok):
         """Tiny config produces fewer parameters."""

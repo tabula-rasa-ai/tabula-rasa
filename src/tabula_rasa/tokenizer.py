@@ -1,7 +1,8 @@
 """Tokenizer for math expressions with combined carry-digit tokens.
 
 Tokens: 0-9, +, -, *, /, =, (, ), ., %, space, special tokens,
-plus 20 combined carry-digit tokens: "00"-"09" (carry=0), "10"-"19" (carry=1).
+plus 20 combined carry-digit tokens: "00"-"09" (carry=0), "10"-"19" (carry=1),
+plus 2 Chain-of-Thought markers: "<STEP>", "<END>".
 """
 
 from __future__ import annotations
@@ -18,6 +19,9 @@ class MathTokenizer:
     them back. Uses a longest-match-first strategy so combined carry-digit
     tokens (e.g. ``"04"``) are matched before individual digits.
 
+    Supports Chain-of-Thought (CoT) scratchpad markers ``<STEP>`` and ``<END>``
+    for generating column-by-column reasoning traces during training.
+
     Attributes:
         stoi: Mapping from token string to integer ID.
         itos: Mapping from integer ID back to token string.
@@ -26,6 +30,8 @@ class MathTokenizer:
         bos_id: Token ID for ``<BOS>``.
         eos_id: Token ID for ``<EOS>``.
         unk_id: Token ID for ``<UNK>``.
+        step_id: Token ID for ``<STEP>`` (CoT step separator).
+        end_id: Token ID for ``<END>`` (CoT answer delimiter).
         _tokens_sorted: All tokens sorted by length (longest first) for
             longest-match-first encoding.
     """
@@ -37,13 +43,16 @@ class MathTokenizer:
     # 20 combined carry-digit tokens: carry(0-1) + digit(0-9)
     CARRY_TOKENS: ClassVar[list[str]] = [f"{c}{d}" for c in range(2) for d in range(10)]
 
+    # Chain-of-Thought markers for column-by-column reasoning
+    COT_MARKERS: ClassVar[list[str]] = ["<STEP>", "<END>"]
+
     def __init__(self) -> None:
         """Initialize the tokenizer and build the vocabulary."""
         self._build_vocab()
 
     def _build_vocab(self) -> None:
         """Construct the token-to-ID and ID-to-token lookup tables."""
-        all_tokens: list[str] = self.SPECIAL_TOKENS + self.CARRY_TOKENS + self.MATH_CHARS
+        all_tokens: list[str] = self.SPECIAL_TOKENS + self.COT_MARKERS + self.CARRY_TOKENS + self.MATH_CHARS
         self.stoi: dict[str, int] = {t: i for i, t in enumerate(all_tokens)}
         self.itos: dict[int, str] = {i: t for i, t in enumerate(all_tokens)}
         self.vocab_size: int = len(all_tokens)
@@ -52,6 +61,8 @@ class MathTokenizer:
         self.bos_id: int = self.stoi["<BOS>"]
         self.eos_id: int = self.stoi["<EOS>"]
         self.unk_id: int = self.stoi["<UNK>"]
+        self.step_id: int = self.stoi["<STEP>"]
+        self.end_id: int = self.stoi["<END>"]
 
         self._tokens_sorted: list[str] = sorted(all_tokens, key=len, reverse=True)
 
@@ -158,6 +169,8 @@ class MathTokenizer:
         tok.bos_id = tok.stoi.get("<BOS>", 1)
         tok.eos_id = tok.stoi.get("<EOS>", 2)
         tok.unk_id = tok.stoi.get("<UNK>", 3)
+        tok.step_id = tok.stoi.get("<STEP>", 4)
+        tok.end_id = tok.stoi.get("<END>", 5)
         tok._tokens_sorted = sorted(tok.stoi.keys(), key=len, reverse=True)
         return tok
 
@@ -181,6 +194,8 @@ class MathTokenizer:
         tok.bos_id = tok.stoi["<BOS>"]  # type: ignore[index]
         tok.eos_id = tok.stoi["<EOS>"]  # type: ignore[index]
         tok.unk_id = tok.stoi["<UNK>"]  # type: ignore[index]
+        tok.step_id = tok.stoi["<STEP>"]
+        tok.end_id = tok.stoi["<END>"]
         tok._tokens_sorted = sorted(tok.stoi.keys(), key=len, reverse=True)  # type: ignore[arg-type]
         return tok
 
@@ -188,7 +203,8 @@ class MathTokenizer:
 if __name__ == "__main__":
     tok = MathTokenizer()
     print(f"Vocab size: {tok.vocab_size}")
-    for test in ["04", "15", "10", "12+34=0406", "7+8=15"]:
+    print(f"  step_id={tok.step_id}, end_id={tok.end_id}")
+    for test in ["04", "15", "10", "12+34=0406", "7+8=15", "12+34<STEP>2+4=6<END>46"]:
         ids = tok.encode(test, add_special_tokens=True)
         decoded = tok.decode(ids, skip_special=True)
-        print(f"  {test:>15} -> {ids} -> {decoded}")
+        print(f"  {test:>35} -> {ids} -> {decoded}")

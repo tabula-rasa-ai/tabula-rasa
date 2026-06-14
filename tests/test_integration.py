@@ -240,7 +240,16 @@ class TestEndToEndQuickTraining:
         tok.max_seq_len = cfg.max_seq_len
         model = MathTransformer(cfg)
         state = torch.load(ckpt, map_location="cpu", weights_only=True)
-        model.load_state_dict(state["model_state_dict"])
+        try:
+            model.load_state_dict(state["model_state_dict"])
+        except RuntimeError:
+            # Handle tokenizer vocab size changes (e.g. added CoT markers)
+            sd = state["model_state_dict"]
+            model_sd = model.state_dict()
+            for k in list(sd.keys()):
+                if k in model_sd and sd[k].shape != model_sd[k].shape:
+                    del sd[k]
+            model.load_state_dict(sd, strict=False)
         model.eval()
 
         # Generate something

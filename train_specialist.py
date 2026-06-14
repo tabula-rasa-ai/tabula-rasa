@@ -84,12 +84,16 @@ signal.signal(signal.SIGTERM, _signal_handler)
 
 
 def generate_problem(
-    op: str, min_digits=1, max_digits=4, reversed: bool = False, scratchpad: bool = True
+    op: str, min_digits=1, max_digits=4, reversed: bool = False, scratchpad: bool = True, cot: bool = False
 ):
     """Generate a problem for a specific operation.
 
     V2: Combined carry-digit tokens f'{carry}{digit}' per column.
     Each column is one token (e.g. "04" = carry=0, digit=4).
+
+    When *cot* is ``True`` (and *scratchpad* is also ``True``), generates a
+    human-readable Chain-of-Thought trace (``<STEP>col=result<END>answer``)
+    instead of the fused carry-digit format.
     """
     a_digits = random.randint(min_digits, max_digits)
     b_digits = random.randint(min_digits, max_digits)
@@ -119,6 +123,13 @@ def generate_problem(
         exp = random.randint(1, 4)
         b = exp
         ans = a ** exp
+
+    if cot and scratchpad and op in ("add", "sub"):
+        # CoT scratchpad: column-by-column steps
+        a_str = str(a)[::-1] if reversed else str(a)
+        b_str = str(b)[::-1] if reversed else str(b)
+        cot_trace = generate_cot_trace(op, a, b, ans, reversed_digits=reversed)
+        return f"{a_str}{OPS[op]}{b_str}", cot_trace
 
     if reversed and op in ("add", "sub"):
         a_str = str(a)[::-1]
@@ -164,6 +175,7 @@ class SpecialistDataset(Dataset):
                 cfg.max_digits,
                 reversed=(cfg.use_reversed and op in ("add", "sub")),
                 scratchpad=(cfg.use_scratchpad and op in ("add", "sub")),
+                cot=(cfg.cot_scratchpad and op in ("add", "sub")),
             )
             ids = tokenizer.encode(f"{expr}={ans}", add_special_tokens=True)
             if len(ids) > self.max_seq_len:
@@ -216,6 +228,96 @@ def parse_scratchpad_answer(text: str) -> str:
     return text[1::2]
 
 
+# ── CoT (Chain-of-Thought) Scratchpad ─────────────────────────────
+
+
+def generate_cot_trace(op: str, a: int, b: int, ans: int, reversed_digits: bool = True) -> str:
+    """Generate a human-readable Chain-of-Thought scratchpad trace.
+
+    For addition ``12+34`` (reversed-digits mode, meaning the input
+    prompt is ``21+43``):
+        ``<STEP>2+4=6<STEP>1+3=4<END>46``
+
+    Each column is computed left-to-right when reading the *reversed*
+    prompt (which is LSD-first). The model learns to output intermediate
+    column results before the final answer.
+
+    Args:
+        op: Operation (``'add'`` or ``'sub'``).
+        a: First operand (normal order).
+        b: Second operand (normal order).
+        ans: Correct result (as integer).
+        reversed_digits: If ``True``, the prompt uses LSD-first order
+            and CoT steps are LSD-first.
+
+    Returns:
+        A CoT trace string like ``'<STEP>2+4=6<STEP>1+3=4<END>46'``.
+    """
+    sa = str(a)
+    sb = str(b)
+    max_len = max(len(sa), len(sb))
+    opsym = "+" if op == "add" else "-"
+
+    # Pad to same length on the left (normal order) or right (LSD-first)
+    if reversed_digits:
+        ra, rb = sa[::-1], sb[::-1]
+        # Pad to max_len with zeros (LSD-first, shorter number gets 0s on the right)
+        ra = ra.ljust(max_len, "0")
+        rb = rb.ljust(max_len, "0")
+    else:
+        ra, rb = sa.rjust(max_len, "0"), sb.rjust(max_len, "0")
+
+    steps: list[str] = []
+    carry = 0
+    for i in range(max_len):
+        da = int(ra[i])
+        db = int(rb[i])
+        if op == "add":
+            total = da + db + carry
+            carry = total // 10
+            digit = total % 10
+        else:  # sub
+            # Borrow handling: if da < db + carry, borrow 10
+            if da < db + carry:
+                da += 10
+            total = da - db - carry
+            carry = 1 if total < 0 else 0  # For sub, borrow flag
+            digit = total % 10 if total >= 0 else (total + 10) % 10
+            carry = 1 if da >= 10 else 0  # Borrow = 1 if we needed to borrow
+
+        # Column step: show the column computation
+        if reversed_digits:
+            steps.append(f"{da}{opsym}{db}={digit}")
+        else:
+            steps.append(f"{da}{opsym}{db}={digit}")
+
+    if carry and op == "add":
+        steps.append(f"1{opsym}0={carry}")
+
+    trace = "<STEP>" + "<STEP>".join(steps) + f"<END>{ans}"
+    return trace
+
+
+def parse_cot_answer(model_output: str) -> str:
+    """Extract the final answer from a CoT scratchpad output.
+
+    Searches for ``<END>`` and returns everything after it. If ``<END>``
+    is not found, falls back to extracting digits after ``=``.
+
+    Args:
+        model_output: Raw model output string (may include special tokens).
+
+    Returns:
+        The final answer string (e.g. ``'46'``).
+    """
+    text = model_output.replace("<EOS>", "").replace("<PAD>", "").replace("<BOS>", "").strip()
+    if "<END>" in text:
+        return text.split("<END>")[-1].strip()
+    if "=" in text:
+        return text.split("=")[-1].strip()
+    return text
+
+
 def _count_digits(expr: str, op: str) -> int:
     """Get the max number of digits in a problem expression."""
     if op in OPS:
@@ -254,6 +356,7 @@ def evaluate(model, tokenizer, cfg: Config, op: str, num=0, min_digits=0, max_di
             max_d,
             reversed=(cfg.use_reversed and op in ("add", "sub")),
             scratchpad=(cfg.use_scratchpad and op in ("add", "sub")),
+            cot=(cfg.cot_scratchpad and op in ("add", "sub")),
         )
         prompt = f"{expr}="
         out = model.generate(
@@ -263,7 +366,12 @@ def evaluate(model, tokenizer, cfg: Config, op: str, num=0, min_digits=0, max_di
             temperature=cfg.eval_temperature,
             top_k=3,
         )
-        if cfg.use_scratchpad and op in ("add", "sub"):
+        if cfg.cot_scratchpad and op in ("add", "sub"):
+            pred = parse_cot_answer(out)
+            true_answer = str(ans_raw).split("<END>")[-1].strip() if "<END>" in ans_raw else ans_raw
+            if pred == true_answer:
+                correct += 1
+        elif cfg.use_scratchpad and op in ("add", "sub"):
             pred = parse_scratchpad_answer(out)
             true_answer = parse_scratchpad_answer(ans_raw)
             if pred == true_answer:
@@ -298,6 +406,7 @@ def evaluate_per_digit(model, tokenizer, cfg: Config, op: str, per_digit_samples
                 d,
                 reversed=(cfg.use_reversed and op in ("add", "sub")),
                 scratchpad=(cfg.use_scratchpad and op in ("add", "sub")),
+                cot=(cfg.cot_scratchpad and op in ("add", "sub")),
             )
             prompt = f"{expr}="
             out = model.generate(
@@ -307,7 +416,12 @@ def evaluate_per_digit(model, tokenizer, cfg: Config, op: str, per_digit_samples
                 temperature=cfg.eval_temperature,
                 top_k=3,
             )
-            if cfg.use_scratchpad and op in ("add", "sub"):
+            if cfg.cot_scratchpad and op in ("add", "sub"):
+                pred = parse_cot_answer(out)
+                true_answer = str(ans_raw).split("<END>")[-1].strip() if "<END>" in ans_raw else ans_raw
+                if pred == true_answer:
+                    correct += 1
+            elif cfg.use_scratchpad and op in ("add", "sub"):
                 pred = parse_scratchpad_answer(out)
                 true_answer = parse_scratchpad_answer(ans_raw)
                 if pred == true_answer:
@@ -358,6 +472,13 @@ def _validate_config(cfg, op):
 
     if cfg.use_scratchpad and op not in ("add", "sub"):
         warnings.append(f"Scratchpad only works for add/sub, not {op}. Disabling.")
+
+    if cfg.cot_scratchpad and op not in ("add", "sub"):
+        warnings.append(f"CoT scratchpad only works for add/sub, not {op}. Disabling.")
+
+    if cfg.cot_scratchpad and not cfg.use_scratchpad:
+        warnings.append("cot_scratchpad=True requires use_scratchpad=True. Enabling.")
+        cfg.use_scratchpad = True
 
     if cfg.use_reversed and op not in ("add", "sub"):
         warnings.append(f"Reversed digits only meaningful for add/sub, not {op}. Disabling.")
@@ -481,6 +602,10 @@ def train_specialist(
     socratic=False,
     socratic_steps=500,
     socratic_problems=200,
+    cot_scratchpad=False,
+    mcts=False,
+    mcts_steps=500,
+    mcts_sims=16,
 ):
     """Train a specialist for one arithmetic operation.
 
@@ -526,6 +651,11 @@ def train_specialist(
         cfg.use_reversed = use_reversed
     if use_loss_masking is not None:
         cfg.use_loss_masking = use_loss_masking
+    if cot_scratchpad:
+        cfg.cot_scratchpad = True
+        cfg.use_scratchpad = True  # CoT implies scratchpad
+    if mcts:
+        cfg.use_value_head = True  # MCTS needs value head for reward prediction
     if test_hard:
         cfg.test_hard = True
 
@@ -649,7 +779,7 @@ def train_specialist(
         f"  Optimizer: {cfg.optimizer}  |  LR schedule: {cfg.lr_schedule}  |  Grad clip: {cfg.grad_clip_norm}"
     )
     print(
-        f"  Reversed: {cfg.use_reversed}  |  Loss masking: {cfg.use_loss_masking}  |  Scratchpad: {cfg.use_scratchpad}"
+        f"  Reversed: {cfg.use_reversed}  |  Loss masking: {cfg.use_loss_masking}  |  Scratchpad: {cfg.use_scratchpad}  |  CoT: {cfg.cot_scratchpad}"
     )
     print(f"  Estimated time: {_estimate_time(cfg.max_steps, str(device))}")
 
@@ -709,10 +839,10 @@ def train_specialist(
     # ── Training log (overwrite, not append) ──
     log_path = op_dir / "training.log"
     log_file = open(log_path, "w")
-    header = f'=== {OP_NAMES[op]} Specialist — {time.strftime("%Y-%m-%d %H:%M")} ==='
+    header = f'=== {OP_NAMES[op]} Specialist \u2014 {time.strftime("%Y-%m-%d %H:%M")} ==='
     header += f"\n  Device: {device_name} | Params: {n_params:,}"
     header += f"\n  Steps: {global_step} -> {cfg.max_steps} | Batch: {cfg.batch_size} | LR: {cfg.learning_rate}"
-    header += f"\n  Reversed: {cfg.use_reversed} | Loss masking: {cfg.use_loss_masking} | Scratchpad: {cfg.use_scratchpad}"
+    header += f"\n  Reversed: {cfg.use_reversed} | Loss masking: {cfg.use_loss_masking} | Scratchpad: {cfg.use_scratchpad} | CoT: {cfg.cot_scratchpad}"
     header += f"\n  Activation: {cfg.activation} | Norm: {cfg.norm_type} | Pos: {cfg.pos_encoding}"
     header += f"\n"
     print(header)
@@ -819,6 +949,15 @@ def train_specialist(
                 else:
                     _, loss, _ = model(x, y)
 
+                # Collect MoE auxiliary load-balancing loss from all layers
+                if getattr(cfg, 'use_moe', False):
+                    moe_aux = sum(
+                        layer.feed_forward.last_aux_loss
+                        for layer in model.layers
+                        if hasattr(layer.feed_forward, 'last_aux_loss')
+                    )
+                    loss = loss + 0.01 * moe_aux  # α=0.01 keeps it from dominating
+
                 last_micro_loss = loss.item()
                 recent_losses.append(last_micro_loss)
                 loss_for_backward = loss / grad_accum_steps
@@ -888,7 +1027,9 @@ def train_specialist(
                 fast_eval = global_step < cfg.max_steps * 0.3
                 n_eval = max(25, cfg.eval_samples // 4) if fast_eval else cfg.eval_samples
                 # Tight token budget per digit count
-                if cfg.use_scratchpad and op in ("add", "sub"):
+                if cfg.cot_scratchpad and op in ("add", "sub"):
+                    eval_max_tokens = cfg.max_digits * 6 + 8
+                elif cfg.use_scratchpad and op in ("add", "sub"):
                     eval_max_tokens = cfg.max_digits * 2 + 4
                 else:
                     eval_max_tokens = cfg.max_digits + 3
@@ -947,6 +1088,7 @@ def train_specialist(
                                         "use_reversed",
                                         "use_loss_masking",
                                         "use_scratchpad",
+                                        "cot_scratchpad",
                                     ]
                                 },
                             },
@@ -969,6 +1111,7 @@ def train_specialist(
                                         "use_reversed",
                                         "use_loss_masking",
                                         "use_scratchpad",
+                                        "cot_scratchpad",
                                     ]
                                 },
                             },
@@ -1081,6 +1224,50 @@ def train_specialist(
         except Exception as e:
             print(f"  [!] Socratic refinement failed: {e}")
 
+    # ── Online MCTS Self-Play (post-training RL refinement) ──
+    if mcts and not _INTERRUPTED and best_acc > 30.0:
+        print(f'\n{"="*60}')
+        print(f"  Online MCTS Self-Play Phase")
+        print(f"  Outcome-based RL: {mcts_steps} steps, {mcts_sims} sims/search")
+        print(f'{"="*60}')
+        try:
+            from scripts.train_mcts import MCTSTrainer
+            from torch.optim import AdamW
+
+            mcts_optimizer = AdamW(model.parameters(), lr=cfg.learning_rate * 0.1, weight_decay=0.01)
+            mcts_trainer = MCTSTrainer(
+                model=model, tokenizer=tok, config=cfg, device=device,
+                op=op, mcts_simulations=mcts_sims, max_digits=cfg.max_digits,
+            )
+            mcts_ok = 0
+            mcts_total = 0
+            for s in range(mcts_steps):
+                if _INTERRUPTED:
+                    break
+                result = mcts_trainer.train_step(mcts_optimizer, None)
+                if result['correct']:
+                    mcts_ok += 1
+                mcts_total += 1
+                if (s + 1) % 100 == 0:
+                    acc = mcts_ok / max(1, mcts_total) * 100
+                    print(f"  [MCTS] Step {s+1:>4d}/{mcts_steps} | loss={result['loss']:.4f} | "
+                          f"reward={result['reward']:+.1f} | acc={acc:.0f}%", flush=True)
+            mcts_final_acc = mcts_ok / max(1, mcts_total) * 100
+            if mcts_final_acc > best_acc:
+                best_acc = mcts_final_acc
+                torch.save({
+                    "model_state_dict": model.state_dict(),
+                    "acc": best_acc,
+                    "global_step": global_step,
+                    "mcts_refined": True,
+                }, op_dir / "best.pt")
+                print(f"  [MCTS] New best accuracy: {best_acc:.1f}%")
+            print(f"  [MCTS] Overall: {mcts_ok}/{mcts_total} correct ({mcts_final_acc:.0f}%)")
+        except Exception as e:
+            print(f"  [!] MCTS self-play failed: {e}")
+            import traceback
+            traceback.print_exc()
+
     # ── Log experiment for comparator ──
     _log_experiment(
         {
@@ -1125,13 +1312,15 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Train a specialist model",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
+        epilog="""\
 Examples:
   python3 train_specialist.py add --quick        # Quick test (30 seconds)
   python3 train_specialist.py add                # Full training (hours)
   python3 train_specialist.py add --resume       # Resume from checkpoint
   python3 train_specialist.py all                # Train all 4 operations
   python3 train_specialist.py add --steps 5000 --batch 64 --lr 0.0005
+  python3 train_specialist.py add --mcts         # Online MCTS self-play after training
+  python3 train_specialist.py add --cot --mcts   # CoT + MCTS reasoning
         """,
     )
     parser.add_argument("op", nargs="?", default="add", help="Operation: add|sub|mul|div|all")
@@ -1142,6 +1331,9 @@ Examples:
     parser.add_argument("--lr", type=float, default=0, help="Learning rate (0=config default)")
     parser.add_argument("--no-reversed", action="store_true", help="Disable reversed digits")
     parser.add_argument("--no-loss-mask", action="store_true", help="Disable loss masking")
+    parser.add_argument(
+        "--cot", action="store_true", help="Use Chain-of-Thought scratchpad format (column-by-column steps)"
+    )
     parser.add_argument(
         "--quick", action="store_true", help="Quick smoke test (500 steps, small dataset)"
     )
@@ -1208,6 +1400,15 @@ Examples:
         help="Problems per Socratic iteration (default: 200)",
     )
     parser.add_argument(
+        "--mcts", action="store_true", help="Enable online MCTS self-play after training (outcome-based RL)"
+    )
+    parser.add_argument(
+        "--mcts-steps", type=int, default=500, help="MCTS training steps (default: 500)"
+    )
+    parser.add_argument(
+        "--mcts-sims", type=int, default=16, help="MCTS simulations per search (default: 16)"
+    )
+    parser.add_argument(
         "--log-level",
         type=str,
         default="INFO",
@@ -1248,6 +1449,10 @@ Examples:
                 socratic=args.socratic,
                 socratic_steps=args.socratic_steps,
                 socratic_problems=args.socratic_problems,
+                cot_scratchpad=args.cot,
+                mcts=args.mcts,
+                mcts_steps=args.mcts_steps,
+                mcts_sims=args.mcts_sims,
             )
             results[op_name] = "OK" if model is not None else "FAILED"
         print(f"\n  Results: {results}")
@@ -1270,6 +1475,8 @@ Examples:
                     "lr": args.lr, "amp": args.amp, "compile": args.compile,
                     "reversed": not args.no_reversed,
                     "loss_masking": not args.no_loss_mask,
+                    "cot": args.cot,
+                    "mcts": args.mcts,
                     "socratic": args.socratic,
                     "ewc": args.ewc, "deep": args.deep, "lora": args.lora,
                 },
@@ -1297,6 +1504,8 @@ Examples:
         print(f"  Compile: {'ON' if args.compile else 'OFF'}")
         print(f"  MoE:     {'ON (config.use_moe)' if hasattr(args, 'moe') and args.moe else 'OFF'}")
         print(f"  EWC:     {'ON (lambda=' + str(args.ewc_lambda) + ')' if args.ewc else 'OFF'}")
+        print(f"  CoT:     {'ON' if args.cot else 'OFF'}")
+        print(f"  MCTS:    {'ON (sims=' + str(args.mcts_sims) + ', steps=' + str(args.mcts_steps) + ')' if args.mcts else 'OFF'}")
         print(f"  Socratic: {'ON (steps=' + str(args.socratic_steps) + ')' if args.socratic else 'OFF'}")
         print(f"  LoRA:    {'ON (rank=' + str(args.lora_rank) + ')' if args.lora else 'OFF'}")
         print(f"  WandB:   {'ON' if args.wandb else 'OFF'}")
@@ -1326,4 +1535,8 @@ Examples:
         socratic=args.socratic,
         socratic_steps=args.socratic_steps,
         socratic_problems=args.socratic_problems,
+        cot_scratchpad=args.cot,
+        mcts=args.mcts,
+        mcts_steps=args.mcts_steps,
+        mcts_sims=args.mcts_sims,
     )

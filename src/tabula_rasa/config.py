@@ -40,7 +40,7 @@ class Config:
     n_layers: int = 4  # Number of transformer layers (depth)
     n_heads: int = 4  # Attention heads (must divide d_model)
     d_ff: int = 512  # Feed-forward hidden dimension
-    max_seq_len: int = 32  # Enough for scratchpad (1-digit = ~12 tokens)
+    max_seq_len: int = 64  # 32 is tight for CoT; 64 fits 4-digit + steps
     dropout: float = 0.1  # Dropout rate (0=off, 0.0-0.5)
 
     # Architecture variants
@@ -108,7 +108,7 @@ class Config:
 
     # Evaluation
     eval_temperature: float = 0.0  # 0=greedy, >0 adds randomness
-    eval_max_tokens: int = 20  # Max tokens to generate per answer (longer for scratchpad)
+    eval_max_tokens: int = 48  # Max tokens to generate per answer (longer for scratchpad/CoT)
 
     # ═══════════════════════════════════════════════════════════
     # DATA
@@ -119,6 +119,7 @@ class Config:
     max_digits: int = 4  # 1-4 digits for meaningful carry propagation
     force_carry_ratio: float = 0.5  # ~50% of problems force a carry (a+b >= 10)
     use_scratchpad: bool = True  # Show carry scratchpad in output
+    cot_scratchpad: bool = False  # Use readable column-by-column CoT steps instead of fused carry-digit
     test_hard: bool = False  # Enable hard eval (max_digits+1, tests generalization)
 
     # ═══════════════════════════════════════════════════════════════
@@ -181,8 +182,8 @@ class Config:
             "max_seq_len": 32, "dropout": 0.1, "params_approx": 1_060_992,
         },
         "10M": {
-            "d_model": 256, "n_layers": 6, "n_heads": 8, "d_ff": 1024,
-            "max_seq_len": 128, "dropout": 0.1, "params_approx": 9_850_000,
+            "d_model": 320, "n_layers": 6, "n_heads": 8, "d_ff": 1280,
+            "max_seq_len": 64, "dropout": 0.1, "params_approx": 9_860_000,
         },
     }
 
