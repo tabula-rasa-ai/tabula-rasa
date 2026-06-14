@@ -358,7 +358,8 @@ def train_specialist(op, steps=0, batch_size=0, lr=0,
                     quick=False, resume=False, test_hard=False, deep=False,
                     use_ewc=False, ewc_lambda=1000.0, ewc_gamma=0.9,
                     use_amp=False, gradient_accumulation_steps=0,
-                    use_lora=False, lora_rank=8):
+                    use_lora=False, lora_rank=8,
+                    socratic=False, socratic_steps=500, socratic_problems=200):
     """Train a specialist for one arithmetic operation.
 
     Args:
@@ -806,6 +807,46 @@ def train_specialist(op, steps=0, batch_size=0, lr=0,
         ewc.save(ewc_path)
         print(f'  EWC saved ({ewc.task_count} tasks, {ewc.consolidation_steps} consolidations)')
 
+    # ── Socratic Self-Improvement (post-training refinement) ──
+    if socratic and not _INTERRUPTED and best_acc > 30.0:
+        print(f'\n{"="*60}')
+        print(f'  Socratic Self-Improvement Phase')
+        print(f'  Refining {OP_NAMES[op]} specialist via critique loop')
+        print(f'  {socratic_problems} problems, {socratic_steps} training steps')
+        print(f'{"="*60}')
+        try:
+            from egefalos.socratic_trainer import SocraticSelfTrainer
+            socratic_op = OPS.get(op, '+')
+            trainer = SocraticSelfTrainer(
+                model=model,
+                tokenizer=tok,
+                device=device,
+                op=socratic_op,
+                max_digits=cfg.max_digits,
+                lr=cfg.learning_rate,
+            )
+            socratic_results = trainer.run_self_improvement(
+                iterations=1,
+                problems_per_iter=socratic_problems,
+                train_steps_per_iter=socratic_steps,
+                batch_size=cfg.batch_size,
+            )
+            if socratic_results and socratic_results[0].get('training', {}).get('trained'):
+                socratic_acc = socratic_results[0]['training'].get('acc_after_pct', 0)
+                if socratic_acc > best_acc:
+                    best_acc = socratic_acc
+                    # Save the refined model as best
+                    torch.save({
+                        'model_state_dict': model.state_dict(),
+                        'acc': best_acc,
+                        'global_step': global_step,
+                        'socratic_refined': True,
+                    }, op_dir / 'best.pt')
+                    print(f'  [Socratic] New best accuracy: {best_acc:.1f}%')
+                print(f'  [Socratic] Improvement: {socratic_results[0]["training"].get("improvement_pct", 0):+.1f}%')
+        except Exception as e:
+            print(f'  [!] Socratic refinement failed: {e}')
+
     # ── Log experiment for comparator ──
     _log_experiment({
         'operation': op,
@@ -890,6 +931,12 @@ Examples:
                        help='Enable LoRA fine-tuning (freezes base, trains low-rank adapters)')
     parser.add_argument('--lora-rank', type=int, default=8,
                        help='LoRA rank (default: 8)')
+    parser.add_argument('--socratic', action='store_true',
+                       help='Enable Socratic self-improvement after training')
+    parser.add_argument('--socratic-steps', type=int, default=500,
+                       help='Training steps for Socratic refinement (default: 500)')
+    parser.add_argument('--socratic-problems', type=int, default=200,
+                       help='Problems per Socratic iteration (default: 200)')
 
     args = parser.parse_args()
 
@@ -919,6 +966,9 @@ Examples:
                 gradient_accumulation_steps=args.grad_accum,
                 use_lora=args.lora,
                 lora_rank=args.lora_rank,
+                socratic=args.socratic,
+                socratic_steps=args.socratic_steps,
+                socratic_problems=args.socratic_problems,
             )
             results[op_name] = 'OK' if model is not None else 'FAILED'
         print(f'\n  Results: {results}')
@@ -948,4 +998,7 @@ Examples:
         gradient_accumulation_steps=args.grad_accum,
         use_lora=args.lora,
         lora_rank=args.lora_rank,
+        socratic=args.socratic,
+        socratic_steps=args.socratic_steps,
+        socratic_problems=args.socratic_problems,
     )
