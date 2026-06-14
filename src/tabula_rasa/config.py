@@ -44,7 +44,7 @@ class Config:
     dropout: float = 0.1  # Dropout rate (0=off, 0.0-0.5)
 
     # Architecture variants
-    activation: str = "relu"
+    activation: str = "swiglu"  # relu | gelu | swiglu
     norm_type: str = "rmsnorm"  # rmsnorm | layernorm
     pos_encoding: str = "rope"  # learned | rope | none
 
