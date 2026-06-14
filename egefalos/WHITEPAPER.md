@@ -1465,3 +1465,25 @@ This is not a shortcut to AGI. It is a foundation — a tabula rasa upon which g
 ---
 
 *"I don't know about that yet." — Tabula Rasa AI*
+
+## Appendix: Negative Results
+
+A comprehensive catalog of failed approaches, rejected hypotheses, and
+engineering dead-ends is documented in NEGATIVE_RESULTS.md.
+Key findings include:
+
+- Three-task capacity boundary at 1M params — both Online and Standard EWC
+  fail identically; scaling to 5M restores retention.
+- Adaptive gamma rejection — Fisher overlap = 0.977 makes task blending
+  unnecessary.
+- Batch collapse — batch=2048 causes 0% generalization despite 0 loss.
+- Causal mask bug — bidirectional attention was silently active during
+  months of training.
+- Loss-accuracy divergence — loss and accuracy are near-uncorrelated for
+  the fused carry-digit task.
+- Curriculum misalignment — eval accuracy averaged across all digit levels,
+  causing premature early-stopping.
+
+All hyperparameters, ablation configurations, and failure modes are versioned
+in the repository for reproducibility.
+
