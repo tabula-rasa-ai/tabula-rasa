@@ -210,6 +210,35 @@ def test_full_training():
 
 Slow tests (in `test_integration.py`) are excluded from `--ignore` but run on CI.
 
+### PR testing requirements
+
+Every PR must pass these checks before merging:
+
+1. **Unit tests pass:**
+   ```bash
+   pytest tests/ -x -q --ignore=tests/test_integration.py
+   ```
+2. **No regressions:** Coverage must not decrease by more than 2%.
+   Run coverage before and after:
+   ```bash
+   pytest --cov=src/tabula_rasa tests/ --ignore=tests/test_integration.py
+   ```
+3. **Lint clean:**
+   ```bash
+   pre-commit run --all-files
+   ```
+4. **Integration tests pass** (for changes to training loop):
+   ```bash
+   pytest tests/test_integration.py -x -q
+   ```
+5. **New features include tests:** At minimum, one test per new function.
+   For CL methods: include in `experiments/run_cl_benchmark.py`.
+   For new operations: include a smoke training test.
+6. **No `print()` in library code:** Use `logger.info()` from `logging`.
+   `print()` is acceptable in CLI scripts and experiments.
+7. **Docstrings for public APIs:** Every new function needs a docstring
+   with Args, Returns, and a usage example if non-trivial.
+
 ### Pre-commit hooks
 
 This repo enforces formatting and linting via pre-commit:

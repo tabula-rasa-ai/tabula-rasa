@@ -9,11 +9,52 @@ Welcome! These are small, well-defined tasks perfect for your first contribution
 3. Comment on it to let others know you're working on it
 4. Submit a PR following CONTRIBUTING.md
 
+## Skills You'll Need
+
+Each task is tagged with required skills. Don't worry if you don't have all of
+them — picking up new skills is part of the contribution experience.
+
+| Skill | Level | Where to learn |
+|-------|-------|---------------|
+| Python | Basic | Any Python tutorial |
+| PyTorch | Basic | [pytorch.org/tutorials](https://pytorch.org/tutorials/) |
+| pytest | Basic | [docs.pytest.org](https://docs.pytest.org/) |
+| HTML/CSS/JS | Intermediate | MDN Web Docs |
+| Git/GitHub | Basic | [GitHub Skills](https://skills.github.com/) |
+| SQLite | Basic | [sqlite.org](https://sqlite.org/) |
+| CLI/Terminal | Basic | Any Linux terminal guide |
+
+## Mentorship
+
+Each issue has a mentor listed. The mentor will:
+- Review your approach before you start coding
+- Answer questions within 24 hours via the issue thread
+- Review your PR within 48 hours
+
+**Mentors:**
+
+| Mentor | Expertise | Telegram |
+|--------|-----------|----------|
+| Core team | Model, Training, EWC | @TabulaRasaAi |
+| Community | Dashboard, API, Docs | Join the Telegram group |
+
+## Domain Legend
+
+Tasks are tagged by domain:
+- **[model]** — model architecture, forward pass, attention
+- **[training]** — training loop, CL methods, optimizers
+- **[api]** — REST API, curl, request/response
+- **[dashboard]** — HTML/CSS/JS, data viz
+- **[docs]** — documentation, tutorials, examples
+
 ---
 
 ## Task 1: Add Exponentiation Operation
 
+**Domain:** [training] [api]
 **Difficulty:** Beginner | **Files:** 4 | **Estimate:** 2 hours
+**Skills:** Python, CLI, PyTorch (basic)
+**Mentor:** Core team
 
 Add a `pow` (exponentiation `^`) operation following the guide in `CONTRIBUTING_EXTENDING.md`.
 
@@ -31,6 +72,9 @@ Add a `pow` (exponentiation `^`) operation following the guide in `CONTRIBUTING_
 ---
 
 ## Task 2: Add Unit Test for a Module
+**Domain:** [training] [docs]
+**Skills:** Python, pytest
+**Mentor:** Core team
 
 **Difficulty:** Beginner | **Files:** 1-2 | **Estimate:** 1 hour
 
@@ -52,6 +96,9 @@ Pick a module without full test coverage and add tests.
 ---
 
 ## Task 3: Add Dashboard Visualization
+**Domain:** [dashboard]
+**Skills:** HTML, CSS, JavaScript
+**Mentor:** Community
 
 **Difficulty:** Intermediate | **Files:** 1-2 | **Estimate:** 2 hours
 
@@ -72,6 +119,9 @@ Add a new visualization to the web dashboard. The dashboard is at `Dashboard/vie
 ---
 
 ## Task 4: Add Scheduler Visualizer to Dashboard
+**Domain:** [dashboard]
+**Skills:** HTML, CSS, JavaScript
+**Mentor:** Community
 
 **Difficulty:** Intermediate | **Files:** 1 | **Estimate:** 1.5 hours
 
@@ -86,6 +136,9 @@ Create a dashboard view that plots the LR schedule before training starts.
 ---
 
 ## Task 5: Add --dry-run Flag to train_specialist.py
+**Domain:** [training]
+**Skills:** Python, argparse
+**Mentor:** Core team
 
 **Difficulty:** Beginner | **Files:** 1 | **Estimate:** 1 hour
 
@@ -101,6 +154,9 @@ Add a `--dry-run` flag that prints what would happen without actually training.
 ---
 
 ## Task 6: Profile Training Speed
+**Domain:** [training] [docs]
+**Skills:** Python, PyTorch (basic)
+**Mentor:** Core team
 
 **Difficulty:** Beginner | **Files:** 1 | **Estimate:** 1 hour
 
@@ -117,6 +173,9 @@ Create a script that profiles training speed across different configs.
 ---
 
 ## Task 7: Add MPS (Apple Silicon) Device Support
+**Domain:** [training] [model]
+**Skills:** Python, PyTorch, CUDA (basic)
+**Mentor:** Core team
 
 **Difficulty:** Intermediate | **Files:** 2-3 | **Estimate:** 2 hours
 
@@ -130,6 +189,9 @@ Add `mps` as a recognized device option for Apple Silicon Macs.
 ---
 
 ## Task 8: Export Benchmark Results as Markdown
+**Domain:** [docs]
+**Skills:** Python, markdown
+**Mentor:** Community
 
 **Difficulty:** Beginner | **Files:** 1 | **Estimate:** 1 hour
 
@@ -156,6 +218,9 @@ grep -rn "TODO\|FIXME" src/ egefalos/ experiments/ --include="*.py"
 ---
 
 ## Task 10: Add a New Dashboard Theme
+**Domain:** [dashboard]
+**Skills:** HTML, CSS, JavaScript
+**Mentor:** Community
 
 **Difficulty:** Beginner | **Files:** 1 | **Estimate:** 1 hour
 

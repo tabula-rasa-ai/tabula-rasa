@@ -299,3 +299,98 @@ If you want to go beyond arithmetic (e.g., string reversal, palindrome detection
 ---
 
 **Questions?** Open an issue or join [Telegram](https://t.me/TabulaRasaAi).
+
+---
+
+## Advanced: Adding a New Continual Learning Algorithm
+
+Tabula Rasa supports pluggable CL methods. The interface is simple — any CL
+method needs to intercept the training loop and add a penalty term.
+
+### Step 1: Create the module
+
+Create `egefalos/my_cl_method.py`:
+
+```python
+class MyCLMethod:
+    def __init__(self, model, **kwargs):
+        self.model = model
+
+    def compute_penalty(self, lambda_val=1000.0) -> torch.Tensor:
+        """Return a scalar penalty added to the loss during new-task training."""
+        return torch.tensor(0.0)
+
+    def on_task_start(self):
+        """Called before training a new task. Snapshot weights, store gradients, etc."""
+        pass
+
+    def on_task_end(self):
+        """Called after training a task. Merge Fisher, update memory, etc."""
+        pass
+
+    def save(self, path):
+        """Serialize CL state to disk."""
+        torch.save({"state": ...}, path)
+
+    def load(self, path):
+        """Deserialize and restore CL state."""
+        state = torch.load(path, weights_only=True)
+```
+
+### Step 2: Wire into training loop
+
+In `train_specialist.py`, add your method to the training loop:
+
+```python
+if use_my_cl_method:
+    from egefalos.my_cl_method import MyCLMethod
+    cl = MyCLMethod(model, my_param=value)
+
+    # Before training a new task:
+    cl.on_task_start()
+
+    # Inside training loop, after computing task_loss:
+    penalty = cl.compute_penalty(lambda_val=500)
+    total_loss = task_loss + penalty
+
+    # After training:
+    cl.on_task_end()
+    cl.save(op_dir / "my_cl_state.pt")
+```
+
+### Step 3: Add CLI flag
+
+```python
+parser.add_argument("--my-cl", action="store_true",
+                    help="Enable MyCLMethod continual learning")
+```
+
+### Step 4: Add to comparison benchmark
+
+Register in `experiments/run_cl_benchmark.py`:
+
+```python
+METHODS["my_cl"] = method_my_cl
+
+def method_my_cl(model, cfg, tok, task_seq, steps):
+    from egefalos.my_cl_method import MyCLMethod
+    cl = MyCLMethod(model)
+    results = {}
+    for i, (op, _) in enumerate(task_seq):
+        if i == 0:
+            cl.on_task_start()
+            acc, mastery = train_steps(model, cfg, tok, op, steps)
+        else:
+            acc, mastery = train_with_penalty(...)
+        results[f"after_task_{i+1}"] = {...}
+    return results
+```
+
+### Reference implementations
+
+| Method | File | Mechanism |
+|--------|------|-----------|
+| Online EWC | `egefalos/online_ewc.py` | Fisher diagonal + anchor weights |
+| LwF | `egefalos/lwf_gem.py` | Knowledge distillation |
+| GEM | `egefalos/lwf_gem.py` | Gradient projection |
+| OGD | `egefalos/ogd.py` | Conservative fine-tuning |
