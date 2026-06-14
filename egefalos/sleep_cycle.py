@@ -224,10 +224,52 @@ def consolidate_sleep_cycle(
     print(f"{'='*60}\n")
 
 
+def _find_latest_checkpoint() -> Optional[Path]:
+    """Find the most recently trained specialist checkpoint."""
+    specialist_dirs = sorted(Path('specialists/math').glob('*/best.pt'))
+    if specialist_dirs:
+        return max(specialist_dirs, key=lambda p: p.stat().st_mtime)
+    return None
+
+
+def _run_daemon_cycle(args):
+    """Run one cycle of sleep consolidation, finding the latest checkpoint."""
+    if args.model:
+        model_path = Path(args.model)
+    else:
+        model_path = _find_latest_checkpoint()
+
+    if model_path is None or not model_path.exists():
+        print(f"  [Sleep] No checkpoint found — no specialists trained yet. Skipping cycle.")
+        return
+
+    config = Config()
+    tok = MathTokenizer()
+    tok.max_seq_len = args.max_seq_len
+    output_dir = Path(args.output_dir) if args.output_dir else model_path.parent
+
+    print(f"\n{'='*60}")
+    print(f"  SLEEP CYCLE — {time.strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"  Checkpoint: {model_path}")
+    print(f"{'='*60}")
+
+    consolidate_sleep_cycle(
+        model_path=model_path,
+        tokenizer=tok,
+        config=config,
+        num_samples=args.num_samples,
+        epochs=args.epochs,
+        lambda_ewc=args.lambda_ewc,
+        gamma=args.gamma,
+        output_dir=output_dir,
+        max_seq_len=args.max_seq_len,
+    )
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Sleep cycle consolidation')
-    parser.add_argument('--model', type=str, required=True,
-                        help='Path to specialist checkpoint (best.pt)')
+    parser.add_argument('--model', type=str, default=None,
+                        help='Path to specialist checkpoint (best.pt). Auto-detects latest if omitted.')
     parser.add_argument('--num-samples', type=int, default=2048,
                         help='Max replay samples to consume')
     parser.add_argument('--epochs', type=int, default=3,
@@ -240,22 +282,21 @@ if __name__ == '__main__':
                         help='Specialist output directory')
     parser.add_argument('--max-seq-len', type=int, default=32,
                         help='Max token sequence length')
+    parser.add_argument('--daemon', action='store_true',
+                        help='Run continuously in daemon mode, cycling every --interval seconds')
+    parser.add_argument('--interval', type=int, default=3600,
+                        help='Seconds between sleep cycles in daemon mode (default: 3600 = 1 hour)')
     args = parser.parse_args()
 
-    config = Config()
-    tok = MathTokenizer()
-    tok.max_seq_len = args.max_seq_len
-
-    output_dir = Path(args.output_dir) if args.output_dir else None
-
-    consolidate_sleep_cycle(
-        model_path=Path(args.model),
-        tokenizer=tok,
-        config=config,
-        num_samples=args.num_samples,
-        epochs=args.epochs,
-        lambda_ewc=args.lambda_ewc,
-        gamma=args.gamma,
-        output_dir=output_dir,
-        max_seq_len=args.max_seq_len,
-    )
+    if args.daemon:
+        print(f"Sleep cycle daemon starting — interval: {args.interval}s")
+        print("Auto-detecting latest specialist checkpoint each cycle.\n")
+        cycle = 0
+        while True:
+            cycle += 1
+            print(f"\n--- Cycle #{cycle} ---")
+            _run_daemon_cycle(args)
+            print(f"\nNext cycle in {args.interval}s...")
+            time.sleep(args.interval)
+    else:
+        _run_daemon_cycle(args)

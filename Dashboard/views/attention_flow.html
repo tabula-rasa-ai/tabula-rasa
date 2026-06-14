@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tabula Rasa — Attention Flow</title>
+<style>
+:root { --bg: #0f172a; --panel: #1e293b; --border: #334155; --text: #f1f5f9; --muted: #94a3b8; --accent: #3b82f6; --green: #22c55e; --yellow: #eab308; --red: #ef4444; --orange: #f97316; --purple: #a855f7; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); padding: 24px; min-height: 100vh; }
+h1 { font-size: 1.5rem; margin-bottom: 4px; }
+.subtitle { color: var(--muted); font-size: 0.85rem; margin-bottom: 20px; }
+.controls { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 20px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+.controls label { font-size: 0.85rem; color: var(--muted); }
+.controls select, .controls input { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 6px 10px; font-size: 0.85rem; }
+.controls button { background: var(--accent); color: white; border: none; border-radius: 4px; padding: 8px 16px; font-size: 0.85rem; cursor: pointer; transition: opacity 0.2s; font-weight: 600; }
+.controls button:hover { opacity: 0.85; }
+.controls button:disabled { opacity: 0.4; cursor: not-allowed; }
+.controls button.reset { background: var(--border); }
+.controls button.step { background: var(--yellow); color: #000; }
+.speed-control { display: flex; align-items: center; gap: 8px; }
+.speed-control input { width: 80px; }
+.layout { display: flex; gap: 20px; flex-wrap: wrap; }
+.canvas-panel { flex: 2; min-width: 500px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+canvas { display: block; width: 100%; aspect-ratio: 3/2; background: var(--bg); border-radius: 4px; }
+.side-panel { flex: 1; min-width: 280px; display: flex; flex-direction: column; gap: 12px; }
+.info-card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
+.info-card h3 { font-size: 0.8rem; text-transform: uppercase; color: var(--muted); letter-spacing: 0.05em; margin-bottom: 8px; }
+.info-card .value { font-size: 1.1rem; font-weight: 600; }
+.info-card .detail { font-size: 0.85rem; color: var(--muted); margin-top: 4px; }
+.token-row { display: flex; gap: 2px; flex-wrap: wrap; margin-top: 8px; }
+.token { font-family: "Courier New", monospace; font-size: 0.75rem; padding: 3px 5px; border-radius: 3px; background: var(--bg); color: var(--text); border: 1px solid var(--border); transition: all 0.3s; }
+.token.active { background: var(--accent); color: white; border-color: var(--accent); transform: scale(1.1); }
+.token.carry { border-color: var(--yellow); color: var(--yellow); }
+.token.result { border-color: var(--green); color: var(--green); }
+.step-label { font-size: 0.85rem; color: var(--accent); font-weight: 600; margin-top: 8px; min-height: 1.2em; }
+.carry-chain { display: flex; gap: 8px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+.chain-arrow { color: var(--yellow); font-size: 1.2rem; }
+.chain-val { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; font-weight: 700; font-size: 0.85rem; transition: all 0.3s; }
+.chain-val.carry-1 { background: var(--yellow); color: #000; }
+.chain-val.carry-0 { background: var(--bg); color: var(--muted); border: 1px solid var(--border); }
+.chain-col { text-align: center; }
+.chain-col small { display: block; color: var(--muted); font-size: 0.65rem; margin-top: 2px; }
+.scratchpad { font-family: "Courier New", monospace; font-size: 1rem; color: var(--green); background: var(--bg); padding: 6px 10px; border-radius: 4px; display: inline-block; margin-top: 6px; }
+.scratchpad span.carry-part { color: var(--yellow); }
+.scratchpad span.digit-part { color: var(--green); }
+.presets { display: flex; gap: 6px; flex-wrap: wrap; }
+.presets button { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 4px 10px; font-size: 0.75rem; cursor: pointer; transition: all 0.15s; font-family: "Courier New", monospace; }
+.presets button:hover { border-color: var(--accent); }
+.presets button.active { border-color: var(--accent); background: rgba(59,130,246,0.15); }
+.labels { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 0.75rem; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<h1>&#x1F9E0; Attention Flow</h1>
+<div class="subtitle">Step-by-step carry propagation animation — watch how the model processes each column</div>
+
+<div class="controls">
+  <div class="presets">
+    <button data-problem="1234,5678" class="active">1234+5678</button>
+    <button data-problem="9999,1">9999+1</button>
+    <button data-problem="473,889">473+889</button>
+    <button data-problem="42,58">42+58</button>
+    <button data-problem="7,15">7+15</button>
+    <button data-problem="999,999">999+999</button>
+  </div>
+  <label>Digits: <input type="range" id="digit-slider" min="1" max="6" value="4" style="width:80px"></label>
+  <button id="btn-animate">&#x25B6; Animate</button>
+  <button id="btn-step" class="step">&#x25B6; Step</button>
+  <button id="btn-reset" class="reset">&#x21BA; Reset</button>
+  <div class="speed-control">
+    <label>Speed: <input type="range" id="speed-slider" min="1" max="10" value="5"></label>
+  </div>
+</div>
+
+<div class="layout">
+  <div class="canvas-panel">
+    <div class="labels">
+      <span>Vertical Addition &amp; Carry Propagation</span>
+      <span id="step-counter">Ready</span>
+    </div>
+    <canvas id="canvas"></canvas>
+  </div>
+  <div class="side-panel">
+    <div class="info-card">
+      <h3>Current Step</h3>
+      <div id="step-label" class="step-label">Select a problem and click Animate</div>
+    </div>
+    <div class="info-card">
+      <h3>Scratchpad (V2 Format)</h3>
+      <div id="scratchpad-display" class="scratchpad">—</div>
+      <div class="detail">Combined carry-digit tokens per column</div>
+    </div>
+    <div class="info-card">
+      <h3>Carry Chain</h3>
+      <div id="carry-chain" class="carry-chain">—</div>
+    </div>
+    <div class="info-card">
+      <h3>Result</h3>
+      <div id="result-display" class="value" style="font-family:'Courier New',monospace;">—</div>
+      <div class="detail" id="result-breakdown"></div>
+    </div>
+    <div class="info-card">
+      <h3>Context Window (32 tokens)</h3>
+      <div id="token-display" class="token-row">—</div>
+      <div class="detail">Active tokens highlighted in blue</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── Problem Presets ───────────────────────────────────────
+var PROBLEMS = {
+  '1234,5678': { a: '1234', b: '5678' },
+  '9999,1':    { a: '9999', b: '1' },
+  '473,889':   { a: '473',  b: '889' },
+  '42,58':     { a: '42',   b: '58' },
+  '7,15':      { a: '7',    b: '15' },
+  '999,999':   { a: '999',  b: '999' },
+};
+
+var canvas = document.getElementById('canvas');
+var ctx = canvas.getContext('2d');
+var W, H;
+
+var state = {
+  a: '1234', b: '5678',
+  digits: [],         // {sum, digit, carry_in, carry_out, color}
+  currentCol: -1,
+  phase: 'idle',       // 'idle' | 'animating' | 'done'
+  animTimer: null,
+  stepIndex: 0,
+  totalCols: 0,
+};
+
+function resizeCanvas() {
+  var rect = canvas.parentElement.getBoundingClientRect();
+  var w = rect.width - 4;
+  var h = Math.round(w * 0.6);
+  canvas.width = w * (window.devicePixelRatio || 1);
+  canvas.height = h * (window.devicePixelRatio || 1);
+  canvas.style.width = w + 'px';
+  canvas.style.height = h + 'px';
+  W = canvas.width;
+  H = canvas.height;
+  draw();
+}
+window.addEventListener('resize', resizeCanvas);
+
+// ─── Compute Digits ────────────────────────────────────────
+function computeProblem(a, b) {
+  var maxLen = Math.max(a.length, b.length);
+  var aPadded = a.padStart(maxLen, '0');
+  var bPadded = b.padStart(maxLen, '0');
+  var digits = [];
+  var carry = 0;
+  for (var i = maxLen - 1; i >= 0; i--) {
+    var da = parseInt(aPadded[i], 10);
+    var db = parseInt(bPadded[i], 10);
+    var s = da + db + carry;
+    var digit = s % 10;
+    var carryOut = Math.floor(s / 10);
+    digits.unshift({ da: da, db: db, sum: s, digit: digit, carry_in: carry, carry_out: carryOut });
+    carry = carryOut;
+  }
+  if (carry > 0) {
+    digits.unshift({ da: 0, db: 0, sum: carry, digit: carry, carry_in: 0, carry_out: 0 });
+  }
+  // Compute actual result for display
+  var n1 = parseInt(a, 10), n2 = parseInt(b, 10);
+  state.actualResult = (n1 + n2).toString();
+  return digits;
+}
+
+function setProblem(a, b) {
+  state.a = a;
+  state.b = b;
+  state.digits = computeProblem(a, b);
+  state.totalCols = state.digits.length;
+  state.currentCol = -1;
+  state.stepIndex = 0;
+  state.phase = 'idle';
+  if (state.animTimer) { clearInterval(state.animTimer); state.animTimer = null; }
+  updateUI();
+  draw();
+}
+
+// ─── Drawing ───────────────────────────────────────────────
+function draw() {
+  if (W === 0) return;
+  var dpr = window.devicePixelRatio || 1;
+  ctx.clearRect(0, 0, W, H);
+
+  var padX = W * 0.08;
+  var padY = H * 0.12;
+  var colW = (W - 2 * padX) / Math.max(state.totalCols, 3);
+  var rowH = (H - 2 * padY) / 5;
+  var cols = state.digits;
+
+  // Draw column grid lines (vertical)
+  ctx.strokeStyle = 'rgba(51,65,85,0.3)';
+  ctx.lineWidth = 1;
+  for (var i = 0; i <= cols.length; i++) {
+    var x = padX + i * colW;
+    ctx.beginPath();
+    ctx.moveTo(x, padY);
+    ctx.lineTo(x, H - padY);
+    ctx.stroke();
+  }
+
+  // Draw horizontal lines for number rows
+  var rows = ['a', 'b', 'carry_in', 'result', 'carry_out'];
+  ctx.strokeStyle = 'rgba(51,65,85,0.2)';
+  for (var r = 0; r <= rows.length; r++) {
+    var y = padY + r * rowH;
+    ctx.beginPath();
+    ctx.moveTo(padX, y);
+    ctx.lineTo(W - padX, y);
+    ctx.stroke();
+  }
+
+  // Draw data per column
+  for (var c = 0; c < cols.length; c++) {
+    var cx = padX + c * colW + colW/2;
+    var col = cols[c];
+    var isActive = (c === state.currentCol);
+    var isDone = (state.currentCol > c);
+
+    // Row 1: Number A digit (reverse of input)
+    drawDigit(cx, padY + rowH/2, col.da, isDone ? '#60a5fa' : '#94a3b8', isActive && c === state.currentCol);
+
+    // Row 2: Number B digit
+    drawDigit(cx, padY + rowH*1.5, col.db, isDone ? '#60a5fa' : '#94a3b8', false);
+
+    // Row 3: Carry-in (animated arrow)
+    if (isActive) {
+      // Draw highlight circle
+      ctx.beginPath();
+      ctx.arc(cx, padY + rowH*2.5, colW*0.3, 0, Math.PI*2);
+      ctx.fillStyle = 'rgba(234,179,8,0.15)';
+      ctx.fill();
+      ctx.strokeStyle = '#eab308';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+    if (col.carry_in > 0 || isDone) {
+      drawDigit(cx, padY + rowH*2.5, col.carry_in, '#eab308', isActive);
+    } else if (isActive) {
+      drawDigit(cx, padY + rowH*2.5, 0, '#555', true);
+    }
+
+    // Row 4: Result digit
+    var resultColor = '#22c55e';
+    if (isActive) {
+      resultColor = '#4ade80';
+      // Glow effect
+      ctx.shadowColor = '#22c55e';
+      ctx.shadowBlur = 15;
+    }
+    drawDigit(cx, padY + rowH*3.5, col.digit, resultColor, isActive);
+    ctx.shadowBlur = 0;
+
+    // Row 5: Carry-out (animated arrow to next column)
+    if (col.carry_out > 0) {
+      if (isActive || (c < cols.length - 1 && state.currentCol === c + 1)) {
+        // Draw carry arrow
+        var arrowY = padY + rowH*4.5;
+        ctx.beginPath();
+        ctx.moveTo(cx, arrowY);
+        if (c < cols.length - 1) {
+          ctx.lineTo(cx + colW * 0.4, arrowY);
+        }
+        ctx.strokeStyle = '#eab308';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+
+        // Arrow head
+        if (c < cols.length - 1) {
+          ctx.beginPath();
+          var tipX = cx + colW * 0.4;
+          ctx.moveTo(tipX, arrowY);
+          ctx.lineTo(tipX - 8, arrowY - 5);
+          ctx.lineTo(tipX - 8, arrowY + 5);
+          ctx.closePath();
+          ctx.fillStyle = '#eab308';
+          ctx.fill();
+        }
+
+        // Carry value
+        ctx.fillStyle = '#eab308';
+        ctx.font = Math.round(14 * dpr) + 'px "Courier New", monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(col.carry_out.toString(), cx + (c < cols.length - 1 ? colW * 0.25 : 0), arrowY - 8);
+      } else {
+        drawDigit(cx, padY + rowH*4.5, col.carry_out, '#eab308', false);
+      }
+    }
+
+    // Column index label (bottom)
+    ctx.fillStyle = 'rgba(148,163,184,0.3)';
+    ctx.font = Math.round(10 * dpr) + 'px sans-serif';
+    ctx.textAlign = 'center';
+    var colLabel = ['1s','10s','100s','1Ks','10Ks','100Ks'];
+    var labelIdx = cols.length - 1 - c;
+    ctx.fillText(colLabel[labelIdx] || (labelIdx+1)+'s', cx, H - padY*0.4);
+  }
+
+  // Operation sign and line
+  ctx.fillStyle = '#f1f5f9';
+  ctx.font = 'bold ' + Math.round(22 * dpr) + 'px "Courier New", monospace';
+  ctx.textAlign = 'right';
+  ctx.fillText('+', padX - 12, padY + rowH*2);
+
+  // Underline below row 3 (the result divider)
+  ctx.strokeStyle = 'rgba(241,245,249,0.4)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(padX, padY + rowH*3 - 4);
+  ctx.lineTo(W - padX, padY + rowH*3 - 4);
+  ctx.stroke();
+
+  // Title annotation for phases
+  if (state.phase === 'idle') {
+    ctx.fillStyle = 'rgba(148,163,184,0.3)';
+    ctx.font = Math.round(14 * dpr) + 'px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Click "Animate" to watch carries propagate right to left', W/2, H - 6);
+  } else if (state.phase === 'done') {
+    ctx.fillStyle = 'rgba(34,197,94,0.4)';
+    ctx.font = 'bold ' + Math.round(18 * dpr) + 'px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Complete! Result: ' + state.actualResult, W/2, H - 6);
+
+    // Final carry check
+    var finalCarry = state.digits[0].carry_out;
+    if (finalCarry > 0) {
+      ctx.fillStyle = 'rgba(234,179,8,0.3)';
+      ctx.font = Math.round(12 * dpr) + 'px sans-serif';
+      ctx.fillText('(Final carry: ' + finalCarry + ' — extra most-significant digit)', W/2, 20);
+    }
+  }
+}
+
+function drawDigit(x, y, digit, color, highlight) {
+  var dpr = window.devicePixelRatio || 1;
+  if (highlight) {
+    ctx.beginPath();
+    ctx.arc(x, y, 16 * dpr, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(59,130,246,0.2)';
+    ctx.fill();
+  }
+  ctx.fillStyle = color || '#94a3b8';
+  ctx.font = 'bold ' + Math.round(20 * dpr) + 'px "Courier New", monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(digit.toString(), x, y);
+}
+
+// ─── Animation ─────────────────────────────────────────────
+function animate() {
+  if (state.animTimer) { clearInterval(state.animTimer); state.animTimer = null; }
+  state.phase = 'animating';
+  state.currentCol = 0;
+  state.stepIndex = 0;
+  updateUI();
+  draw();
+
+  var speed = parseInt(document.getElementById('speed-slider').value);
+  var delay = Math.max(200, 1400 - speed * 120);
+
+  state.animTimer = setInterval(function() {
+    state.currentCol++;
+    if (state.currentCol >= state.totalCols) {
+      state.phase = 'done';
+      state.currentCol = state.totalCols - 1;
+      clearInterval(state.animTimer);
+      state.animTimer = null;
+    }
+    updateUI();
+    draw();
+  }, delay);
+}
+
+function step() {
+  if (state.phase === 'done') return;
+  if (state.currentCol < state.totalCols - 1) {
+    state.currentCol++;
+    state.phase = 'animating';
+  } else {
+    state.phase = 'done';
+  }
+  updateUI();
+  draw();
+}
+
+function reset() {
+  if (state.animTimer) { clearInterval(state.animTimer); state.animTimer = null; }
+  state.currentCol = -1;
+  state.phase = 'idle';
+  updateUI();
+  draw();
+}
+
+// ─── UI Updates ────────────────────────────────────────────
+function updateUI() {
+  var cols = state.digits;
+  var col = state.currentCol;
+
+  // Step label
+  var stepEl = document.getElementById('step-label');
+  var counter = document.getElementById('step-counter');
+  if (col < 0) {
+    stepEl.textContent = 'Select a problem and click Animate';
+    counter.textContent = 'Ready';
+  } else if (state.phase === 'done') {
+    stepEl.textContent = 'All columns processed — carry propagation complete!';
+    counter.textContent = 'Done (' + state.totalCols + '/' + state.totalCols + ')';
+  } else {
+    var colNames = ['1s','10s','100s','1Ks','10Ks','100Ks','1M','10M'];
+    var idx = cols.length - 1 - col;
+    var name = colNames[idx] || (idx+1)+'s';
+    var c = cols[col];
+    stepEl.innerHTML = '<span style="color:#60a5fa;">Column: ' + name + '</span> &mdash; '
+      + c.da + ' + ' + c.db + ' + carry<sub>in</sub>(' + c.carry_in + ') = ' + c.sum
+      + ' &rarr; digit=' + c.digit + ', carry<sub>out</sub>=' + c.carry_out;
+    counter.textContent = 'Column ' + (col+1) + '/' + state.totalCols;
+  }
+
+  // Scratchpad
+  var scratchEl = document.getElementById('scratchpad-display');
+  if (col < 0) {
+    scratchEl.textContent = '—';
+  } else {
+    var html = '';
+    for (var i = 0; i < Math.min(col + 1, cols.length); i++) {
+      var c = cols[i];
+      var isActiveCol = (i === col && state.phase !== 'done') || (state.phase === 'done');
+      if (isActiveCol) {
+        html += '<span class="carry-part">' + c.carry_out + '</span><span class="digit-part">' + c.digit + '</span>';
+      } else {
+        html += '<span style="opacity:0.3;">' + c.carry_out + c.digit + '</span>';
+      }
+    }
+    scratchEl.innerHTML = html || '—';
+  }
+
+  // Carry chain
+  var chainEl = document.getElementById('carry-chain');
+  if (col < 0) {
+    chainEl.textContent = '—';
+  } else {
+    var chainHtml = '';
+    for (var i = 0; i < Math.min(col + 1, cols.length); i++) {
+      var c = cols[i];
+      var cls = c.carry_out > 0 ? 'carry-1' : 'carry-0';
+      var isActiveCol = (i === col && state.phase !== 'done') || (state.phase === 'done');
+      chainHtml += '<div class="chain-col"><span class="chain-val ' + cls + '" style="' + (isActiveCol ? '' : 'opacity:0.4;') + '">' + c.carry_out + '</span><small>' + (['1s','10s','100s','1Ks','10Ks','100Ks','1M','10M'][cols.length - 1 - i] || '') + '</small></div>';
+      if (i < Math.min(col, cols.length - 1)) {
+        chainHtml += '<span class="chain-arrow" style="' + (isActiveCol ? '' : 'opacity:0.3;') + '">&rarr;</span>';
+      }
+    }
+    chainEl.innerHTML = chainHtml || '—';
+  }
+
+  // Result
+  var resultEl = document.getElementById('result-display');
+  var breakdownEl = document.getElementById('result-breakdown');
+  if (state.phase === 'idle') {
+    resultEl.textContent = parseInt(state.a, 10) + ' + ' + parseInt(state.b, 10) + ' = ?';
+    breakdownEl.textContent = 'Click Animate to compute';
+  } else {
+    resultEl.textContent = state.actualResult;
+    var digitsStr = '';
+    for (var i = 0; i < state.digits.length; i++) {
+      digitsStr += state.digits[i].digit;
+    }
+    breakdownEl.textContent = 'Digits (MSD first): ' + (state.digits.length > 1 ? digitsStr : digitsStr);
+  }
+
+  // Token display (simulate context window)
+  var tokenEl = document.getElementById('token-display');
+  var tokens = [];
+  tokens.push({ t: '<SOS>', cls: '' });
+  for (var i = 0; i < state.a.length; i++) tokens.push({ t: state.a[i], cls: '' });
+  tokens.push({ t: '+', cls: '' });
+  for (var i = 0; i < state.b.length; i++) tokens.push({ t: state.b[i], cls: '' });
+  tokens.push({ t: '=', cls: '' });
+  // Scratchpad tokens (as many as computed)
+  var shownScratch = Math.min(col + 1, state.digits.length);
+  if (shownScratch > 0) {
+    for (var i = 0; i < shownScratch; i++) {
+      var c = state.digits[i];
+      tokens.push({ t: c.carry_out + '' + c.digit, cls: 'result' });
+    }
+  } else {
+    for (var i = 0; i < 4; i++) tokens.push({ t: '?', cls: '' });
+  }
+  tokens.push({ t: '<EOS>', cls: '' });
+
+  // Highlight active token group (current column in scratchpad)
+  var scratchStartIdx = state.a.length + state.b.length + 2; // SOS + a + '+' + b + '='
+  var tokenHtml = '';
+  for (var i = 0; i < tokens.length; i++) {
+    var t = tokens[i];
+    var cls = 'token';
+    if (t.cls === 'result') cls += ' result';
+    // Highlight the active scratchpad token
+    if (t.cls === 'result' && state.phase !== 'idle' && state.phase !== 'done' && (i - scratchStartIdx) === col) {
+      cls += ' active';
+    }
+    if (state.phase === 'done' && t.cls === 'result') cls += ' active';
+    tokenHtml += '<span class="' + cls + '">' + t.t + '</span>';
+  }
+  tokenEl.innerHTML = tokenHtml;
+}
+
+// ─── Event Wiring ──────────────────────────────────────────
+document.querySelectorAll('.presets button').forEach(function(btn) {
+  btn.addEventListener('click', function() {
+    document.querySelectorAll('.presets button').forEach(function(b) { b.classList.remove('active'); });
+    this.classList.add('active');
+    var parts = this.getAttribute('data-problem').split(',');
+    setProblem(parts[0], parts[1]);
+  });
+});
+
+document.getElementById('btn-animate').addEventListener('click', animate);
+document.getElementById('btn-step').addEventListener('click', step);
+document.getElementById('btn-reset').addEventListener('click', reset);
+
+document.getElementById('digit-slider').addEventListener('input', function() {
+  // Regenerate problem with this many digits
+  var digits = parseInt(this.value, 10);
+  var a = '', b = '';
+  for (var i = 0; i < digits; i++) { a += Math.floor(Math.random() * 9 + 1).toString(); }
+  for (var i = 0; i < digits; i++) { b += Math.floor(Math.random() * 9 + 1).toString(); }
+  document.querySelectorAll('.presets button').forEach(function(b) { b.classList.remove('active'); });
+  setProblem(a, b);
+});
+
+// ─── Init ──────────────────────────────────────────────────
+resizeCanvas();
+setProblem('1234', '5678');
+</script>
+</body>
+</html>

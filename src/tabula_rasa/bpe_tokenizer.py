@@ -67,10 +67,16 @@ class BPETokenizer:
         # Max sequence length (for padding)
         self.max_seq_len = 64
 
-    # ─── Character-level encoding (same as MathTokenizer) ─────────
+    # ─── Hybrid encoding — character-level with BPE when available ──
 
     def encode(self, text: str, add_special_tokens: bool = True) -> list[int]:
-        """Encode text using base character vocabulary only (no BPE)."""
+        """Encode text. Uses BPE merges if available, otherwise character-level.
+
+        This makes BPETokenizer a drop-in replacement for MathTokenizer:
+        the same interface but with BPE compression of frequent patterns.
+        """
+        if self.merges:
+            return self.encode_bpe(text, add_special_tokens)
         ids = []
         if add_special_tokens:
             ids.append(self.bos_id)
@@ -81,13 +87,13 @@ class BPETokenizer:
         return ids
 
     def decode(self, ids: list[int], skip_special: bool = True) -> str:
-        """Decode token IDs back to text."""
+        """Decode token IDs back to text, handling merged BPE tokens."""
         chars = []
         for i in ids:
             if skip_special and i in (self.pad_id, self.bos_id, self.eos_id, self.unk_id):
                 continue
-            chars.append(self.itos.get(i, '<UNK>'))
-        # Replace merged-token names in angle brackets with their text
+            token = self.itos.get(i, '<UNK>')
+            chars.append(token)
         text = ''.join(chars)
         return text
 

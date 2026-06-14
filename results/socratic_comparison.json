@@ -1,0 +1,29 @@
+{
+  "config": {
+    "seeds": 5,
+    "steps": 30000,
+    "ops": ["add"]
+  },
+  "results": [
+    {"seed": 1, "variant": "standard", "op": "add", "accuracy": 100.0, "time_seconds": 138},
+    {"seed": 1, "variant": "socratic", "op": "add", "accuracy": 100.0, "time_seconds": 138},
+    {"seed": 2, "variant": "standard", "op": "add", "accuracy": 100.0, "time_seconds": 145},
+    {"seed": 2, "variant": "socratic", "op": "add", "accuracy": 100.0, "time_seconds": 148},
+    {"seed": 3, "variant": "standard", "op": "add", "accuracy": 100.0, "time_seconds": 150},
+    {"seed": 3, "variant": "socratic", "op": "add", "accuracy": 100.0, "time_seconds": 152},
+    {"seed": 4, "variant": "standard", "op": "add", "accuracy": 100.0, "time_seconds": 154},
+    {"seed": 4, "variant": "socratic", "op": "add", "accuracy": 96.0, "time_seconds": 153},
+    {"seed": 5, "variant": "standard", "op": "add", "accuracy": 100.0, "time_seconds": 154},
+    {"seed": 5, "variant": "socratic", "op": "add", "accuracy": 96.0, "time_seconds": 154}
+  ],
+  "summary": {
+    "standard_avg": 100.0,
+    "socratic_avg": 98.4,
+    "improvement": -1.6,
+    "hardware": "NVIDIA GeForce RTX 5090 (33.7GB)",
+    "config": "batch=256, AMP=ON, curriculum=1-phase (1-digit), train_samples=5000, max_digits=1, dataset_size=5000",
+    "seed_timings_min": [2.3, 2.4, 2.5, 2.6, 2.6],
+    "findings": "Ceiling effect: 1-digit addition converges to 100% at step ~2000. Socratic refinement on a perfectly converged model shows no benefit (98.4% vs 100.0%). For meaningful Socratic comparison, use multi-digit or harder tasks."
+  },
+  "timestamp": "2026-06-14T14:35:00Z"
+}

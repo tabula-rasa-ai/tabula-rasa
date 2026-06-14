@@ -1,32 +1,46 @@
+FROM python:3.11-slim AS base
+
+WORKDIR /app
+
+# Install PyTorch CPU-only (GPU users can override with CUDA variant)
+RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
+# Install project dependencies
+COPY pyproject.toml requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Install optional extras
+RUN pip install --no-cache-dir "psutil>=5.0"
+
+# ── Final stage (smaller image) ─────────────────────────────
 FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install PyTorch (CPU version for smaller image; GPU users can install CUDA variant)
-RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
+# Copy pre-built deps from base
+COPY --from=base /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=base /usr/local/bin /usr/local/bin
 
-# Install remaining dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy source code
+# Project source
 COPY src/ src/
-COPY start_tabula_rasa.bat .
+
+# Configuration
+COPY config.py .
+
+# Core scripts
 COPY api_server.py .
 COPY train_specialist.py .
 COPY auto_train.py .
-COPY specialist_router.py .
-COPY specialist_network.py .
-COPY self_improve.py .
 
-# Copy egefalos package
+# Egefalos package (sleep cycle, hippocampus, socratic, router, etc.)
 COPY egefalos/ egefalos/
 
-# Create directories for runtime artifacts
-RUN mkdir -p checkpoints specialists data exports memory
+# Dashboard static files
+COPY Dashboard/ Dashboard/
 
-# Expose API port
-EXPOSE 8000
+# Runtime directories (model checkpoints, data, exports)
+RUN mkdir -p specialists checkpoints data exports memory
 
-# Default: start the API server
+EXPOSE 8000 8002
+
 CMD ["python", "api_server.py"]

@@ -1,25 +1,91 @@
 version: "3.9"
 
+x-common: &common
+  build: .
+  image: tabula-rasa:latest
+  environment:
+    - PYTHONUNBUFFERED=1
+    - PYTHONDONTWRITEBYTECODE=1
+  restart: unless-stopped
+  volumes:
+    - tabula_rasa_specialists:/app/specialists
+    - tabula_rasa_data:/app/data
+    - tabula_rasa_exports:/app/exports
+    - tabula_rasa_memory:/app/memory
+
 services:
-  tabula-rasa:
-    build: .
-    container_name: tabula-rasa
+  # ── API Server (port 8000) ────────────────────────────
+  # Serves: Dashboard UI, REST API, training endpoints
+  api-server:
+    <<: *common
+    container_name: tabula-rasa-api
     ports:
       - "8000:8000"
-    volumes:
-      # Persist trained specialists across restarts
-      - tabula_rasa_data:/app/specialists
-      - tabula_rasa_data:/app/checkpoints
-      - tabula_rasa_data:/app/exports
-    environment:
-      - PYTHONUNBUFFERED=1
-    restart: unless-stopped
-    # Resource limits (adjust based on your hardware)
+    command: ["python", "api_server.py"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
     deploy:
       resources:
         limits:
           cpus: "4"
           memory: "4G"
 
+  # ── Skill Router (port 8002) ──────────────────────────
+  # Routes queries to the right specialist
+  router:
+    <<: *common
+    container_name: tabula-rasa-router
+    ports:
+      - "8002:8002"
+    command: ["python", "egefalos/tabula_rasa.py", "--port", "8002"]
+    depends_on:
+      api-server:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: "2G"
+
+  # ── Sleep Cycle Daemon ────────────────────────────────
+  # Periodically consolidates experiences via EWC
+  sleep-cycle:
+    <<: *common
+    container_name: tabula-rasa-sleep
+    command: ["python", "egefalos/sleep_cycle.py", "--daemon", "--interval", "3600"]
+    depends_on:
+      api-server:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: "2G"
+
+  # ── P2P Swarm Daemon ──────────────────────────────────
+  # Discovers other Tabula Rasa instances on the LAN
+  p2p-swarm:
+    <<: *common
+    container_name: tabula-rasa-p2p
+    ports:
+      - "9000:9000"
+    command: ["python", "egefalos/p2p_daemon.py", "--port", "9000"]
+    network_mode: host  # Required for UDP multicast discovery
+    depends_on:
+      api-server:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: "1G"
+
 volumes:
+  tabula_rasa_specialists:
   tabula_rasa_data:
+  tabula_rasa_exports:
+  tabula_rasa_memory:

@@ -596,6 +596,8 @@ def train_specialist(op, steps=0, batch_size=0, lr=0,
     last_eval_time = t_start
     eval_history = []  # Track recent accuracies for early stopping
     loss_streak_count = 0  # Consecutive evals with no improvement
+    recent_losses = []    # Recent loss values for entropy-based curriculum
+    entropy_msg = ''      # Entropy trigger message (for curriculum logging)
     curriculum_phase = 0  # Current curriculum phase index
     curriculum_step_offset = global_step  # Steps at start of current phase
 
@@ -605,10 +607,11 @@ def train_specialist(op, steps=0, batch_size=0, lr=0,
     print(f'  Press Ctrl+C to save and exit gracefully.\\n')
 
     # ── Persistent batch generator (avoids recreating DataLoader every epoch) ──
+    _nw = 4 if device.type == 'cuda' else 0
     def _infinite_batches(dataset, batch_size):
         while True:
             loader = DataLoader(dataset, batch_size=batch_size,
-                                shuffle=True, num_workers=0, drop_last=True)
+                                shuffle=True, num_workers=_nw, drop_last=True)
             yield from loader
 
     scaler = GradScaler() if use_amp_enabled else None
@@ -623,12 +626,29 @@ def train_specialist(op, steps=0, batch_size=0, lr=0,
             if use_curriculum and curriculum_phase < len(cfg.curriculum_phases):
                 phase_steps, phase_digits = cfg.curriculum_phases[curriculum_phase]
                 steps_in_phase = global_step - curriculum_step_offset
-                if steps_in_phase >= phase_steps and curriculum_phase + 1 < len(cfg.curriculum_phases):
+
+                # Check if it's time to advance
+                advance = steps_in_phase >= phase_steps
+
+                # Entropy-based advancement: advance when model is confident enough
+                if cfg.use_entropy_curriculum and not advance:
+                    # Use running average loss as entropy proxy
+                    # Loss < threshold indicates high confidence
+                    if len(recent_losses) >= cfg.entropy_window:
+                        avg_loss = sum(recent_losses[-cfg.entropy_window:]) / cfg.entropy_window
+                        if avg_loss < cfg.entropy_threshold and steps_in_phase >= max(100, phase_steps // 10):
+                            advance = True
+                            entropy_msg = f' (entropy-triggered: avg_loss={avg_loss:.4f} < threshold={cfg.entropy_threshold})'
+                        else:
+                            entropy_msg = ''
+
+                if advance and curriculum_phase + 1 < len(cfg.curriculum_phases):
                     # Move to next phase
                     curriculum_phase += 1
                     new_steps, new_digits = cfg.curriculum_phases[curriculum_phase]
                     curriculum_step_offset = global_step
-                    curr_msg = f'\n  >>> Curriculum phase {curriculum_phase + 1}/{len(cfg.curriculum_phases)}: max_digits={new_digits} ({new_steps} steps) <<<\n'
+                    entropy_info = entropy_msg if cfg.use_entropy_curriculum and entropy_msg else ''
+                    curr_msg = f'\n  >>> Curriculum phase {curriculum_phase + 1}/{len(cfg.curriculum_phases)}: max_digits={new_digits} ({new_steps} steps){entropy_info} <<<\n'
                     print(curr_msg, flush=True)
                     log_file.write(curr_msg + '\n')
                     log_file.flush()
@@ -665,6 +685,7 @@ def train_specialist(op, steps=0, batch_size=0, lr=0,
                     _, loss, _ = model(x, y)
 
                 last_micro_loss = loss.item()
+                recent_losses.append(last_micro_loss)
                 loss_for_backward = loss / grad_accum_steps
 
                 if ewc is not None:

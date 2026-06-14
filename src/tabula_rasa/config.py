@@ -62,15 +62,15 @@ class Config:
     eval_every: int = 1000           # More frequent feedback (was 2000)
     save_every: int = 2000           # More frequent checkpoints (was 5000)
 
-    # Curriculum learning: gradually increase difficulty
+    # ── Curriculum (advanced) ─────────────────────────────
     use_curriculum: bool = True       # Enable curriculum learning
     curriculum_phases: list[tuple[int, int]] = [
         # (steps, max_digits) - train on this difficulty for N steps
-        (5000, 1),              # Steps 0-5000: 1-digit only
-        (10000, 2),             # Steps 5000-15000: 1-2 digit
-        (10000, 3),             # Steps 15000-25000: 1-3 digit
-        (5000, 4),              # Steps 25000+: full 1-4 digit
+        (30000, 1),             # Single phase: 1-digit only for clean convergence
     ]
+    use_entropy_curriculum: bool = False  # Advance phases based on output entropy
+    entropy_threshold: float = 0.5       # Advance when avg entropy < this (lower=more confident)
+    entropy_window: int = 3              # Number of evals to smooth over
 
     # Optimizer
     optimizer: str = 'adamw'         # adamw | adam | sgd
@@ -140,6 +140,12 @@ class Config:
     # ── Paths ─────────────────────────────────────────────────
     save_dir: str = 'checkpoints'
     data_dir: str = 'data'
+
+    # ── Text Tokenizer (General Text) ───────────────────────
+    use_text_tokenizer: bool = False       # Use BPETokenizer instead of MathTokenizer
+    text_vocab_size: int = 256             # Target vocab size after BPE learning
+    text_max_seq_len: int = 64             # Max sequence length for text tasks
+    text_num_merges: int = 50              # BPE merge operations to learn
 
     @property
     def device(self) -> str:
