@@ -605,6 +605,9 @@ def train_specialist(
     socratic_steps=500,
     socratic_problems=200,
     cot_scratchpad=False,
+    dialectic=False,
+    dialectic_steps=200,
+    dialectic_problems=50,
 ):
     """Train a specialist for one arithmetic operation.
 
@@ -1245,6 +1248,78 @@ def train_specialist(
         except Exception as e:
             print(f"  [!] Socratic refinement failed: {e}")
 
+    # ── Dialectical Self-Play (Generator vs Critic debate) ──
+    if dialectic and not _INTERRUPTED and best_acc > 30.0:
+        print(f'\n{"="*60}')
+        print(f"  Dialectical Self-Play Phase")
+        print(f"  Generator vs Critic debate: {dialectic_problems} problems, {dialectic_steps} steps")
+        print(f'{"="*60}')
+        try:
+            from egefalos.socratic_stage2 import GeneratorCritic, generate_training_data
+            from torch.utils.data import Dataset, DataLoader
+
+            # Use the trained model as both generator and critic
+            debate_engine = GeneratorCritic(model, model, tok)
+
+            # Generate correction pairs through self-critique
+            corrections = []
+            for i in range(dialectic_problems):
+                from train_specialist import generate_problem as gp
+                expr, ans = gp(op, cfg.min_digits, cfg.max_digits)
+                prompt = f"{expr}="
+                out = model.generate(tok, prompt, max_new_tokens=cfg.eval_max_tokens, temperature=0.5)
+                if "=" in out:
+                    pred = out.split("=")[-1].strip()
+                    if pred != ans.strip():
+                        # Wrong answer → self-correct through critique
+                        corrected = debate_engine.self_correct(out)
+                        if corrected.get("revised") and len(corrected["revised"]) > 5:
+                            corrections.append((out, corrected["revised"]))
+
+            if corrections:
+                print(f"  Generated {len(corrections)} correction pairs")
+                class CorrectionDataset(Dataset):
+                    def __init__(self, pairs, tokenizer, max_len):
+                        self.data = []
+                        for orig, rev in pairs:
+                            ids = tokenizer.encode(rev, add_special_tokens=True)
+                            if len(ids) <= max_len:
+                                self.data.append(ids)
+                    def __len__(self): return len(self.data)
+                    def __getitem__(self, idx):
+                        ids = self.data[idx]
+                        pad = [tok.pad_id] * (cfg.max_seq_len - len(ids))
+                        padded = ids + pad
+                        x = torch.tensor(padded[:-1], dtype=torch.long)
+                        y = torch.tensor(padded[1:], dtype=torch.long)
+                        y[y == tok.pad_id] = -100
+                        return x, y
+
+                corr_ds = CorrectionDataset(corrections, tok, cfg.max_seq_len)
+                if len(corr_ds) > 0:
+                    loader = DataLoader(corr_ds, batch_size=min(16, cfg.batch_size), shuffle=True)
+                    opt = torch.optim.AdamW(model.parameters(), lr=cfg.learning_rate * 0.5)
+                    model.train()
+                    for step in range(min(dialectic_steps, len(corr_ds) * 5)):
+                        for x, y in loader:
+                            x, y = x.to(device), y.to(device)
+                            opt.zero_grad()
+                            _, loss, _ = model(x, y)
+                            loss.backward()
+                            opt.step()
+                    # Re-evaluate
+                    acc = evaluate(model, tok, cfg, op, num=cfg.eval_samples)
+                    if acc > best_acc:
+                        best_acc = acc
+                        torch.save({"model_state_dict": model.state_dict(), "acc": best_acc,
+                                    "global_step": global_step, "dialectic_refined": True},
+                                   op_dir / "best.pt")
+                        print(f"  [Dialectic] New best: {best_acc:.1f}%")
+                    print(f"  [Dialectic] Accuracy after: {acc:.1f}%")
+        except Exception as e:
+            print(f"  [!] Dialectic self-play failed: {e}")
+            import traceback; traceback.print_exc()
+
     # ── Log experiment for comparator ──
     _log_experiment(
         {
@@ -1296,6 +1371,8 @@ Examples:
   python3 train_specialist.py add --resume       # Resume from checkpoint
   python3 train_specialist.py all                # Train all 4 operations
   python3 train_specialist.py add --steps 5000 --batch 64 --lr 0.0005
+  python3 train_specialist.py add --socratic    # Socratic self-improvement
+  python3 train_specialist.py add --dialectic   # Generator vs Critic debate
         """,
     )
     parser.add_argument("op", nargs="?", default="add", help="Operation: add|sub|mul|div|all")
@@ -1378,6 +1455,15 @@ Examples:
         help="Problems per Socratic iteration (default: 200)",
     )
     parser.add_argument(
+        "--dialectic", action="store_true", help="Enable dialectical self-play (Generator vs Critic debate)"
+    )
+    parser.add_argument(
+        "--dialectic-steps", type=int, default=200, help="Dialectic training steps (default: 200)"
+    )
+    parser.add_argument(
+        "--dialectic-problems", type=int, default=50, help="Problems for dialectic critique (default: 50)"
+    )
+    parser.add_argument(
         "--log-level",
         type=str,
         default="INFO",
@@ -1419,6 +1505,9 @@ Examples:
                 socratic=args.socratic,
                 socratic_steps=args.socratic_steps,
                 socratic_problems=args.socratic_problems,
+                dialectic=args.dialectic,
+                dialectic_steps=args.dialectic_steps,
+                dialectic_problems=args.dialectic_problems,
                 cot_scratchpad=args.cot,
             )
             results[op_name] = "OK" if model is not None else "FAILED"
@@ -1444,6 +1533,7 @@ Examples:
                     "loss_masking": not args.no_loss_mask,
                     "cot": args.cot,
                     "socratic": args.socratic,
+                    "dialectic": args.dialectic,
                     "ewc": args.ewc, "expert_ewc": args.expert_ewc, "deep": args.deep, "lora": args.lora,
                 },
             )
@@ -1473,6 +1563,7 @@ Examples:
         print(f"  ExpertEWC: {'ON (λ=' + str(args.ewc_lambda) + ')' if args.expert_ewc else 'OFF'}")
         print(f"  CoT:     {'ON' if args.cot else 'OFF'}")
         print(f"  Socratic: {'ON (steps=' + str(args.socratic_steps) + ')' if args.socratic else 'OFF'}")
+        print(f"  Dialectic: {'ON (problems=' + str(args.dialectic_problems) + ')' if args.dialectic else 'OFF'}")
         print(f"  LoRA:    {'ON (rank=' + str(args.lora_rank) + ')' if args.lora else 'OFF'}")
         print(f"  WandB:   {'ON' if args.wandb else 'OFF'}")
         print(f"  Est. time: {est_min:.0f} min ({est_min/60:.1f} hours)")
@@ -1502,5 +1593,8 @@ Examples:
         socratic=args.socratic,
         socratic_steps=args.socratic_steps,
         socratic_problems=args.socratic_problems,
+        dialectic=args.dialectic,
+        dialectic_steps=args.dialectic_steps,
+        dialectic_problems=args.dialectic_problems,
         cot_scratchpad=args.cot,
     )
