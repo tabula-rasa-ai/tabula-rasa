@@ -184,45 +184,53 @@ class ModelHandler:
 # ─── Editable config fields (name → (line_regex, type_fn)) ──────────
 CONFIG_FIELDS = {
     # Architecture
-    'd_model':      (r'^    d_model\s*=', int),
-    'n_layers':     (r'^    n_layers\s*=', int),
-    'n_heads':      (r'^    n_heads\s*=', int),
-    'd_ff':         (r'^    d_ff\s*=', int),
-    'max_seq_len':  (r'^    max_seq_len\s*=', int),
-    'dropout':      (r'^    dropout\s*=', float),
-    'activation':   (r'^    activation\s*=', lambda s: s.strip().strip("'")),
-    'norm_type':    (r'^    norm_type\s*=', lambda s: s.strip().strip("'")),
-    'pos_encoding': (r'^    pos_encoding\s*=', lambda s: s.strip().strip("'")),
-    'weight_init':  (r'^    weight_init\s*=', lambda s: s.strip().strip("'")),
-    'init_std':     (r'^    init_std\s*=', float),
+    'd_model':      (r'^    d_model(?::\s*\w+)?\s*=', int),
+    'n_layers':     (r'^    n_layers(?::\s*\w+)?\s*=', int),
+    'n_heads':      (r'^    n_heads(?::\s*\w+)?\s*=', int),
+    'd_ff':         (r'^    d_ff(?::\s*\w+)?\s*=', int),
+    'max_seq_len':  (r'^    max_seq_len(?::\s*\w+)?\s*=', int),
+    'dropout':      (r'^    dropout(?::\s*\w+)?\s*=', float),
+    'activation':   (r'^    activation(?::\s*\w+)?\s*=', lambda s: s.strip().strip("'")),
+    'norm_type':    (r'^    norm_type(?::\s*\w+)?\s*=', lambda s: s.strip().strip("'")),
+    'pos_encoding': (r'^    pos_encoding(?::\s*\w+)?\s*=', lambda s: s.strip().strip("'")),
+    'weight_init':  (r'^    weight_init(?::\s*\w+)?\s*=', lambda s: s.strip().strip("'")),
+    'init_std':     (r'^    init_std(?::\s*\w+)?\s*=', float),
     # Training
-    'batch_size':    (r'^    batch_size\s*=', int),
-    'learning_rate': (r'^    learning_rate\s*=', float),
-    'weight_decay':  (r'^    weight_decay\s*=', float),
-    'warmup_steps':  (r'^    warmup_steps\s*=', int),
-    'max_steps':     (r'^    max_steps\s*=', int),
-    'optimizer':     (r'^    optimizer\s*=', lambda s: s.strip().strip("'")),
-    'lr_schedule':   (r'^    lr_schedule\s*=', lambda s: s.strip().strip("'")),
-    'adam_beta1':    (r'^    adam_beta1\s*=', float),
-    'adam_beta2':    (r'^    adam_beta2\s*=', float),
-    'grad_clip_norm':   (r'^    grad_clip_norm\s*=', float),
-    'label_smoothing':  (r'^    label_smoothing\s*=', float),
-    'use_reversed':     (r'^    use_reversed\s*=', lambda s: s.strip() == 'True'),
-    'use_loss_masking': (r'^    use_loss_masking\s*=', lambda s: s.strip() == 'True'),
-    'use_hard_negative':(r'^    use_hard_negative\s*=', lambda s: s.strip() == 'True'),
-    'tie_embeddings':   (r'^    tie_embeddings\s*=', lambda s: s.strip() == 'True'),
-    'eval_temperature': (r'^    eval_temperature\s*=', float),
-    'eval_max_tokens':  (r'^    eval_max_tokens\s*=', int),
+    'batch_size':    (r'^    batch_size(?::\s*\w+)?\s*=', int),
+    'learning_rate': (r'^    learning_rate(?::\s*\w+)?\s*=', float),
+    'weight_decay':  (r'^    weight_decay(?::\s*\w+)?\s*=', float),
+    'warmup_steps':  (r'^    warmup_steps(?::\s*\w+)?\s*=', int),
+    'max_steps':     (r'^    max_steps(?::\s*\w+)?\s*=', int),
+    'optimizer':     (r'^    optimizer(?::\s*\w+)?\s*=', lambda s: s.strip().strip("'")),
+    'lr_schedule':   (r'^    lr_schedule(?::\s*\w+)?\s*=', lambda s: s.strip().strip("'")),
+    'adam_beta1':    (r'^    adam_beta1(?::\s*\w+)?\s*=', float),
+    'adam_beta2':    (r'^    adam_beta2(?::\s*\w+)?\s*=', float),
+    'grad_clip_norm':   (r'^    grad_clip_norm(?::\s*\w+)?\s*=', float),
+    'label_smoothing':  (r'^    label_smoothing(?::\s*\w+)?\s*=', float),
+    'use_reversed':     (r'^    use_reversed(?::\s*\w+)?\s*=', lambda s: s.strip() == 'True'),
+    'use_loss_masking': (r'^    use_loss_masking(?::\s*\w+)?\s*=', lambda s: s.strip() == 'True'),
+    'use_hard_negative':(r'^    use_hard_negative(?::\s*\w+)?\s*=', lambda s: s.strip() == 'True'),
+    'tie_embeddings':   (r'^    tie_embeddings(?::\s*\w+)?\s*=', lambda s: s.strip() == 'True'),
+    'eval_temperature': (r'^    eval_temperature(?::\s*\w+)?\s*=', float),
+    'eval_max_tokens':  (r'^    eval_max_tokens(?::\s*\w+)?\s*=', int),
     # Data
-    'train_samples': (r'^    train_samples\s*=', lambda s: int(s.replace('_', ''))),
-    'eval_samples':  (r'^    eval_samples\s*=', lambda s: int(s.replace('_', ''))),
-    'min_digits':    (r'^    min_digits\s*=', int),
-    'max_digits':    (r'^    max_digits\s*=', int),
+    'train_samples': (r'^    train_samples(?::\s*\w+)?\s*=', lambda s: int(s.replace('_', ''))),
+    'eval_samples':  (r'^    eval_samples(?::\s*\w+)?\s*=', lambda s: int(s.replace('_', ''))),
+    'min_digits':    (r'^    min_digits(?::\s*\w+)?\s*=', int),
+    'max_digits':    (r'^    max_digits(?::\s*\w+)?\s*=', int),
 }
+
+def _config_path():
+    """Resolve config.py location (moved to src/tabula_rasa/ in refactor)."""
+    p = Path('src/tabula_rasa/config.py')
+    if p.exists():
+        return p
+    return Path('config.py')
+
 
 def get_config_dict():
     """Read current config values from config.py."""
-    text = Path('config.py').read_text()
+    text = _config_path().read_text()
     vals = {}
     for name, (pat, caster) in CONFIG_FIELDS.items():
         m = re.search(pat + r'\s*([^#\n]+)', text, re.MULTILINE)
@@ -252,7 +260,7 @@ def get_config_dict():
 
 def save_config(values: dict) -> list[str]:
     """Update config.py with new values. Returns list of changes made."""
-    path = Path('config.py')
+    path = _config_path()
     text = path.read_text()
     changes = []
     for name, value in values.items():

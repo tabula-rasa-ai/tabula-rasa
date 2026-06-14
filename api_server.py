@@ -230,16 +230,17 @@ CONFIG_FIELDS = {
 }
 
 
+def _config_path() -> Path:
+    """Resolve config.py location (moved to src/tabula_rasa/ in refactor)."""
+    p = Path('src/tabula_rasa/config.py')
+    if p.exists():
+        return p
+    return Path('config.py')
+
+
 def get_config_dict():
     """Read current config values from config.py."""
-    # Config moved to src/tabula_rasa/config.py in the src-layout refactor.
-    # Check both locations for backward compatibility.
-    config_path = Path('src/tabula_rasa/config.py')
-    if not config_path.exists():
-        config_path = Path('config.py')
-    if not config_path.exists():
-        return {'error': 'config.py not found'}
-    text = config_path.read_text()
+    text = _config_path().read_text()
     vals = {}
     for name, (pat, caster) in CONFIG_FIELDS.items():
         m = re.search(pat + r'\s*([^#\n]+)', text, re.MULTILINE)
@@ -267,7 +268,7 @@ def get_config_dict():
 
 def save_config(values: dict) -> list[str]:
     """Update config.py with new values. Returns list of changes made."""
-    path = Path('config.py')
+    path = _config_path()
     text = path.read_text()
     changes = []
     for name, value in values.items():
@@ -486,7 +487,7 @@ def get_training_status():
                         info['operation'] = lp.parent.parent.name if lp.parent.parent.name != 'math' else lp.parent.name
                         # Get config from config.py
                         try:
-                            cfg_text = Path('config.py').read_text()
+                            cfg_text = _config_path().read_text()
                             for key, (pat, _) in CONFIG_FIELDS.items():
                                 m2 = re.search(pat + r'\s*([^#\n]+)', cfg_text, re.MULTILINE)
                                 if m2:
@@ -876,10 +877,7 @@ class Handler(BaseHTTPRequestHandler):
         elif path == '/api/config':
             self._json(get_config_dict())
         elif path == '/config-raw':
-            # Config moved to src/tabula_rasa/ — check both locations
-            fp = Path('src/tabula_rasa/config.py')
-            if not fp.exists():
-                fp = Path('config.py')
+            fp = _config_path()
             if fp.exists():
                 self.send_response(200)
                 self.send_header('Content-Type', 'text/plain; charset=utf-8')
