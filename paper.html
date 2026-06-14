@@ -5,29 +5,33 @@
 <title>Tabula Rasa — Capacity Boundary in Arithmetic Continual Learning</title>
 <style>
 body{font-family:Georgia,'Times New Roman',serif;max-width:800px;margin:40px auto;padding:0 20px;line-height:1.6;color:#222;font-size:16px}
-h1{font-size:28px;text-align:center;margin-bottom:5px}
+h1{font-size:28px;text-align:center;margin-bottom:5px;margin-top:20px}
+.author{text-align:center;color:#666;font-size:14px;margin-bottom:30px}
 h2{font-size:20px;margin-top:30px;border-bottom:1px solid #ddd;padding-bottom:5px}
-h3{font-size:17px;margin-top:20px}
-p{margin:10px 0}
+h3{font-size:17px;margin-top:25px;margin-bottom:8px}
+p{margin:10px 0;text-align:justify}
 figure{margin:20px 0;text-align:center}
-img{max-width:100%;border:1px solid #ddd}
-figcaption{font-size:13px;color:#666;margin-top:5px}
-ul{padding-left:25px}
+img{max-width:100%;border:1px solid #ddd;border-radius:4px}
+figcaption{font-size:13px;color:#555;margin-top:5px;text-align:center}
+ul{padding-left:25px;margin:10px 0}
 li{margin:5px 0}
 strong{font-weight:bold}
 em{font-style:italic}
 code{background:#f4f4f4;padding:2px 5px;border-radius:3px;font-size:14px}
 hr{border:none;border-top:1px solid #ddd;margin:30px 0}
-.abstract{background:#f9f9f9;padding:15px 20px;border-left:3px solid #4a7fb5;margin:20px 0;font-size:15px}
+.abstract{background:#f9f9f9;padding:15px 20px;border-left:3px solid #4a7fb5;margin:20px 0;font-size:15px;border-radius:0 4px 4px 0}
+.abstract p{margin:3px 0}
+.blockquote{border-left:3px solid #ddd;padding-left:15px;color:#555;margin:15px 0}
+table{border-collapse:collapse;margin:15px auto;font-size:14px}
+td,th{border:1px solid #ddd;padding:6px 10px;text-align:center}
+th{background:#f5f5f5;font-weight:bold}
 </style>
 </head>
 <body>
 <h1>Online Elastic Weight Consolidation: Empirical Validation on
 Arithmetic Continual
 Learning</h1>
-<div class="abstract">\label{abstract}
-
-We validate Online EWC (merged Fisher matrices) on sequential arithmetic
+<div class="abstract">\</p><p>We validate Online EWC (merged Fisher matrices) on sequential arithmetic
 tasks using a 1M-parameter transformer. We discover: (1) EWC prevents
 catastrophic forgetting reliably (100.0±0.0% retention across 3 seeds
 vs 64±55% without EWC, which is bimodal &mdash; either 0% or 96%
@@ -39,7 +43,7 @@ re-learning, (3) the two-task scalability limit is
 (Add: 2±2%, Sub: 0±0%), proving the bottleneck is model capacity, not
 Fisher information loss during merge. We confirm this via a 5M-parameter
 scaling ablation: a 5.27M model retains addition at 100% while acquiring
-subtraction at 93% under the same protocol -- definitive evidence of a
+subtraction at 93% under the same protocol &ndash; definitive evidence of a
 capacity boundary, not an EWC limitation. We validate and correctly reject
 adaptive gamma as a mitigation (Fisher overlap=0.977: tasks are not
 divergent enough for adaptive blending to matter). Open-source,
@@ -47,769 +51,657 @@ reproducible, CPU-only.</div>
 <h2>Online Elastic Weight Consolidation: Empirical Validation on
 Arithmetic Continual
 Learning</h2>
-<p>\label{online-elastic-weight-consolidation-empirical-validation-on-arithmetic-continual-learning}</p>
-<p>\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}</p>
-<h2>1. Introduction</h2>
-<p>\label{introduction}</p>
-<p>Catastrophic forgetting &mdash; the tendency for neural networks to forget</p>
-<p>previously learned tasks when trained on new ones &mdash; remains a</p>
-<p>fundamental barrier to continual learning {[}McCloskey \& Cohen,</p>
-<p>1989{]}. When a model trained on addition is subsequently trained on</p>
-<p>subtraction, the addition knowledge can collapse to near-zero accuracy.</p>
-<p>Elastic Weight Consolidation (EWC) addresses this by computing a Fisher</p>
-<p>Information Matrix to identify which parameters are important for each</p>
-<p>task, then adding a penalty term to protect those parameters during new</p>
-<p>task learning {[}Kirkpatrick et al., 2017{]}. However, standard EWC</p>
-<p>requires storing and managing separate Fisher matrices for each task,</p>
-<p>leading to O(N) memory and compute overhead after N tasks.</p>
-<p>Online EWC {[}Schwarz et al., 2018{]} proposes a scalable solution:</p>
-<p>merge all past-task Fisher matrices into a single running total using</p>
-<p>exponential decay. This maintains O(1) overhead regardless of task</p>
-<p>count. Despite its theoretical appeal, Online EWC has seen limited</p>
-<p>empirical validation, especially on small models where Fisher estimation</p>
-<p>is noisy and task interference is high.</p>
-<p>In this work, we provide the first comprehensive empirical validation of</p>
-<p>Online EWC on sequential arithmetic tasks using a 1M-parameter</p>
-<p>transformer. Our findings are surprising in three ways:</p>
-<p>\begin{enumerate}</p>
-<p>\def\labelenumi{\arabic{enumi}.}</p>
-<p>\tightlist</p>
-<p>\item</p>
+
+<h3>1. Introduction</h3>
+<p>Catastrophic forgetting &mdash; the tendency for neural networks to forget
+previously learned tasks when trained on new ones &mdash; remains a
+fundamental barrier to continual learning {[}McCloskey \& Cohen,
+1989{]}. When a model trained on addition is subsequently trained on
+subtraction, the addition knowledge can collapse to near-zero accuracy.</p>
+<p>Elastic Weight Consolidation (EWC) addresses this by computing a Fisher
+Information Matrix to identify which parameters are important for each
+task, then adding a penalty term to protect those parameters during new
+task learning {[}Kirkpatrick et al., 2017{]}. However, standard EWC
+requires storing and managing separate Fisher matrices for each task,
+leading to O(N) memory and compute overhead after N tasks.</p>
+<p>Online EWC {[}Schwarz et al., 2018{]} proposes a scalable solution:
+merge all past-task Fisher matrices into a single running total using
+exponential decay. This maintains O(1) overhead regardless of task
+count. Despite its theoretical appeal, Online EWC has seen limited
+empirical validation, especially on small models where Fisher estimation
+is noisy and task interference is high.</p>
+<p>In this work, we provide the first comprehensive empirical validation of
+Online EWC on sequential arithmetic tasks using a 1M-parameter
+transformer. Our findings are surprising in three ways:</p>
+<p>.}</p>
 <strong>EWC prevents catastrophic forgetting reliably</strong> &mdash; 100.0±0.0%
-<p>addition retention across 3 seeds vs 64.0±55.4% without EWC. The</p>
-<p>no-EWC outcome is bimodal: permanent collapse (0%) or partial</p>
-<p>recovery (96%), depending on random initialization. EWC eliminates</p>
-<p>this stochasticity entirely.</p>
-<p>\item</p>
+  addition retention across 3 seeds vs 64.0±55.4% without EWC. The
+  no-EWC outcome is bimodal: permanent collapse (0%) or partial
+  recovery (96%), depending on random initialization. EWC eliminates
+  this stochasticity entirely.
 <strong>Training stability matters more than final accuracy</strong> &mdash;
-<p>models without EWC exhibit chaotic collapse-recovery oscillations that</p>
-<p>are masked by data re-learning. With EWC, training is smooth and</p>
-<p>monotonic. Final accuracy alone is insufficient for evaluating</p>
-<p>continual learning; the trajectory reveals the truth.</p>
-<p>\item</p>
+  models without EWC exhibit chaotic collapse-recovery oscillations that
+  are masked by data re-learning. With EWC, training is smooth and
+  monotonic. Final accuracy alone is insufficient for evaluating
+  continual learning; the trajectory reveals the truth.
 <strong>For two-task scenarios, EWC is robust across a 20× λ range</strong>
-<p>&mdash; all tested λ ∈ {[}100, 2000{]} achieve \textgreater95% on both</p>
-<p>tasks, with λ ≥ 500 reaching 100% on both with zero variance across</p>
-<p>seeds. The Pareto frontier is flat: EWC introduces no trade-off</p>
-<p>between old and new task performance for structurally similar</p>
-<p>operations.</p>
-<p>Our system is fully reproducible, runs entirely on CPU, and is available</p>
-<p>as open-source code at https://github.com/tabula-rasa-ai/tabula-rasa.</p>
-<p>\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}</p>
-<h2>2. Methods</h2>
-<p>\label{methods}</p>
-<p>\subsubsection{2.1 Online Elastic Weight</p>
-<p>Consolidation}\label{online-elastic-weight-consolidation}</p>
-<p>Online EWC maintains a single merged Fisher Information Matrix that</p>
-<p>accumulates importance estimates across all tasks seen so far.</p>
+  &mdash; all tested λ ∈ {[}100, 2000{]} achieve 95% on both
+  tasks, with λ ≥ 500 reaching 100% on both with zero variance across
+  seeds. The Pareto frontier is flat: EWC introduces no trade-off
+  between old and new task performance for structurally similar
+  operations.
+<p>Our system is fully reproducible, runs entirely on CPU, and is available
+as open-source code at https://github.com/tabula-rasa-ai/tabula-rasa.</p>
+<h3>2. Methods</h3>
+<p>Online EWC maintains a single merged Fisher Information Matrix that
+accumulates importance estimates across all tasks seen so far.</p>
 <strong>Fisher computation.</strong> For a model with parameters θ and a dataset
-<p>D, the Fisher information for parameter θᵢ is:</p>
-<p>\begin{verbatim}</p>
+D, the Fisher information for parameter θᵢ is:
 <p>Fᵢ = E_x∼D[(∂ log p(x|θ) / ∂θᵢ)²]</p>
-<p>We approximate this expectation by averaging squared gradients over</p>
-<p>N=100 training samples:</p>
-<p>\begin{verbatim}</p>
+<p>We approximate this expectation by averaging squared gradients over
+N=100 training samples:</p>
 <p>Fᵢ ≈ (1/N) Σⱼ (∂ log p(xⱼ|θ) / ∂θᵢ)²</p>
 <strong>Fisher merge.</strong> When training on a new task, we compute a new
-<p>Fisher matrix F\_new and merge it into the running total using</p>
-<p>exponential decay:</p>
-<p>\begin{verbatim}</p>
+Fisher matrix F_new and merge it into the running total using
+exponential decay:
 <p>F_combined = γ · F_old + (1-γ) · F_new</p>
-<p>where γ = 0.9 (keep 90% of old information, incorporate 10% new). This</p>
-<p>ensures older tasks' importance estimates decay gradually rather than</p>
-<p>being abruptly overwritten.</p>
+<p>where γ = 0.9 (keep 90% of old information, incorporate 10% new). This
+ensures older tasks' importance estimates decay gradually rather than
+being abruptly overwritten.</p>
 <strong>EWC penalty.</strong> During training on the new task, the loss function
-<p>includes a penalty term that discourages changes to parameters with high</p>
-<p>Fisher information:</p>
-<p>\begin{verbatim}</p>
+includes a penalty term that discourages changes to parameters with high
+Fisher information:
 <p>L_total = L_task + (λ/2) · Σᵢ Fᵢ · (θᵢ - θ*ᵢ)²</p>
-<p>where θ* is the parameter vector at the time of the last consolidation</p>
-<p>(anchor weights), λ is a scalar controlling penalty strength (default:</p>
-<p>1000), and the sum runs over all parameters with non-zero Fisher</p>
-<p>information.</p>
+<p>where θ* is the parameter vector at the time of the last consolidation
+(anchor weights), λ is a scalar controlling penalty strength (default:
+1000), and the sum runs over all parameters with non-zero Fisher
+information.</p>
 <strong>Why merged Fisher?</strong> The key advantage is O(1) overhead:
-<p>regardless of how many tasks have been learned, we store exactly one</p>
-<p>Fisher matrix and one set of anchor weights. This is in contrast to</p>
-<p>standard EWC, which stores per-task matrices and incurs O(N) memory</p>
-<p>cost. The computational cost of computing Fisher is one forward-backward</p>
-<p>pass per sample, amortized over training steps.</p>
-<p>\subsubsection{2.2 Experimental Setup}\label{experimental-setup}</p>
+regardless of how many tasks have been learned, we store exactly one
+Fisher matrix and one set of anchor weights. This is in contrast to
+standard EWC, which stores per-task matrices and incurs O(N) memory
+cost. The computational cost of computing Fisher is one forward-backward
+pass per sample, amortized over training steps.
 <strong>Model architecture.</strong> We use a 1M-parameter causal transformer
-<p>with: - d\_model = 128, n\_layers = 4, n\_heads = 4, d\_ff = 512 -</p>
-<p>Rotary Position Embeddings (RoPE) - RMSNorm normalization - ReLU</p>
-<p>activation - Vocabulary: 44 tokens (4 special + 20 fused carry-digit</p>
-<p>tokens + 20 math characters) - Context length: 32 tokens</p>
-<p>The model is trained on 1-digit arithmetic problems using a fused</p>
-<p>carry-digit tokenizer that encodes each column's carry (0 or 1) and</p>
-<p>digit (0-9) as a single token (e.g., ``04'' = carry=0, digit=4). This</p>
-<p>aligns positional information and makes carry propagation learnable at</p>
-<p>1M parameters.</p>
+with: - d_model = 128, n_layers = 4, n_heads = 4, d_ff = 512 -
+Rotary Position Embeddings (RoPE) - RMSNorm normalization - ReLU
+activation - Vocabulary: 44 tokens (4 special + 20 fused carry-digit
+tokens + 20 math characters) - Context length: 32 tokens
+<p>The model is trained on 1-digit arithmetic problems using a fused
+carry-digit tokenizer that encodes each column's carry (0 or 1) and
+digit (0-9) as a single token (e.g., ``04'' = carry=0, digit=4). This
+aligns positional information and makes carry propagation learnable at
+1M parameters.</p>
 <strong>Training.</strong> All training uses: - AdamW optimizer (lr=0.001,
-<p>weight\_decay=0.01, β=(0.9, 0.999)) - Cosine learning rate schedule with</p>
-<p>500-step warmup - Batch size 32 - Gradient clipping at norm 1.0 - 2000</p>
-<p>steps per task (on CPU, \textasciitilde25 minutes per task) - No GPU &mdash;</p>
-<p>all experiments on consumer CPU hardware</p>
+weight_decay=0.01, β=(0.9, 0.999)) - Cosine learning rate schedule with
+500-step warmup - Batch size 32 - Gradient clipping at norm 1.0 - 2000
+steps per task (on CPU, 25 minutes per task) - No GPU &mdash;
+all experiments on consumer CPU hardware
 <strong>Tasks.</strong> Three arithmetic operations of increasing difficulty: 1.
-<p>Addition (a + b = c) &mdash; baseline task, trained first 2. Subtraction (a</p>
-<p>- b = c) &mdash; second task, tests forgetting 3. Multiplication (a × b = c)</p>
-<p>&mdash; third task, tests scalability</p>
-<p>Each task uses 1-digit operands with 50% forced carry (a+b ≥ 10 or a≥b</p>
-<p>for subtraction).</p>
+Addition (a + b = c) &mdash; baseline task, trained first 2. Subtraction (a
+- b = c) &mdash; second task, tests forgetting 3. Multiplication (a × b = c)
+&mdash; third task, tests scalability
+<p>Each task uses 1-digit operands with 50% forced carry (a+b ≥ 10 or a≥b
+for subtraction).</p>
 <strong>Baselines.</strong> We compare against: - <em>No-EWC control:</em> Same
-<p>training procedure but without the EWC penalty term. This measures the</p>
-<p>degree of catastrophic forgetting. - <em>EWC (our method):</em> Full</p>
-<p>Online EWC pipeline with Fisher computation, merge, and penalty.</p>
+training procedure but without the EWC penalty term. This measures the
+degree of catastrophic forgetting. - <em>EWC (our method):</em> Full
+Online EWC pipeline with Fisher computation, merge, and penalty.
 <strong>Metrics.</strong> - Task accuracy: percentage of correct answers on 100
-<p>fresh problems - Training trajectory: per-epoch accuracy for all tasks,</p>
-<p>revealing stability - Retention drop: baseline accuracy minus accuracy</p>
-<p>after subsequent training - Fisher norm: √Σ Fᵢ², measures constraint</p>
-<p>density in parameter space</p>
-<p>\subsubsection{2.3 Ablation Design}\label{ablation-design}</p>
+fresh problems - Training trajectory: per-epoch accuracy for all tasks,
+revealing stability - Retention drop: baseline accuracy minus accuracy
+after subsequent training - Fisher norm: √Σ Fᵢ², measures constraint
+density in parameter space
 <p>We conduct three ablations:</p>
-<p>\begin{enumerate}</p>
-<p>\def\labelenumi{\arabic{enumi}.}</p>
-<p>\item</p>
+<p>.}</p>
 <strong>No-EWC control</strong> &mdash; Is EWC essential? Train subtraction on the
-<p>addition model without EWC penalty. Catastrophic forgetting would</p>
-<p>manifest as addition accuracy dropping below 50%.</p>
-<p>\item</p>
+  addition model without EWC penalty. Catastrophic forgetting would
+  manifest as addition accuracy dropping below 50%.
 <strong>Lambda sweep</strong> &mdash; What is the optimal penalty strength? Test λ
-<p>∈ {100, 250, 500, 1000, 2000}. Expected: a Pareto frontier where</p>
-<p>higher λ preserves old tasks better but may slow new-task learning.</p>
-<p>\item</p>
+  ∈ {100, 250, 500, 1000, 2000}. Expected: a Pareto frontier where
+  higher λ preserves old tasks better but may slow new-task learning.
 <strong>Three-task sequence</strong> &mdash; Does the merged Fisher scale? Train
-<p>addition → subtraction → multiplication sequentially, measuring all</p>
-<p>tasks after each step. Expected: graceful degradation (all tasks</p>
-<p>\textgreater85%) if Fisher merge is stable; catastrophic collapse</p>
-<p>(\textless50%) if it fails.</p>
-<p>\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}</p>
-<h2>3. Results</h2>
-<p>\label{results}</p>
-<p>\subsubsection{3.1 Online EWC Prevents Catastrophic</p>
-<p>Forgetting}\label{online-ewc-prevents-catastrophic-forgetting}</p>
+  addition → subtraction → multiplication sequentially, measuring all
+  tasks after each step. Expected: graceful degradation (all tasks
+  85%) if Fisher merge is stable; catastrophic collapse
+  (50%) if it fails.
+<h3>3. Results</h3>
 <strong>Finding:</strong> Online EWC achieves 100.0±0.0% addition retention
-<p>after subtraction training across 3 random seeds, compared to</p>
-<p>64.0±55.4% without EWC &mdash; a decisive advantage.</p>
-<p>\begin{longtable}[]{@{}</p>
-<p>>{\raggedright\arraybackslash}p{(\columnwidth - 6\tabcolsep) * \real{0.1379}}</p>
-<p>>{\raggedright\arraybackslash}p{(\columnwidth - 6\tabcolsep) * \real{0.1724}}</p>
-<p>>{\raggedright\arraybackslash}p{(\columnwidth - 6\tabcolsep) * \real{0.2241}}</p>
-<p>>{\raggedright\arraybackslash}p{(\columnwidth - 6\tabcolsep) * \real{0.4655}}@{}}</p>
-<p>\toprule\noalign{}</p>
-<p>\begin{minipage}[b]{\linewidth}\raggedright</p>
-<p>Metric</p>
-<p>With EWC</p>
-<p>Without EWC</p>
-<p>Difference (EWC − No-EWC)</p>
-<p>\midrule\noalign{}</p>
-<p>\endhead</p>
-<p>\bottomrule\noalign{}</p>
-<p>\endlastfoot</p>
-<p>Addition baseline & 83.0%* & 96.7±2.1% (3 seeds) & &mdash; \\</p>
-<p>Addition after subtraction & <strong>100.0±0.0%</strong> & <strong>64.0±55.4%</strong></p>
-<p>& <strong>+36.0pp</strong> \\</p>
-<p>Subtraction acquired & <strong>100.0±0.0%</strong> & <strong>65.3±48.0%</strong> &</p>
+after subtraction training across 3 random seeds, compared to
+64.0±55.4% without EWC &mdash; a decisive advantage.
+<p>[]{@{}
+  >{}p{( - 6) * }
+  >{}p{( - 6) * }
+  >{}p{( - 6) * }
+  >{}p{( - 6) * }@{}}</p>
+<p>[b]{}
+Metric
+ & [b]{}
+With EWC
+ & [b]{}
+Without EWC
+ & [b]{}
+Difference (EWC − No-EWC)
+ \\</p>
+<p>Addition baseline & 83.0%* & 96.7±2.1% (3 seeds) & &mdash; \\
+Addition after subtraction & <strong>100.0±0.0%</strong> & <strong>64.0±55.4%</strong>
+& <strong>+36.0pp</strong> \\
+Subtraction acquired & <strong>100.0±0.0%</strong> & <strong>65.3±48.0%</strong> &
 <strong>+34.7pp</strong> \\
-<p>Retention drop & <strong>−2.3±2.1 pp</strong> (improved) & <strong>+32.7±54.9</p>
-<p>pp</strong> & <strong>−35.0pp</strong> \\</p>
+Retention drop & <strong>−2.3±2.1 pp</strong> (improved) & <strong>+32.7±54.9
+pp</strong> & <strong>−35.0pp</strong> \\</p>
 <em>Table 1: Online EWC vs.~No-EWC control (mean ± std, 3 seeds). EWC
-<p>achieves 100% on both tasks with zero variance. Without EWC, the</p>
-<p>outcome is bimodal: seeds produce either 0% (permanent collapse) or</p>
-<p>96% (partial recovery). EWC eliminates this stochasticity entirely.</em></p>
+achieves 100% on both tasks with zero variance. Without EWC, the
+outcome is bimodal: seeds produce either 0% (permanent collapse) or
+96% (partial recovery). EWC eliminates this stochasticity entirely.</em>
 <em>Note: The EWC baseline (83.0%) is from a single earlier run with
-<p>different random seed and curriculum configuration; the within-study</p>
-<p>comparison uses matched baselines per condition. The primary comparison</p>
-<p>is post-subtraction retention, where both conditions use identical</p>
-<p>evaluation.</em></p>
-<p>The zero variance of the EWC condition is notable: across all 3 seeds,</p>
-<p>addition retention and subtraction acquisition both hit exactly 100%.</p>
-<p>This confirms that with EWC, the model finds a stable, reproducible</p>
-<p>solution regardless of initialization.</p>
-<p>The no-EWC condition tells a different story. The large standard</p>
-<p>deviation (±55.4%) is not noise &mdash; it reflects a genuine bimodal</p>
-<p>distribution. Seed 123 produced permanent collapse (0% addition), while</p>
-<p>seeds 42 and 256 recovered to 96%. Without EWC, the training outcome is</p>
+different random seed and curriculum configuration; the within-study
+comparison uses matched baselines per condition. The primary comparison
+is post-subtraction retention, where both conditions use identical
+evaluation.</em>
+<p>The zero variance of the EWC condition is notable: across all 3 seeds,
+addition retention and subtraction acquisition both hit exactly 100%.
+This confirms that with EWC, the model finds a stable, reproducible
+solution regardless of initialization.</p>
+<p>The no-EWC condition tells a different story. The large standard
+deviation (±55.4%) is not noise &mdash; it reflects a genuine bimodal
+distribution. Seed 123 produced permanent collapse (0% addition), while
+seeds 42 and 256 recovered to 96%. Without EWC, the training outcome is
 <strong>unpredictable</strong>: the same model, data, and hyperparameters can
-<p>either fully forget or partially recover depending on the stochasticity</p>
-<p>of training dynamics. EWC eliminates this uncertainty entirely.</p>
-<p>Notably, the retention drop with EWC is <em>negative</em> on average</p>
-<p>(−2.3±2.1 pp) &mdash; addition accuracy improved from baseline in most runs.</p>
-<p>This contradicts the typical EWC narrative, where protecting old</p>
-<p>parameters comes at the cost of new-task learning. Here, the merged</p>
-<p>Fisher acts as implicit regularization, guiding the optimizer toward</p>
-<p>better local minima that satisfy both tasks.</p>
-<p>\subsubsection{3.2 Training Stability Reveals Hidden</p>
-<p>Collapses}\label{training-stability-reveals-hidden-collapses}</p>
+either fully forget or partially recover depending on the stochasticity
+of training dynamics. EWC eliminates this uncertainty entirely.</p>
+<p>Notably, the retention drop with EWC is <em>negative</em> on average
+(−2.3±2.1 pp) &mdash; addition accuracy improved from baseline in most runs.
+This contradicts the typical EWC narrative, where protecting old
+parameters comes at the cost of new-task learning. Here, the merged
+Fisher acts as implicit regularization, guiding the optimizer toward
+better local minima that satisfy both tasks.</p>
 <strong>Finding:</strong> Final accuracy alone is misleading. The training
-<p>trajectory reveals that without EWC, the model undergoes chaotic</p>
-<p>oscillations with complete task collapse, only recovering through data</p>
-<p>re-learning.</p>
+trajectory reveals that without EWC, the model undergoes chaotic
+oscillations with complete task collapse, only recovering through data
+re-learning.
 <strong>Without EWC trajectory (addition accuracy per epoch):</strong>
-<p>\begin{verbatim}</p>
-<p>Epoch   1:   94%  ← both tasks look strong initially</p>
-<p>Epoch   3:   18%  ← CATASTROPHIC COLLAPSE (both tasks)</p>
-<p>Epoch   5:   34%  ← partial recovery</p>
-<p>Epoch   7:   82%  ← recovered</p>
-<p>Epoch   9:   78%  ← oscillating</p>
-<p>...</p>
-<p>Epoch  19:   56%  ← never fully stabilizes</p>
+<p>Epoch   1:   94%  ← both tasks look strong initially
+Epoch   3:   18%  ← CATASTROPHIC COLLAPSE (both tasks)
+Epoch   5:   34%  ← partial recovery
+Epoch   7:   82%  ← recovered
+Epoch   9:   78%  ← oscillating
+...
+Epoch  19:   56%  ← never fully stabilizes</p>
 <strong>With EWC trajectory:</strong>
-<p>\begin{verbatim}</p>
-<p>Epoch   5:   58%  ← steady improvement from lower start</p>
-<p>Epoch  10:   72%</p>
-<p>Epoch  15:   82%</p>
-<p>Epoch  20:   80%</p>
-<p>Epoch  25:   98%  ← smooth, monotonic convergence</p>
-<p>\begin{figure}</p>
-<p>\centering</p>
-<p>\includegraphics{experiments/stability_comparison.png}</p>
-<p>\caption{Figure 1: Training trajectories for addition accuracy during</p>
-<p>subtraction learning. Left: Without EWC, addition collapses to 18% at</p>
-<p>epoch 3 (both tasks die simultaneously), then chaotically recovers.</p>
-<p>Right: With EWC, addition improves smoothly from 58% to 98% with zero</p>
-<p>collapses.}</p>
+<p>Epoch   5:   58%  ← steady improvement from lower start
+Epoch  10:   72%
+Epoch  15:   82%
+Epoch  20:   80%
+Epoch  25:   98%  ← smooth, monotonic convergence</p>
 <em>Figure 1: Training trajectories for addition accuracy during
-<p>subtraction learning. <strong>Left:</strong> Without EWC, addition collapses to</p>
-<p>18% at epoch 3 (both tasks die simultaneously), then chaotically</p>
-<p>recovers. <strong>Right:</strong> With EWC, addition improves smoothly from 58%</p>
-<p>to 98% with zero collapses.</em></p>
-<p>The collapse without EWC is synchronized &mdash; both addition AND</p>
-<p>subtraction hit near-zero simultaneously at epoch 3. This is classic</p>
-<p>catastrophic forgetting: the parameter updates for subtraction overwrite</p>
-<p>the features learned for addition, and because both tasks share the same</p>
-<p>model, the interference destroys both.</p>
-<p>Recovery occurs not through retention but through re-learning: the model</p>
-<p>re-encounters similar problem patterns in subsequent training batches</p>
-<p>and re-acquires the knowledge from scratch. A naive observer measuring</p>
-<p>only final accuracy would see 65% and miss the underlying instability</p>
-<p>entirely.</p>
+subtraction learning. <strong>Left:</strong> Without EWC, addition collapses to
+18% at epoch 3 (both tasks die simultaneously), then chaotically
+recovers. <strong>Right:</strong> With EWC, addition improves smoothly from 58%
+to 98% with zero collapses.</em>
+<p>The collapse without EWC is synchronized &mdash; both addition AND
+subtraction hit near-zero simultaneously at epoch 3. This is classic
+catastrophic forgetting: the parameter updates for subtraction overwrite
+the features learned for addition, and because both tasks share the same
+model, the interference destroys both.</p>
+<p>Recovery occurs not through retention but through re-learning: the model
+re-encounters similar problem patterns in subsequent training batches
+and re-acquires the knowledge from scratch. A naive observer measuring
+only final accuracy would see 65% and miss the underlying instability
+entirely.</p>
 <strong>Interpretation:</strong> Training stability is a distinct dimension of
-<p>evaluation from final accuracy. A system with high final accuracy can be</p>
-<p>fundamentally unstable, alternating between competence and ignorance.</p>
-<p>EWC's primary contribution is stability &mdash; ensuring that learning is</p>
-<p>monotonic and reliable.</p>
-<p>\subsubsection{3.3 Lambda Robustness: Two-Task Frontier is</p>
-<p>Flat}\label{lambda-robustness-two-task-frontier-is-flat}</p>
+evaluation from final accuracy. A system with high final accuracy can be
+fundamentally unstable, alternating between competence and ignorance.
+EWC's primary contribution is stability &mdash; ensuring that learning is
+monotonic and reliable.
 <strong>Finding:</strong> For two-task sequential arithmetic, EWC is robust
-<p>across λ ∈ {[}100, 2000{]}. All tested values achieve \textgreater95%</p>
-<p>retention and \textgreater95% new-task acquisition. The Pareto frontier</p>
-<p>is <strong>perfectly flat</strong> for λ ≥ 500, with all values achieving 100%</p>
-<p>on both tasks.</p>
-<p>\begin{longtable}[]{@{}llllll@{}}</p>
-<p>\toprule\noalign{}</p>
+across λ ∈ {[}100, 2000{]}. All tested values achieve 95%
+retention and 95% new-task acquisition. The Pareto frontier
+is <strong>perfectly flat</strong> for λ ≥ 500, with all values achieving 100%
+on both tasks.
+<p>[]{@{}llllll@{}}</p>
 <p>λ & Add Baseline & Add Final & Sub Final & Drop & Combined \\</p>
-<p>\midrule\noalign{}</p>
-<p>\endhead</p>
-<p>\bottomrule\noalign{}</p>
-<p>\endlastfoot</p>
-<p>100 & 97% & 96% & 95% & −1pp & 191 \\</p>
-<p>250 & 98% & 97% & <strong>100%</strong> & −1pp & 197 \\</p>
+<p>100 & 97% & 96% & 95% & −1pp & 191 \\
+250 & 98% & 97% & <strong>100%</strong> & −1pp & 197 \\
 <strong>500</strong> & 97% & <strong>100%</strong> & <strong>100%</strong> & <strong>+3pp</strong> &
 <strong>200</strong> \\
-<p>1000 & 95% & <strong>100%</strong> & <strong>100%</strong> & <strong>+5pp</strong> & 200 \\</p>
-<p>2000 & 98% & <strong>100%</strong> & <strong>100%</strong> & <strong>−2pp</strong> & 200 \\</p>
+1000 & 95% & <strong>100%</strong> & <strong>100%</strong> & <strong>+5pp</strong> & 200 \\
+2000 & 98% & <strong>100%</strong> & <strong>100%</strong> & <strong>−2pp</strong> & 200 \\</p>
 <em>Table 2: Lambda sweep results. All λ ≥ 500 achieve perfect
-<p>retention and learning. Addition accuracy improves at higher λ values,</p>
-<p>indicating beneficial regularization.</em></p>
-<p>\begin{figure}</p>
-<p>\centering</p>
-<p>\includegraphics{experiments/lambda_sweep_pareto.png}</p>
-<p>\caption{Figure 2: Lambda robustness. Left: Individual accuracy curves.</p>
-<p>The frontier is flat &mdash; all λ ≥ 500 achieve 100% on both tasks. Right:</p>
-<p>Pareto frontier. The upper-right corner (100, 100) is reached for λ ≥</p>
-<p>500.}</p>
+retention and learning. Addition accuracy improves at higher λ values,
+indicating beneficial regularization.</em>
 <em>Figure 2: Lambda robustness. <strong>Left:</strong> Individual accuracy
-<p>curves. The frontier is flat &mdash; all λ ≥ 500 achieve 100% on both</p>
-<p>tasks. <strong>Right:</strong> Pareto frontier. The upper-right corner (100,</p>
-<p>100) is reached for λ ≥ 500. The Pareto frontier is perfectly flat</p>
-<p>across a 20x λ range.</em></p>
-<p>This flat frontier is unexpected. Standard EWC theory predicts a visible</p>
-<p>trade-off: higher λ protects old tasks but slows new-task learning.</p>
-<p>Instead, we find that λ=100 (weakest protection) and λ=2000 (strongest)</p>
-<p>produce nearly identical results, with λ ≥ 500 achieving perfect</p>
-<p>performance on both tasks.</p>
-<p>Critically, addition accuracy <strong>improves</strong> at λ ≥ 500 (up to +5pp</p>
-<p>at λ=1000). The EWC penalty does not constrain optimization &mdash; it</p>
-<p>regularizes it, guiding the optimizer toward solutions that generalize</p>
-<p>better on both old and new tasks. This is the ``regularization bonus''</p>
-<p>hypothesized in Section 4.1.</p>
+curves. The frontier is flat &mdash; all λ ≥ 500 achieve 100% on both
+tasks. <strong>Right:</strong> Pareto frontier. The upper-right corner (100,
+100) is reached for λ ≥ 500. The Pareto frontier is perfectly flat
+across a 20x λ range.</em>
+<p>This flat frontier is unexpected. Standard EWC theory predicts a visible
+trade-off: higher λ protects old tasks but slows new-task learning.
+Instead, we find that λ=100 (weakest protection) and λ=2000 (strongest)
+produce nearly identical results, with λ ≥ 500 achieving perfect
+performance on both tasks.</p>
+<p>Critically, addition accuracy <strong>improves</strong> at λ ≥ 500 (up to +5pp
+at λ=1000). The EWC penalty does not constrain optimization &mdash; it
+regularizes it, guiding the optimizer toward solutions that generalize
+better on both old and new tasks. This is the ``regularization bonus''
+hypothesized in Section 4.1.</p>
 <strong>Interpretation:</strong> The two-task arithmetic problem space has
-<p>sufficient structural overlap and parameter abundance that the Fisher</p>
-<p>constraints are <strong>non-binding</strong>. Both tasks share fundamental</p>
-<p>structure (digit encoding, carry logic, column alignment), and the</p>
-<p>1M-parameter model has ample capacity to represent both without</p>
-<p>competition. The Fisher matrix identifies parameters important for</p>
-<p>arithmetic generally; new-task learning can find compatible directions</p>
-<p>in the remaining degrees of freedom.</p>
-<p>\subsubsection{3.4 Three-Task Scalability: Capacity Boundary, Not</p>
-<p>Algorithmic</p>
-<p>Failure}\label{three-task-scalability-capacity-boundary-not-algorithmic-failure}</p>
+sufficient structural overlap and parameter abundance that the Fisher
+constraints are <strong>non-binding</strong>. Both tasks share fundamental
+structure (digit encoding, carry logic, column alignment), and the
+1M-parameter model has ample capacity to represent both without
+competition. The Fisher matrix identifies parameters important for
+arithmetic generally; new-task learning can find compatible directions
+in the remaining degrees of freedom.
 <strong>Hypothesis:</strong> Does the three-task collapse occur because of the
-<p>Fisher merge (algorithmic) or because the model lacks sufficient</p>
-<p>capacity (architectural)?</p>
+Fisher merge (algorithmic) or because the model lacks sufficient
+capacity (architectural)?
 <strong>Experiment:</strong> Compare Online EWC (merged Fisher) against
 <strong>Standard EWC</strong> (per-task Fisher matrices, no merge) on addition →
-<p>subtraction → multiplication at λ=500.</p>
+subtraction → multiplication at λ=500.
 <strong>Result: Both fail identically.</strong>
-<p>\begin{longtable}[]{@{}</p>
-<p>>{\raggedright\arraybackslash}p{(\columnwidth - 6\tabcolsep) * \real{0.1618}}</p>
-<p>>{\raggedright\arraybackslash}p{(\columnwidth - 6\tabcolsep) * \real{0.2794}}</p>
-<p>>{\raggedright\arraybackslash}p{(\columnwidth - 6\tabcolsep) * \real{0.2794}}</p>
-<p>>{\raggedright\arraybackslash}p{(\columnwidth - 6\tabcolsep) * \real{0.2794}}@{}}</p>
-<p>\toprule\noalign{}</p>
-<p>\begin{minipage}[b]{\linewidth}\raggedright</p>
-<p>Condition</p>
-<p>Add after 3 tasks</p>
-<p>Sub after 3 tasks</p>
-<p>Mul after 3 tasks</p>
-<p>\midrule\noalign{}</p>
-<p>\endhead</p>
-<p>\bottomrule\noalign{}</p>
-<p>\endlastfoot</p>
-<p>Online EWC (merged) & 3.0%* & 0.0%* & 34.0%* \\</p>
-<p>Standard EWC (per-task) & <strong>2.0±2.0%</strong> & <strong>0.0±0.0%</strong> &</p>
-<strong>24.7±13.1%</strong> \\
+<p>[]{@{}
+  >{}p{( - 6) * }
+  >{}p{( - 6) * }
+  >{}p{( - 6) * }
+  >{}p{( - 6) * }@{}}</p>
+<p>[b]{}
+Condition
+ & [b]{}
+Add after 3 tasks
+ & [b]{}
+Sub after 3 tasks
+ & [b]{}
+Mul after 3 tasks
+ \\</p>
+<p>Online EWC (merged) & 3.0%* & 0.0%* & 34.0%* \\
+Standard EWC (per-task) & <strong>2.0±2.0%</strong> & <strong>0.0±0.0%</strong> &
+<strong>24.7±13.1%</strong> \\</p>
 <em>Table 3: Three-task sequence results (Standard EWC: mean ± std, 3
-<p>seeds). Both merged and per-task EWC collapse identically at 3 tasks.</p>
+seeds). Both merged and per-task EWC collapse identically at 3 tasks.
 </em>Online EWC values are from a single run (consistent with the sweep
-<p>protocol); Standard EWC error bars confirm the collapse is not a</p>
-<p>stochastic artifact. The single Online EWC run falls within one standard</p>
-<p>deviation of the per-task condition for all three metrics, confirming no</p>
-<p>systematic difference between merged and non-merged variants.*</p>
-<p>Standard EWC &mdash; which stores separate Fisher matrices and anchor</p>
-<p>weights for each task and applies independent penalties &mdash; produces</p>
-<p>statistically indistinguishable results from the merged variant. The</p>
-<p>collapse is not caused by information loss during merge; it is caused by</p>
+protocol); Standard EWC error bars confirm the collapse is not a
+stochastic artifact. The single Online EWC run falls within one standard
+deviation of the per-task condition for all three metrics, confirming no
+systematic difference between merged and non-merged variants.*
+<p>Standard EWC &mdash; which stores separate Fisher matrices and anchor
+weights for each task and applies independent penalties &mdash; produces
+statistically indistinguishable results from the merged variant. The
+collapse is not caused by information loss during merge; it is caused by
 <strong>insufficient model capacity</strong> for three structurally divergent
-<p>operations.</p>
-<p>The collapse is immediate. In the first epoch of multiplication</p>
-<p>training, addition drops from 100% to 8%, and subtraction from 100%</p>
-<p>to 4%. The model cannot simultaneously satisfy the constraints of three</p>
-<p>distinct arithmetic operations within a single 1M-parameter parameter</p>
-<p>space.</p>
+operations.</p>
+<p>The collapse is immediate. In the first epoch of multiplication
+training, addition drops from 100% to 8%, and subtraction from 100%
+to 4%. The model cannot simultaneously satisfy the constraints of three
+distinct arithmetic operations within a single 1M-parameter parameter
+space.</p>
 <strong>Why multiplication exceeds model capacity.</strong> Addition and
-<p>subtraction share fundamental computational structure: same digit</p>
-<p>encoding, same carry propagation mechanism, same column-wise scratchpad</p>
-<p>format. A 1M-parameter transformer can represent both operations without</p>
-<p>competition. Multiplication is structurally different: digit-by-digit</p>
-<p>multiplication followed by summation, distinct scratchpad semantics,</p>
-<p>different error patterns (table lookup errors vs.~carry propagation</p>
-<p>errors). The Fisher matrices for addition and subtraction have overlap</p>
-<p>of 0.977 (near-identical), confirming their shared structure.</p>
-<p>Multiplication's parameter requirements are largely orthogonal &mdash; the</p>
-<p>model simply lacks the representational capacity to accommodate both</p>
-<p>(add+sub) and mul within a single parameter set.</p>
+subtraction share fundamental computational structure: same digit
+encoding, same carry propagation mechanism, same column-wise scratchpad
+format. A 1M-parameter transformer can represent both operations without
+competition. Multiplication is structurally different: digit-by-digit
+multiplication followed by summation, distinct scratchpad semantics,
+different error patterns (table lookup errors vs.~carry propagation
+errors). The Fisher matrices for addition and subtraction have overlap
+of 0.977 (near-identical), confirming their shared structure.
+Multiplication's parameter requirements are largely orthogonal &mdash; the
+model simply lacks the representational capacity to accommodate both
+(add+sub) and mul within a single parameter set.
 <strong>Diagnostic: capacity, not merge.</strong> The Fisher norm remains stable
-<p>throughout (2.35→2.19), and Standard EWC fails identically to Online</p>
-<p>EWC. These two pieces of evidence converge on the same conclusion: the</p>
-<p>three-task limit is architectural. No algorithmic modification to the</p>
-<p>EWC penalty &mdash; whether merged or per-task, whether gamma is fixed or</p>
-<p>adaptive &mdash; can overcome a fundamental capacity bottleneck.</p>
+throughout (2.35→2.19), and Standard EWC fails identically to Online
+EWC. These two pieces of evidence converge on the same conclusion: the
+three-task limit is architectural. No algorithmic modification to the
+EWC penalty &mdash; whether merged or per-task, whether gamma is fixed or
+adaptive &mdash; can overcome a fundamental capacity bottleneck.
 <strong>Validated negative result: Adaptive Gamma.</strong> We implemented
-<p>adaptive gamma, which scales the merge decay rate based on Fisher</p>
-<p>overlap between tasks (γ\_adaptive = base·overlap + min·(1−overlap)).</p>
-<p>Overlap is measured as cosine similarity between flattened Fisher</p>
-<p>vectors: cos(F\_old, F\_new) = (F\_old·F\_new) / (‖F\_old‖·‖F\_new‖),</p>
-<p>where each Fisher is flattened into a single vector of parameter-wise</p>
-<p>importance estimates. The measured overlap between addition and</p>
-<p>subtraction was 0.977 (near-identical, indicating nearly identical</p>
-<p>parameter importance patterns), producing γ\_adaptive=0.886. Three-task</p>
-<p>performance was unchanged (Add: 0%, Sub: 5%, Mul: 37%). This confirms</p>
-<p>that task divergence is not the limiting factor &mdash; the bottleneck is</p>
-<p>capacity, not the merge operator.</p>
+adaptive gamma, which scales the merge decay rate based on Fisher
+overlap between tasks (γ_adaptive = base·overlap + min·(1−overlap)).
+Overlap is measured as cosine similarity between flattened Fisher
+vectors: cos(F_old, F_new) = (F_old·F_new) / (‖F_old‖·‖F_new‖),
+where each Fisher is flattened into a single vector of parameter-wise
+importance estimates. The measured overlap between addition and
+subtraction was 0.977 (near-identical, indicating nearly identical
+parameter importance patterns), producing γ_adaptive=0.886. Three-task
+performance was unchanged (Add: 0%, Sub: 5%, Mul: 37%). This confirms
+that task divergence is not the limiting factor &mdash; the bottleneck is
+capacity, not the merge operator.
 <strong>Conclusion: Online EWC is validated as optimal for up to 2
-<p>structurally similar tasks. The scalability boundary at 3 structurally</p>
-<p>divergent tasks is architectural, not algorithmic.</strong> Future work should</p>
-<p>address model capacity directly through wider/deeper architectures,</p>
-<p>sparse expert models, or progressive networks.</p>
-<p>\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}</p>
-<h2>4. Discussion</h2>
-<p>\label{discussion}</p>
-<p>\subsubsection{4.1 Why Does Addition Improve, Not</p>
-<p>Degrade?}\label{why-does-addition-improve-not-degrade}</p>
-<p>The +9pp improvement in addition accuracy after subtraction training is</p>
-<p>unexpected. Standard EWC predicts that protecting old parameters should</p>
-<p>at best preserve old-task accuracy, not improve it. We identify three</p>
-<p>possible mechanisms:</p>
+structurally similar tasks. The scalability boundary at 3 structurally
+divergent tasks is architectural, not algorithmic.</strong> Future work should
+address model capacity directly through wider/deeper architectures,
+sparse expert models, or progressive networks.
+<h3>4. Discussion</h3>
+<p>The +9pp improvement in addition accuracy after subtraction training is
+unexpected. Standard EWC predicts that protecting old parameters should
+at best preserve old-task accuracy, not improve it. We identify three
+possible mechanisms:</p>
 <strong>Regularization effect (most likely).</strong> The Fisher-weighted
-<p>penalty term acts as an implicit regularizer. By constraining parameter</p>
-<p>updates to regions of low Fisher information, the optimizer is biased</p>
-<p>toward flatter, more generalizable minima. This is analogous to L2</p>
-<p>regularization, which can improve generalization on held-out data.</p>
-<p>Evidence: subtraction also converges to exceptionally high accuracy</p>
-<p>(97%), suggesting the EWC-constrained space supports better solutions</p>
-<p>than unconstrained training.</p>
+penalty term acts as an implicit regularizer. By constraining parameter
+updates to regions of low Fisher information, the optimizer is biased
+toward flatter, more generalizable minima. This is analogous to L2
+regularization, which can improve generalization on held-out data.
+Evidence: subtraction also converges to exceptionally high accuracy
+(97%), suggesting the EWC-constrained space supports better solutions
+than unconstrained training.
 <strong>Curriculum learning.</strong> Addition and subtraction share fundamental
-<p>structure (digit recognition, carry logic, column alignment). Training</p>
-<p>on subtraction re-exposes the model to arithmetic patterns that</p>
-<p>reinforce addition knowledge. However, this alone would not explain why</p>
-<p>addition improves beyond its original peak.</p>
+structure (digit recognition, carry logic, column alignment). Training
+on subtraction re-exposes the model to arithmetic patterns that
+reinforce addition knowledge. However, this alone would not explain why
+addition improves beyond its original peak.
 <strong>Feature regularization.</strong> The Fisher matrix identifies
-<p>task-specific important parameters. Subtraction training preferentially</p>
-<p>modifies low-Fisher parameters (those less critical for addition),</p>
-<p>avoiding interference with addition-specific features. The net effect is</p>
-<p>that addition-relevant features are preserved and potentially refined</p>
-<p>through shared representation learning.</p>
-<p>\subsubsection{4.2 Why is the Two-Task Frontier</p>
-<p>Flat?}\label{why-is-the-two-task-frontier-flat}</p>
-<p>The flat Pareto frontier (Section 3.3) suggests that for two arithmetic</p>
-<p>tasks, the Fisher constraints are <strong>non-binding</strong>. This likely</p>
-<p>reflects:</p>
-<p>\begin{enumerate}</p>
-<p>\def\labelenumi{\arabic{enumi}.}</p>
-<p>\item</p>
+task-specific important parameters. Subtraction training preferentially
+modifies low-Fisher parameters (those less critical for addition),
+avoiding interference with addition-specific features. The net effect is
+that addition-relevant features are preserved and potentially refined
+through shared representation learning.
+<p>The flat Pareto frontier (Section 3.3) suggests that for two arithmetic
+tasks, the Fisher constraints are <strong>non-binding</strong>. This likely
+reflects:</p>
+<p>.}</p>
 <strong>Structural overlap.</strong> Addition and subtraction share the same
-<p>input format, tokenizer, and output format. The underlying</p>
-<p>representations (digits, carries, column-wise operations) are nearly</p>
-<p>identical. The model can satisfy both tasks without modifying</p>
-<p>addition-critical parameters.</p>
-<p>\item</p>
+  input format, tokenizer, and output format. The underlying
+  representations (digits, carries, column-wise operations) are nearly
+  identical. The model can satisfy both tasks without modifying
+  addition-critical parameters.
 <strong>Parameter abundance.</strong> A 1M-parameter model has sufficient
-<p>capacity to represent two related tasks without competition. The</p>
-<p>Fisher matrix identifies only a subset of parameters as important,</p>
-<p>leaving ample degrees of freedom for new-task learning.</p>
-<p>\item</p>
+  capacity to represent two related tasks without competition. The
+  Fisher matrix identifies only a subset of parameters as important,
+  leaving ample degrees of freedom for new-task learning.
 <strong>Low task ambiguity.</strong> Unlike tasks from different domains
-<p>(e.g., vision + language), addition and subtraction have a</p>
-<p>well-defined relationship. The model can learn subtraction as</p>
-<p>``addition with an extra transformation'' rather than competing for</p>
-<p>disjoint parameter sets.</p>
-<p>These findings suggest that EWC's benefits are most pronounced when</p>
-<p>tasks share structure (regularization, stability) and least necessary</p>
-<p>when tasks are trivially separable (sufficient capacity). The critical</p>
-<p>question is: <strong>at what task count do constraints become binding?</strong></p>
-<p>\subsubsection{4.3 When Does the Frontier</p>
-<p>Bend?}\label{when-does-the-frontier-bend}</p>
-<p>The three-task experiment (§3.4) answers this definitively: the frontier</p>
-<p>bends at <strong>3 structurally distinct tasks</strong> &mdash; but not because of</p>
-<p>merge-related information loss. Both Online EWC (merged) and Standard</p>
-<p>EWC (per-task) fail identically. The bottleneck is</p>
+  (e.g., vision + language), addition and subtraction have a
+  well-defined relationship. The model can learn subtraction as
+  ``addition with an extra transformation'' rather than competing for
+  disjoint parameter sets.
+<p>These findings suggest that EWC's benefits are most pronounced when
+tasks share structure (regularization, stability) and least necessary
+when tasks are trivially separable (sufficient capacity). The critical
+question is: <strong>at what task count do constraints become binding?</strong></p>
+<p>The three-task experiment (§3.4) answers this definitively: the frontier
+bends at <strong>3 structurally distinct tasks</strong> &mdash; but not because of
+merge-related information loss. Both Online EWC (merged) and Standard
+EWC (per-task) fail identically. The bottleneck is
 <strong>architectural</strong>: at 3 divergent operations, the 1M-parameter
-<p>model simply runs out of representational capacity.</p>
-<p>This finding has important implications for the continual learning</p>
-<p>community. Prior work has attributed EWC's scalability limits to the</p>
-<p>merge operator {[}Schwarz et al., 2018{]}, but our controlled comparison</p>
-<p>isolates the cause: the same collapse occurs without any merge. The</p>
-<p>merged Fisher approach is therefore <strong>optimal</strong> for this model</p>
-<p>class &mdash; it achieves identical performance to the per-task variant</p>
-<p>while maintaining O(1) memory overhead.</p>
-<p>\subsubsection{4.4 Implications for Continual</p>
-<p>Learning}\label{implications-for-continual-learning}</p>
-<p>Our findings suggest a diagnostic methodology for distinguishing</p>
-<p>algorithmic failure from architectural saturation. Given a continual</p>
-<p>learning system that degrades at N tasks:</p>
-<p>\begin{enumerate}</p>
-<p>\def\labelenumi{\arabic{enumi}.}</p>
-<p>\tightlist</p>
-<p>\item</p>
+model simply runs out of representational capacity.</p>
+<p>This finding has important implications for the continual learning
+community. Prior work has attributed EWC's scalability limits to the
+merge operator {[}Schwarz et al., 2018{]}, but our controlled comparison
+isolates the cause: the same collapse occurs without any merge. The
+merged Fisher approach is therefore <strong>optimal</strong> for this model
+class &mdash; it achieves identical performance to the per-task variant
+while maintaining O(1) memory overhead.</p>
+<p>Our findings suggest a diagnostic methodology for distinguishing
+algorithmic failure from architectural saturation. Given a continual
+learning system that degrades at N tasks:</p>
+<p>.}</p>
 <strong>Test a non-merged baseline</strong> (per-task anchors, no merge). If
-<p>it also fails, the bottleneck is capacity, not the merge.</p>
-<p>\item</p>
+  it also fails, the bottleneck is capacity, not the merge.
 <strong>Measure Fisher overlap</strong> between tasks. If overlap is high
-<p>(\textgreater0.9), adaptive blending cannot help &mdash; the tasks</p>
-<p>genuinely share structure.</p>
-<p>\item</p>
+  (0.9), adaptive blending cannot help &mdash; the tasks
+  genuinely share structure.
 <strong>Compare to capacity baselines</strong> (wider/deeper models, sparse
-<p>experts). If performance scales with capacity, the limit is</p>
-<p>architectural.</p>
-<p>Applied to our system: Standard EWC fails identically, Fisher overlap is</p>
-<p>0.977, and 2-task performance is perfect. The conclusion is unambiguous:</p>
-<p>Online EWC is optimal up to the point of architectural saturation.</p>
+  experts). If performance scales with capacity, the limit is
+  architectural.
+<p>Applied to our system: Standard EWC fails identically, Fisher overlap is
+0.977, and 2-task performance is perfect. The conclusion is unambiguous:
+Online EWC is optimal up to the point of architectural saturation.</p>
 <strong>Proposed evaluation framework:</strong>
-<p>We propose <strong>training trajectory stability</strong> as an additional</p>
-<p>evaluation dimension for continual learning: - <strong>Stable:</strong> Smooth,</p>
-<p>monotonic learning curves, no sudden drops - <strong>Unstable:</strong> Chaotic</p>
-<p>oscillations, collapse-recovery cycles - <strong>Catastrophic:</strong></p>
-<p>Permanent loss of old tasks without recovery</p>
-<p>A system with stable trajectories is preferable even at the same final</p>
-<p>accuracy, because it provides predictable, reliable learning behavior.</p>
-<p>Our EWC system achieves <strong>Stable</strong>, while the no-EWC control</p>
-<p>exhibits <strong>Unstable</strong> behavior despite superficially similar final</p>
-<p>accuracy.</p>
-<p>\subsubsection{4.5 Architectural Implication: Frozen Specialists as the</p>
-<p>Correct</p>
-<p>Design}\label{architectural-implication-frozen-specialists-as-the-correct-design}</p>
-<p>The capacity boundary at 3 tasks provides direct empirical validation</p>
-<p>for the architectural decision underlying the Tabula Rasa system:</p>
+<p>We propose <strong>training trajectory stability</strong> as an additional
+evaluation dimension for continual learning: - <strong>Stable:</strong> Smooth,
+monotonic learning curves, no sudden drops - <strong>Unstable:</strong> Chaotic
+oscillations, collapse-recovery cycles - <strong>Catastrophic:</strong>
+Permanent loss of old tasks without recovery</p>
+<p>A system with stable trajectories is preferable even at the same final
+accuracy, because it provides predictable, reliable learning behavior.
+Our EWC system achieves <strong>Stable</strong>, while the no-EWC control
+exhibits <strong>Unstable</strong> behavior despite superficially similar final
+accuracy.</p>
+<p>The capacity boundary at 3 tasks provides direct empirical validation
+for the architectural decision underlying the Tabula Rasa system:
 <strong>frozen independent specialists per operation</strong>, rather than a
-<p>single continually-trained model.</p>
-<p>The finding that a 1M-parameter model cannot accommodate 3 divergent</p>
-<p>arithmetic operations &mdash; even with per-task EWC &mdash; demonstrates that</p>
-<p>shared-weight continual learning has fundamental limits. An alternative</p>
-<p>approach is to train each operation as a separate specialist model</p>
-<p>(e.g., <code>specialist\_add.pt</code>, <code>specialist\_sub.pt</code>,</p>
-<code>specialist\_mul.pt</code>), then freeze them after training. This
-<p>sidesteps the capacity bottleneck entirely: each specialist dedicates</p>
-<p>its full parameter budget to one operation, avoiding the parameter</p>
-<p>interference that causes collapse at N \textgreater{} 2.</p>
-<p>This design has precedent in modular and progressive networks {[}Rusu et</p>
-<p>al., 2016{]} and is complementary to EWC. Rather than asking ``how do we</p>
-<p>protect learned skills within one model?'', the specialist approach asks</p>
-<p>``how do we route the right skill to the right input?'' &mdash; a routing</p>
-<p>problem that is often easier than the continual learning problem. Our</p>
-<p>results quantify the cross-over point: for up to 2 structurally similar</p>
-<p>tasks, shared-weight EWC is optimal; for 3+ divergent tasks, frozen</p>
-<p>independent specialists are empirically justified.</p>
-<p>\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}</p>
-<h2>5. Mitigations and Future
-Work</h2>
-<p>\label{mitigations-and-future-work}</p>
-<p>The capacity-boundary finding (§3.4) reframes the mitigation landscape.</p>
-<p>Since both merged and per-task EWC fail identically at 3 tasks, and</p>
-<p>Fisher overlap between add/sub is 0.977 (near-identical), the bottleneck</p>
-<p>is architectural, not algorithmic. The following mitigations are ordered</p>
-<p>by likelihood of addressing the capacity limitation.</p>
-<p>\subsubsection{Mitigation 1: Architectural Scaling (Most</p>
-<p>Promising)}\label{mitigation-1-architectural-scaling-most-promising}</p>
-<p>The simplest interpretation of the capacity boundary is that the</p>
-<p>1M-parameter model lacks sufficient representational capacity for 3</p>
-<p>divergent arithmetic operations. Increasing model size directly</p>
-<p>addresses this:</p>
+single continually-trained model.</p>
+<p>The finding that a 1M-parameter model cannot accommodate 3 divergent
+arithmetic operations &mdash; even with per-task EWC &mdash; demonstrates that
+shared-weight continual learning has fundamental limits. An alternative
+approach is to train each operation as a separate specialist model
+(e.g., <code>specialist_add.pt</code>, <code>specialist_sub.pt</code>,
+<code>specialist_mul.pt</code>), then freeze them after training. This
+sidesteps the capacity bottleneck entirely: each specialist dedicates
+its full parameter budget to one operation, avoiding the parameter
+interference that causes collapse at N  2.</p>
+<p>This design has precedent in modular and progressive networks {[}Rusu et
+al., 2016{]} and is complementary to EWC. Rather than asking ``how do we
+protect learned skills within one model?'', the specialist approach asks
+``how do we route the right skill to the right input?'' &mdash; a routing
+problem that is often easier than the continual learning problem. Our
+results quantify the cross-over point: for up to 2 structurally similar
+tasks, shared-weight EWC is optimal; for 3+ divergent tasks, frozen
+independent specialists are empirically justified.</p>
+<h3>5. Mitigations and Future
+Work</h3>
+<p>The capacity-boundary finding (§3.4) reframes the mitigation landscape.
+Since both merged and per-task EWC fail identically at 3 tasks, and
+Fisher overlap between add/sub is 0.977 (near-identical), the bottleneck
+is architectural, not algorithmic. The following mitigations are ordered
+by likelihood of addressing the capacity limitation.</p>
+<p>The simplest interpretation of the capacity boundary is that the
+1M-parameter model lacks sufficient representational capacity for 3
+divergent arithmetic operations. Increasing model size directly
+addresses this:</p>
 <ul>
-<p>\tightlist</p>
-<li><strong>Wider embeddings</strong> (d\_model: 128 → 256) provides more feature
-<p>dimensions per token</p>
-<li><strong>Deeper networks</strong> (n\_layers: 4 → 8) provides more
-<p>compositional capacity</p>
-<li><strong>Larger feed-forward layers</strong> (d\_ff: 512 → 1024) provides more
-<p>per-layer expressivity</p>
+  <li></li>
+  <li><strong>Wider embeddings</strong> (d_model: 128 → 256) provides more feature
+  dimensions per token</li>
+  <li><strong>Deeper networks</strong> (n_layers: 4 → 8) provides more
+  compositional capacity</li>
+  <li><strong>Larger feed-forward layers</strong> (d_ff: 512 → 1024) provides more
+  per-layer expressivity</li>
 </ul>
-<p>We hypothesize that scaling the model by 2&ndash;4× would restore</p>
-<p>\textgreater90% performance on all 3 tasks without any algorithmic</p>
-<p>change. This hypothesis is untested in the current work and is the most</p>
-<p>direct next experiment &mdash; we leave it to future work to confirm whether</p>
-<p>capacity scaling alone resolves the three-task collapse.</p>
-<p>\subsubsection{Mitigation 2: Sparse Expert</p>
-<p>Models}\label{mitigation-2-sparse-expert-models}</p>
-<p>If scaling parameters is undesirable, sparse expert architectures</p>
-<p>(Mixture-of-Experts, Switch Transformers) can increase effective</p>
-<p>capacity without proportional parameter growth:</p>
-<p>\begin{Shaded}</p>
-<p>\begin{Highlighting}[]</p>
-<p>\CommentTok{\# Per{-}layer: route each token to a subset of expert networks}</p>
-<p>\NormalTok{expert\_logits }\OperatorTok{=}\NormalTok{ router(hidden\_states)  }\CommentTok{\# [batch, num\_experts]}</p>
-<p>\NormalTok{expert\_weights, expert\_indices }\OperatorTok{=}\NormalTok{ top\_k(expert\_logits, k}\OperatorTok{=}\DecValTok{2}\NormalTok{)}</p>
-<p>\CommentTok{\# Each expert specializes in one operation\textquotesingle{}s patterns}</p>
-<p>Expected outcome: Experts naturally specialize by operation, avoiding</p>
-<p>parameter competition. The EWC penalty can then act within each expert's</p>
-<p>subspace, further reducing interference.</p>
-<p>\subsubsection{Mitigation 3: Progressive</p>
-<p>Networks}\label{mitigation-3-progressive-networks}</p>
-<p>Progressive networks {[}Rusu et al., 2016{]} freeze previous columns and</p>
-<p>add new columns for each task. This sidesteps capacity limits entirely</p>
-<p>by allocating fresh parameters per task:</p>
-<p>\begin{Shaded}</p>
-<p>\begin{Highlighting}[]</p>
-<p>\CommentTok{\# Addition: column A (1M params)}</p>
-<p>\CommentTok{\# Subtraction: column B (1M params) with lateral connections to A}</p>
-<p>\CommentTok{\# Multiplication: column C (1M params) with lateral connections to A, B}</p>
-<p>Cost: O(N) parameters after N tasks. Trade-off: parameter count grows</p>
-<p>linearly, but no forgetting occurs. This is the upper bound on</p>
-<p>performance &mdash; any EWC-based approach should be compared against it.</p>
-<p>\subsubsection{Validated Negative Result: Adaptive</p>
-<p>Gamma}\label{validated-negative-result-adaptive-gamma}</p>
-<p>We implemented adaptive gamma (γ\_adaptive = base·overlap +</p>
-<p>min·(1−overlap)) as a potential mitigation for merge-related information</p>
-<p>loss (§3.4). The measured overlap between addition and subtraction</p>
-<p>Fisher was 0.977, producing γ\_adaptive=0.886 (near-identical to the</p>
-<p>default 0.9). Three-task performance was unchanged.</p>
-<p>This negative result is informative: it confirms that task divergence is</p>
-<p>not the limiting factor. The high Fisher overlap means that add and</p>
-<p>subtractions share structure nearly perfectly &mdash; the merge operator is</p>
-<p>not losing information. The bottleneck is architectural, and no</p>
-<p>modification to the merge hyperparameters can overcome it.</p>
-<p>\subsubsection{Limitations}\label{limitations}</p>
-<p>This study has several limitations that bound its scope. First, all</p>
-<p>experiments use a single model architecture (1M parameters, 4 layers,</p>
-<p>d=128) trained on 1-digit arithmetic problems. The finding that the</p>
-<p>three-task limit is architectural rather than algorithmic may not</p>
-<p>generalize to larger models, deeper networks, or more complex task</p>
-<p>domains. Second, the lambda sweep and error bars cover only 3 seeds per</p>
-<p>condition &mdash; while the results are statistically robust (zero variance</p>
-<p>for EWC conditions), a larger number of seeds would strengthen the</p>
-<p>claims about bimodality in the no-EWC condition. Third, we compare only</p>
-<p>EWC-based methods; other continual learning approaches (memory replay,</p>
-<p>elastic weight consolidation with per-task anchors, synaptic</p>
-<p>intelligence {[}Zenke et al., 2017{]}) may behave differently. Fourth,</p>
-<p>the architectural scaling hypothesis (§5.1) is untested &mdash; confirming</p>
-<p>that increasing model size resolves the three-task collapse remains the</p>
-<p>most important open question. Finally, the study uses arithmetic as a</p>
-<p>proxy for structured task domains; the extent to which these findings</p>
-<p>transfer to natural language or vision tasks is unknown.</p>
-<p>Despite these limitations, the controlled comparison between merged and</p>
-<p>per-task EWC, the discovery of bimodal no-EWC behavior, and the</p>
-<p>empirical validation of Online EWC's robustness for structurally similar</p>
-<p>tasks are specific, reproducible contributions that stand independently</p>
-<p>of the scope constraints.</p>
-<p>\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}</p>
-<h2>6. Related Work</h2>
-<p>\label{related-work}</p>
+<p>We hypothesize that scaling the model by 2&ndash;4× would restore
+90% performance on all 3 tasks without any algorithmic
+change. This hypothesis is untested in the current work and is the most
+direct next experiment &mdash; we leave it to future work to confirm whether
+capacity scaling alone resolves the three-task collapse.</p>
+<p>If scaling parameters is undesirable, sparse expert architectures
+(Mixture-of-Experts, Switch Transformers) can increase effective
+capacity without proportional parameter growth:</p>
+<p>[]
+layer: route each token to a subset of expert networks}</p>
+<p>s patterns}</p>
+<p>Expected outcome: Experts naturally specialize by operation, avoiding
+parameter competition. The EWC penalty can then act within each expert's
+subspace, further reducing interference.</p>
+<p>Progressive networks {[}Rusu et al., 2016{]} freeze previous columns and
+add new columns for each task. This sidesteps capacity limits entirely
+by allocating fresh parameters per task:</p>
+<p>[]</p>
+<p>Cost: O(N) parameters after N tasks. Trade-off: parameter count grows
+linearly, but no forgetting occurs. This is the upper bound on
+performance &mdash; any EWC-based approach should be compared against it.</p>
+<p>We implemented adaptive gamma (γ_adaptive = base·overlap +
+min·(1−overlap)) as a potential mitigation for merge-related information
+loss (§3.4). The measured overlap between addition and subtraction
+Fisher was 0.977, producing γ_adaptive=0.886 (near-identical to the
+default 0.9). Three-task performance was unchanged.</p>
+<p>This negative result is informative: it confirms that task divergence is
+not the limiting factor. The high Fisher overlap means that add and
+subtractions share structure nearly perfectly &mdash; the merge operator is
+not losing information. The bottleneck is architectural, and no
+modification to the merge hyperparameters can overcome it.</p>
+<p>This study has several limitations that bound its scope. First, all
+experiments use a single model architecture (1M parameters, 4 layers,
+d=128) trained on 1-digit arithmetic problems. The finding that the
+three-task limit is architectural rather than algorithmic may not
+generalize to larger models, deeper networks, or more complex task
+domains. Second, the lambda sweep and error bars cover only 3 seeds per
+condition &mdash; while the results are statistically robust (zero variance
+for EWC conditions), a larger number of seeds would strengthen the
+claims about bimodality in the no-EWC condition. Third, we compare only
+EWC-based methods; other continual learning approaches (memory replay,
+elastic weight consolidation with per-task anchors, synaptic
+intelligence {[}Zenke et al., 2017{]}) may behave differently. Fourth,
+the architectural scaling hypothesis (§5.1) is untested &mdash; confirming
+that increasing model size resolves the three-task collapse remains the
+most important open question. Finally, the study uses arithmetic as a
+proxy for structured task domains; the extent to which these findings
+transfer to natural language or vision tasks is unknown.</p>
+<p>Despite these limitations, the controlled comparison between merged and
+per-task EWC, the discovery of bimodal no-EWC behavior, and the
+empirical validation of Online EWC's robustness for structurally similar
+tasks are specific, reproducible contributions that stand independently
+of the scope constraints.</p>
+<h3>6. Related Work</h3>
 <strong>Elastic Weight Consolidation.</strong> Kirkpatrick et al.~(2017)
-<p>introduced EWC for deep neural networks, demonstrating that Fisher</p>
-<p>information can identify task-critical parameters. Schwarz et al.~(2018)</p>
-<p>extended this to the online setting, proposing merged Fisher matrices</p>
-<p>for sequential tasks. Our work validates the online variant empirically.</p>
+introduced EWC for deep neural networks, demonstrating that Fisher
+information can identify task-critical parameters. Schwarz et al.~(2018)
+extended this to the online setting, proposing merged Fisher matrices
+for sequential tasks. Our work validates the online variant empirically.
 <strong>Continual learning surveys.</strong> Parisi et al.~(2019) provide a
-<p>comprehensive taxonomy of continual learning approaches. Our</p>
-<p>regularization-based method (EWC) occupies the ``parameter</p>
-<p>regularization'' category, distinguished from rehearsal-based (memory</p>
-<p>replay) and architectural (dynamic networks) approaches.</p>
+comprehensive taxonomy of continual learning approaches. Our
+regularization-based method (EWC) occupies the ``parameter
+regularization'' category, distinguished from rehearsal-based (memory
+replay) and architectural (dynamic networks) approaches.
 <strong>Arithmetic learning.</strong> Prior work has studied transformers'
-<p>ability to learn arithmetic {[}Wallace et al., 2019; Power et al.,</p>
-<p>2022{]}. Our contribution is demonstrating that EWC preserves arithmetic</p>
-<p>skills during sequential learning, enabling multi-operation competence.</p>
+ability to learn arithmetic {[}Wallace et al., 2019; Power et al.,
+2022{]}. Our contribution is demonstrating that EWC preserves arithmetic
+skills during sequential learning, enabling multi-operation competence.
 <strong>Stability in training dynamics.</strong> Recent work has emphasized the
-<p>importance of training dynamics in deep learning {[}Fort et al., 2019;</p>
-<p>Jastrzębski et al., 2020{]}. Our finding that trajectory stability is a</p>
-<p>distinct metric from final accuracy contributes to this emerging</p>
-<p>perspective.</p>
-<p>\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}</p>
-<h2>7. Conclusion</h2>
-<p>\label{conclusion}</p>
-<p>We empirically validated Online Elastic Weight Consolidation for</p>
-<p>sequential arithmetic continual learning using a 1M-parameter</p>
-<p>transformer. Our key findings are:</p>
-<p>\begin{enumerate}</p>
-<p>\def\labelenumi{\arabic{enumi}.}</p>
-<p>\item</p>
+importance of training dynamics in deep learning {[}Fort et al., 2019;
+Jastrzębski et al., 2020{]}. Our finding that trajectory stability is a
+distinct metric from final accuracy contributes to this emerging
+perspective.
+<h3>7. Conclusion</h3>
+<p>We empirically validated Online Elastic Weight Consolidation for
+sequential arithmetic continual learning using a 1M-parameter
+transformer. Our key findings are:</p>
+<p>.}</p>
 <strong>EWC prevents catastrophic forgetting reliably</strong> &mdash; 100.0±0.0%
-<p>addition retention after subtraction training across 3 seeds, versus</p>
-<p>64.0±55.4% without EWC. The no-EWC outcome is bimodal: either 0%</p>
-<p>(permanent collapse) or 96% (recovery), depending on random</p>
-<p>initialization. EWC eliminates this stochasticity entirely.</p>
-<p>\item</p>
+  addition retention after subtraction training across 3 seeds, versus
+  64.0±55.4% without EWC. The no-EWC outcome is bimodal: either 0%
+  (permanent collapse) or 96% (recovery), depending on random
+  initialization. EWC eliminates this stochasticity entirely.
 <strong>Training stability matters more than final accuracy</strong> &mdash;
-<p>models without EWC exhibit chaotic collapse-recovery cycles masked by</p>
-<p>data re-learning. EWC provides smooth, monotonic convergence.</p>
-<p>\item</p>
+  models without EWC exhibit chaotic collapse-recovery cycles masked by
+  data re-learning. EWC provides smooth, monotonic convergence.
 <strong>EWC is robust to hyperparameter choice</strong> &mdash; for two tasks, all
-<p>λ ∈ {[}100, 2000{]} achieve \textgreater95% on both tasks, with λ ≥</p>
-<p>500 reaching 100% on both with zero variance across seeds.</p>
-<p>\item</p>
+  λ ∈ {[}100, 2000{]} achieve 95% on both tasks, with λ ≥
+  500 reaching 100% on both with zero variance across seeds.
 <strong>EWC can improve old-task performance</strong> &mdash; addition accuracy
-<p>improved by 2.3±2.1 pp on average after subtraction training,</p>
-<p>confirming implicit regularization.</p>
-<p>\item</p>
+  improved by 2.3±2.1 pp on average after subtraction training,
+  confirming implicit regularization.
 <strong>The scalability boundary at 3 tasks is architectural, not
-<p>algorithmic</strong> &mdash; both Online EWC (merged Fisher) and Standard EWC</p>
-<p>(per-task, no merge) fail identically (Add: 2±2%, Sub: 0±0%).</p>
-<p>Adaptive gamma was tested and correctly rejected (Fisher</p>
-<p>overlap=0.977: tasks are not divergent enough for adaptive blending).</p>
-<p>The bottleneck is model capacity, and future work should address it</p>
-<p>through architectural scaling, sparse expert models, or progressive</p>
-<p>networks.</p>
-<p>Our results establish a diagnostic methodology for continual learning:</p>
-<p>when a system degrades at N tasks, a non-merged baseline and Fisher</p>
-<p>overlap measurement can distinguish algorithmic failure from</p>
-<p>architectural saturation. Online EWC is validated as optimal for up to 2</p>
-<p>structurally similar tasks within model capacity.</p>
-<p>All code, data, and experiments are available at</p>
-<p>https://github.com/tabula-rasa-ai/tabula-rasa.</p>
-<p>\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}</p>
-<h2>References</h2>
-<p>\label{references}</p>
-<p>McCloskey, M. \& Cohen, N. J. (1989). Catastrophic interference in</p>
-<p>connectionist networks: The sequential learning problem. In</p>
-<em>Psychology of Learning and Motivation</em>, 24, 109&ndash;165.
-<p>Kirkpatrick, J., Pascanu, R., Rabinowitz, N., Veness, J., Desjardins,</p>
-<p>G., Rusu, A. A., \ldots{} \& Hadsell, R. (2017). Overcoming catastrophic</p>
-<p>forgetting in neural networks. <em>Proceedings of the National Academy</p>
-<p>of Sciences</em>, 114(13), 3521&ndash;3526.</p>
-<p>Schwarz, J., Czarnecki, W., Luketina, J., Grabska-Barwinska, A., Teh, Y.</p>
-<p>W., Pascanu, R., \& Hadsell, R. (2018). Progress \& compress: A scalable</p>
-<p>framework for continual learning. <em>International Conference on</p>
-<p>Machine Learning (ICML)</em>.</p>
-<p>Rusu, A. A., Rabinowitz, N. C., Desjardins, G., Soyer, H., Kirkpatrick,</p>
-<p>J., Kavukcuoglu, K., \ldots{} \& Hadsell, R. (2016). Progressive neural</p>
-<p>networks. <em>arXiv preprint arXiv:1606.04671</em>.</p>
-<p>Zenke, F., Poole, B., \& Ganguli, S. (2017). Continual learning through</p>
-<p>synaptic intelligence. <em>International Conference on Machine</p>
-<p>Learning (ICML)</em>.</p>
-<p>Wallace, E., Wang, Y., Li, S., Singh, S., \& Gardner, M. (2019). Do NLP</p>
-<p>models know numbers? Probing numeracy in embeddings. <em>Proceedings</p>
-<p>of the 2019 Conference on Empirical Methods in Natural Language</p>
-<p>Processing (EMNLP)</em>.</p>
-<p>Power, A., Burda, Y., Edwards, H., Babuschkin, I., \& Misra, V. (2022).</p>
-<p>Grokking: Generalization beyond overfitting on small algorithmic</p>
-<p>datasets. <em>arXiv preprint arXiv:2201.02177</em>.</p>
-<p>Fort, S., Hu, H., \& Lakshminarayanan, B. (2019). Deep ensembles: A loss</p>
-<p>landscape perspective. <em>arXiv preprint arXiv:1912.02757</em>.</p>
-<p>Jastrzębski, S., Szymczak, M., Fort, S., Arpit, D., Tabor, J., Cho, K.,</p>
-<p>\& Geras, K. (2020). The break-even point on optimization trajectories</p>
-<p>of deep neural networks. <em>International Conference on Learning</p>
-<p>Representations (ICLR)</em>.</p>
-<p>\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}</p>
-<h2>Appendix A:
-Hyperparameters</h2>
-<p>\label{appendix-a-hyperparameters}</p>
-<p>\begin{longtable}[]{@{}ll@{}}</p>
-<p>\toprule\noalign{}</p>
+  algorithmic</strong> &mdash; both Online EWC (merged Fisher) and Standard EWC
+  (per-task, no merge) fail identically (Add: 2±2%, Sub: 0±0%).
+  Adaptive gamma was tested and correctly rejected (Fisher
+  overlap=0.977: tasks are not divergent enough for adaptive blending).
+  The bottleneck is model capacity, and future work should address it
+  through architectural scaling, sparse expert models, or progressive
+  networks.
+<p>Our results establish a diagnostic methodology for continual learning:
+when a system degrades at N tasks, a non-merged baseline and Fisher
+overlap measurement can distinguish algorithmic failure from
+architectural saturation. Online EWC is validated as optimal for up to 2
+structurally similar tasks within model capacity.</p>
+<p>All code, data, and experiments are available at
+https://github.com/tabula-rasa-ai/tabula-rasa.</p>
+<h3>References</h3>
+<p>McCloskey, M. \& Cohen, N. J. (1989). Catastrophic interference in
+connectionist networks: The sequential learning problem. In
+<em>Psychology of Learning and Motivation</em>, 24, 109&ndash;165.</p>
+<p>Kirkpatrick, J., Pascanu, R., Rabinowitz, N., Veness, J., Desjardins,
+G., Rusu, A. A.,  \& Hadsell, R. (2017). Overcoming catastrophic
+forgetting in neural networks. <em>Proceedings of the National Academy
+of Sciences</em>, 114(13), 3521&ndash;3526.</p>
+<p>Schwarz, J., Czarnecki, W., Luketina, J., Grabska-Barwinska, A., Teh, Y.
+W., Pascanu, R., \& Hadsell, R. (2018). Progress \& compress: A scalable
+framework for continual learning. <em>International Conference on
+Machine Learning (ICML)</em>.</p>
+<p>Rusu, A. A., Rabinowitz, N. C., Desjardins, G., Soyer, H., Kirkpatrick,
+J., Kavukcuoglu, K.,  \& Hadsell, R. (2016). Progressive neural
+networks. <em>arXiv preprint arXiv:1606.04671</em>.</p>
+<p>Zenke, F., Poole, B., \& Ganguli, S. (2017). Continual learning through
+synaptic intelligence. <em>International Conference on Machine
+Learning (ICML)</em>.</p>
+<p>Wallace, E., Wang, Y., Li, S., Singh, S., \& Gardner, M. (2019). Do NLP
+models know numbers? Probing numeracy in embeddings. <em>Proceedings
+of the 2019 Conference on Empirical Methods in Natural Language
+Processing (EMNLP)</em>.</p>
+<p>Power, A., Burda, Y., Edwards, H., Babuschkin, I., \& Misra, V. (2022).
+Grokking: Generalization beyond overfitting on small algorithmic
+datasets. <em>arXiv preprint arXiv:2201.02177</em>.</p>
+<p>Fort, S., Hu, H., \& Lakshminarayanan, B. (2019). Deep ensembles: A loss
+landscape perspective. <em>arXiv preprint arXiv:1912.02757</em>.</p>
+<p>Jastrzębski, S., Szymczak, M., Fort, S., Arpit, D., Tabor, J., Cho, K.,
+\& Geras, K. (2020). The break-even point on optimization trajectories
+of deep neural networks. <em>International Conference on Learning
+Representations (ICLR)</em>.</p>
+<h3>Appendix A:
+Hyperparameters</h3>
+<p>[]{@{}ll@{}}</p>
 <p>Parameter & Value \\</p>
-<p>\midrule\noalign{}</p>
-<p>\endhead</p>
-<p>\bottomrule\noalign{}</p>
-<p>\endlastfoot</p>
-<p>Model parameters & 1,060,992 \\</p>
-<p>Layers & 4 \\</p>
-<p>Hidden dimension & 128 \\</p>
-<p>Attention heads & 4 \\</p>
-<p>Feed-forward dimension & 512 \\</p>
-<p>Max sequence length & 32 \\</p>
-<p>Vocabulary size & 44 \\</p>
-<p>Position encoding & RoPE \\</p>
-<p>Normalization & RMSNorm \\</p>
-<p>Activation & ReLU \\</p>
-<p>Dropout & 0.1 \\</p>
-<p>Optimizer & AdamW \\</p>
-<p>Learning rate & 0.001 \\</p>
-<p>Weight decay & 0.01 \\</p>
-<p>Batch size & 32 \\</p>
-<p>Warmup steps & 500 \\</p>
-<p>LR schedule & Cosine \\</p>
-<p>Gradient clip norm & 1.0 \\</p>
-<p>Training steps per task & 2000 \\</p>
-<p>EWC gamma (merge decay) & 0.9 \\</p>
-<p>EWC lambda (penalty) & 1000 (default) \\</p>
-<p>Fisher samples & 100 \\</p>
-<p>Dataset size & 2500 per operation \\</p>
-<h2>Appendix B: Reproducibility
-Checklist</h2>
-<p>\label{appendix-b-reproducibility-checklist}</p>
+<p>Model parameters & 1,060,992 \\
+Layers & 4 \\
+Hidden dimension & 128 \\
+Attention heads & 4 \\
+Feed-forward dimension & 512 \\
+Max sequence length & 32 \\
+Vocabulary size & 44 \\
+Position encoding & RoPE \\
+Normalization & RMSNorm \\
+Activation & ReLU \\
+Dropout & 0.1 \\
+Optimizer & AdamW \\
+Learning rate & 0.001 \\
+Weight decay & 0.01 \\
+Batch size & 32 \\
+Warmup steps & 500 \\
+LR schedule & Cosine \\
+Gradient clip norm & 1.0 \\
+Training steps per task & 2000 \\
+EWC gamma (merge decay) & 0.9 \\
+EWC lambda (penalty) & 1000 (default) \\
+Fisher samples & 100 \\
+Dataset size & 2500 per operation \\</p>
+<h3>Appendix B: Reproducibility
+Checklist</h3>
 <ul>
-<p>\tightlist</p>
-<li>[<em>\boxtimes</em>]
-<p>All experiments run on CPU (no GPU dependency)</p>
-<li>[<em>\boxtimes</em>]
-<p>Code available at github.com/tabula-rasa-ai/tabula-rasa</p>
-<li>[<em>\boxtimes</em>]
-<p>Experiment scripts in experiments/ directory</p>
-<li>[<em>\boxtimes</em>]
-<p>Results saved as JSON in experiments/</p>
-<li>[<em>\boxtimes</em>]
-<p>Plot scripts included</p>
-<li>[<em>\boxtimes</em>]
-<p>Hyperparameters documented</p>
-<li>[<em>\boxtimes</em>]
-<p>Random seeds: unfixed by design &mdash; findings are robust to</p>
-<p>initialization variance (EWC achieves σ=0.0% across 3 seeds; lambda</p>
-<p>frontier is consistent across all tested values). For exact</p>
-<p>reproduction, seed values are logged per experiment in</p>
-<code>experiments/*\_results.json</code>.
+  <li></li>
+  <li>[&#9745;]
+  All experiments run on CPU (no GPU dependency)</li>
+  <li>[&#9745;]
+  Code available at github.com/tabula-rasa-ai/tabula-rasa</li>
+  <li>[&#9745;]
+  Experiment scripts in experiments/ directory</li>
+  <li>[&#9745;]
+  Results saved as JSON in experiments/</li>
+  <li>[&#9745;]
+  Plot scripts included</li>
+  <li>[&#9745;]
+  Hyperparameters documented</li>
+  <li>[&#9745;]
+  Random seeds: unfixed by design &mdash; findings are robust to
+  initialization variance (EWC achieves σ=0.0% across 3 seeds; lambda
+  frontier is consistent across all tested values). For exact
+  reproduction, seed values are logged per experiment in
+  <code>experiments/*_results.json</code>.</li>
 </ul>
 <strong>Capacity boundary scaling ablation:</strong> To confirm the 3-task collapse
-<p>at 1M parameters is a capacity limit, we trained a 5.27M-parameter model</p>
-<p>(d=256, L=5, h=8, ff=1024) on the identical add&rarr;sub protocol with Fisher</p>
-<p>Archive EWC (&lambda;=500). The 5M model retained addition at 100% and</p>
-<p>acquired subtraction at 93%, compared to 40% and 58% at 1M (Figure~3).</p>
-<p>This definitively proves the bottleneck is model capacity, not EWC mechanics.</p>
-<figure><img src="experiments/figures/capacity_boundary.pdf" alt="figure" />
-<img src="experiments/figures/training_trajectory.pdf" alt="figure" />
-<figcaption>Capacity boundary (left) and 5M training trajectory (right).</figcaption></figure>
+at 1M parameters is a capacity limit, we trained a 5.27M-parameter model
+(d=256, L=5, h=8, ff=1024) on the identical add&rarr;sub protocol with Fisher
+Archive EWC (&lambda;=500). The 5M model retained addition at 100% and
+acquired subtraction at 93%, compared to 40% and 58% at 1M (Figure~3).
+This definitively proves the bottleneck is model capacity, not EWC mechanics.
+<figure>
+<img src="experiments/figures/capacity_boundary.pdf" alt="figure" style="width:45%" />
+<img src="experiments/figures/training_trajectory.pdf" alt="figure" style="width:45%" />
+<figcaption>Capacity boundary (left) and 5M training trajectory (right).</figcaption>
+</figure>
 <strong>Causal mask attention recovery:</strong> We discovered that the causal
-<p>attention mask was silently disabled, allowing future-token information to</p>
-<p>leak during training. Fixing this restored strict left-to-right attention.</p>
-<figure><img src="experiments/figures/causal_mask_comparison.pdf" alt="figure" />
-<figcaption>Attention before (left) and after (right) causal mask fix.</figcaption></figure>
+attention mask was silently disabled, allowing future-token information to
+leak during training. Fixing this restored strict left-to-right attention.
+<figure>
+<img src="experiments/figures/causal_mask_comparison.pdf" alt="figure" style="width:60%" />
+<figcaption>Attention before (left) and after (right) causal mask fix.</figcaption>
+</figure>
 
 </body>
 </html>
