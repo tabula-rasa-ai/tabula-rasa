@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tabula Rasa — API Reference</title>
+<style>
+:root { --bg: #0f172a; --panel: #1e293b; --border: #334155; --text: #f1f5f9; --muted: #94a3b8; --accent: #3b82f6; --green: #22c55e; --amber: #f59e0b; --red: #ef4444; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); padding: 32px; max-width: 1200px; margin: 0 auto; }
+h1 { font-size: 1.5rem; margin-bottom: 8px; color: var(--accent); }
+h2 { font-size: 1.1rem; margin: 32px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--border); color: var(--accent); }
+h3 { font-size: 0.95rem; margin: 20px 0 8px; }
+p, li { font-size: 0.85rem; line-height: 1.6; color: var(--muted); }
+code { background: var(--panel); padding: 2px 6px; border-radius: 4px; font-size: 0.8rem; color: #e2e8f0; }
+pre { background: #0d1117; border: 1px solid var(--border); border-radius: 6px; padding: 12px 16px; overflow-x: auto; font-size: 0.78rem; line-height: 1.5; margin: 8px 0; color: #d1d5db; }
+table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 0.82rem; }
+th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+th { background: var(--panel); color: var(--muted); font-weight: 600; text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.05em; }
+td { vertical-align: top; }
+.method { display: inline-block; padding: 2px 8px; border-radius: 4px; font-weight: 600; font-size: 0.7rem; text-transform: uppercase; min-width: 48px; text-align: center; }
+.get { background: #1e3a5f; color: #60a5fa; }
+.post { background: #1e3a2f; color: #4ade80; }
+.deprecated { opacity: 0.5; }
+.tag { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 0.65rem; margin-left: 4px; background: var(--panel); color: var(--muted); }
+.tag.core { background: #1e3a5f; color: #60a5fa; }
+.tag.train { background: #3b1e5f; color: #c084fc; }
+.tag.data { background: #1e3a2f; color: #4ade80; }
+.tag.sys { background: #5f3b1e; color: #fbbf24; }
+.section-toggle { cursor: pointer; user-select: none; }
+.section-toggle:hover { opacity: 0.8; }
+</style>
+</head>
+<body>
+<h1>Tabula Rasa — API Reference</h1>
+<p>Complete documentation for all REST API endpoints. The API server runs on <code>http://localhost:8000</code>.</p>
+
+<h2>Training Control</h2>
+<table>
+<tr><th>Method</th><th>Endpoint</th><th>Description</th><th>Request Body</th><th>Response</th></tr>
+<tr>
+<td><span class="method post">POST</span></td>
+<td><code>/api/train/start</code></td>
+<td>Start training a specialist</td>
+<td><pre>{"op": "add", "steps": 3000, "quick": true}</pre></td>
+<td><pre>{"ok": true, "pid": 1234}</pre></td>
+</tr>
+<tr>
+<td><span class="method post">POST</span></td>
+<td><code>/api/train/stop</code></td>
+<td>Stop current training</td>
+<td><pre>{}</pre></td>
+<td><pre>{"ok": true}</pre></td>
+</tr>
+<tr>
+<td><span class="method post">POST</span></td>
+<td><code>/api/train/pause</code></td>
+<td>Pause training (saves checkpoint)</td>
+<td><pre>{}</pre></td>
+<td><pre>{"ok": true}</pre></td>
+</tr>
+<tr>
+<td><span class="method post">POST</span></td>
+<td><code>/api/train/resume</code></td>
+<td>Resume from last checkpoint</td>
+<td><pre>{"op": "add"}</pre></td>
+<td><pre>{"ok": true}</pre></td>
+</tr>
+<tr>
+<td><span class="method post">POST</span></td>
+<td><code>/api/train/auto</code></td>
+<td>Start auto-train loop (evaluates all ops, trains weakest)</td>
+<td><pre>{"target": 50, "budget": 50000}</pre></td>
+<td><pre>{"ok": true, "pid": 1234, "cmd": "..."}</pre></td>
+</tr>
+<tr>
+<td><span class="method get">GET</span></td>
+<td><code>/api/train/status</code></td>
+<td>Current training status</td>
+<td>—</td>
+<td><pre>{"running": true, "op": "add", "step": 1500, "max_steps": 3000, "loss": 0.34}</pre></td>
+</tr>
+<tr>
+<td><span class="method get">GET</span></td>
+<td><code>/api/train/auto/status</code></td>
+<td>Auto-train status + history</td>
+<td>—</td>
+<td><pre>{"running": false, "history": [...]}</pre></td>
+</tr>
+</table>
+
+<h2>Inference</h2>
+<table>
+<tr><th>Method</th><th>Endpoint</th><th>Description</th><th>Request Body</th><th>Response</th></tr>
+<tr>
+<td><span class="method post">POST</span></td>
+<td><code>/generate</code></td>
+<td>Run inference on a math problem</td>
+<td><pre>{"prompt": "12+34=", "checkpoint": "..."}</pre></td>
+<td><pre>{"result": "46", "model": "MT-128x4"}</pre></td>
+</tr>
+<tr>
+<td><span class="method post">POST</span></td>
+<td><code>/correct</code></td>
+<td>Online correction (5 gradient steps)</td>
+<td><pre>{"prompt": "12+34", "answer": "46"}</pre></td>
+<td><pre>{"status": "ok", "final_loss": 0.01}</pre></td>
+</tr>
+</table>
+
+<h2>Configuration</h2>
+<table>
+<tr><th>Method</th><th>Endpoint</th><th>Description</th><th>Request Body</th><th>Response</th></tr>
+<tr>
+<td><span class="method get">GET</span></td>
+<td><code>/api/config</code></td>
+<td>Read current config as JSON</td>
+<td>—</td>
+<td><pre>{"d_model": 128, "n_layers": 4, ...}</pre></td>
+</tr>
+<tr>
+<td><span class="method post">POST</span></td>
+<td><code>/api/config</code></td>
+<td>Update config values</td>
+<td><pre>{"d_model": 256, "dropout": 0.2}</pre></td>
+<td><pre>{"status": "saved", "changes": [...]}</pre></td>
+</tr>
+<tr>
+<td><span class="method get">GET</span></td>
+<td><code>/config-raw</code></td>
+<td>Raw config.py source text</td>
+<td>—</td>
+<td>Plain text of config.py</td>
+</tr>
+</table>
+
+<h2>Checkpoints &amp; Specialists</h2>
+<table>
+<tr><th>Method</th><th>Endpoint</th><th>Description</th><th>Request Body</th><th>Response</th></tr>
+<tr>
+<td><span class="method get">GET</span></td>
+<td><code>/api/checkpoints</code></td>
+<td>List all available checkpoints</td>
+<td>—</td>
+<td><pre>[{"op": "add", "path": "...", "accuracy": 100.0}]</pre></td>
+</tr>
+<tr>
+<td><span class="method post">POST</span></td>
+<td><code>/api/load-checkpoint</code></td>
+<td>Load a specific checkpoint into memory</td>
+<td><pre>{"checkpoint": "specialists/math/add/best.pt"}</pre></td>
+<td><pre>{"status": "loaded", "model": "MT-128x4"}</pre></td>
+</tr>
+<tr>
+<td><span class="method post">POST</span></td>
+<td><code>/api/export</code></td>
+<td>Export a specialist as a zip file</td>
+<td><pre>{"op": "add"}</pre></td>
+<td><pre>{"ok": true, "path": "exports/add.zip"}</pre></td>
+</tr>
+<tr>
+<td><span class="method post">POST</span></td>
+<td><code>/api/import</code></td>
+<td>Import a shared specialist from zip or URL</td>
+<td><pre>{"url": "https://...", "file": "..."}</pre></td>
+<td><pre>{"ok": true, "operation": "add"}</pre></td>
+</tr>
+</table>
+
+<h2>Experiments &amp; Registry</h2>
+<table>
+<tr><th>Method</th><th>Endpoint</th><th>Description</th><th>Request Body</th><th>Response</th></tr>
+<tr>
+<td><span class="method get">GET</span></td>
+<td><code>/api/experiments</code></td>
+<td>List all experiments</td>
+<td>—</td>
+<td><pre>[{"id": "...", "operation": "add", ...}]</pre></td>
+</tr>
+<tr>
+<td><span class="method post">POST</span></td>
+<td><code>/api/experiments</code></td>
+<td>Save or replace experiment data</td>
+<td><pre>{"operation": "add", "accuracy": 100.0}</pre></td>
+<td><pre>{"id": "...", ...}</pre></td>
+</tr>
+<tr>
+<td><span class="method get">GET</span></td>
+<td><code>/api/experiments/status</code></td>
+<td>Get training status (experiment context)</td>
+<td>—</td>
+<td><pre>{"status": "idle", "op": null}</pre></td>
+</tr>
+<tr>
+<td><span class="method get">GET</span></td>
+<td><code>/api/registry</code></td>
+<td>Get P2P specialist registry</td>
+<td>—</td>
+<td><pre>{"specialists": [...], "peers": [...]}</pre></td>
+</tr>
+</table>
+
+<h2>Monitoring &amp; System</h2>
+<table>
+<tr><th>Method</th><th>Endpoint</th><th>Description</th><th>Response</th></tr>
+<tr>
+<td><span class="method get">GET</span></td>
+<td><code>/health</code></td>
+<td>Server health check + model info</td>
+<td><pre>{"model": "MT-128x4", "params": 1060992}</pre></td>
+</tr>
+<tr>
+<td><span class="method get">GET</span></td>
+<td><code>/training-progress</code></td>
+<td>Live loss/accuracy data</td>
+<td><pre>{"steps": [...], "loss": [...], "accuracy": [...]}</pre></td>
+</tr>
+<tr>
+<td><span class="method get">GET</span></td>
+<td><code>/training-log</code></td>
+<td>Raw training log text</td>
+<td>Plain text log</td>
+</tr>
+<tr>
+<td><span class="method get">GET</span></td>
+<td><code>/server-status</code></td>
+<td>CPU, memory, thread stats</td>
+<td><pre>{"process": {...}, "system": {...}}</pre></td>
+</tr>
+<tr>
+<td><span class="method get">GET</span></td>
+<td><code>/api/system-resources</code></td>
+<td>Full system resource snapshot</td>
+<td><pre>{"cpu_percent": 45, "memory_rss_mb": 123.4}</pre></td>
+</tr>
+<tr>
+<td><span class="method get">GET</span></td>
+<td><code>/api/chain-status</code></td>
+<td>Chain experiment runner status</td>
+<td><pre>{"running": false, "chain_log": [...]}</pre></td>
+</tr>
+<tr>
+<td><span class="method post">POST</span></td>
+<td><code>/api/clear-training-log</code></td>
+<td>Clear all training log files</td>
+<td><pre>{"ok": true}</pre></td>
+</tr>
+</table>
+
+<h2>Query Parameters</h2>
+<table>
+<tr><th>Parameter</th><th>Type</th><th>Default</th><th>Description</th></tr>
+<tr><td><code>prompt</code></td><td>string</td><td>—</td><td>Math expression ending with <code>=</code> (e.g. <code>"12+34="</code>)</td></tr>
+<tr><td><code>temperature</code></td><td>float</td><td>0.0</td><td>Generation temperature (0=greedy, >0 adds randomness)</td></tr>
+<tr><td><code>top_k</code></td><td>int</td><td>5</td><td>Top-K sampling threshold</td></tr>
+<tr><td><code>checkpoint</code></td><td>string</td><td>latest</td><td>Path to a specific checkpoint file</td></tr>
+<tr><td><code>target</code></td><td>float</td><td>50</td><td>Auto-train target accuracy %</td></tr>
+<tr><td><code>budget</code></td><td>int</td><td>50000</td><td>Auto-train max steps budget</td></tr>
+<tr><td><code>op</code></td><td>string</td><td>—</td><td>Operation: <code>add|sub|mul|div</code></td></tr>
+<tr><td><code>quick</code></td><td>bool</td><td>false</td><td>Quick mode (500 steps, 2K samples)</td></tr>
+<tr><td><code>ewc</code></td><td>bool</td><td>false</td><td>Enable Online EWC during training</td></tr>
+<tr><td><code>amp</code></td><td>bool</td><td>false</td><td>Enable mixed precision (requires CUDA)</td></tr>
+<tr><td><code>grad_accum</code></td><td>int</td><td>1</td><td>Gradient accumulation steps</td></tr>
+</table>
+
+<h2>Example Workflows</h2>
+
+<h3>1. Train and query a specialist</h3>
+<pre># Train addition (quick mode)
+curl -X POST http://localhost:8000/api/train/start \
+  -H "Content-Type: application/json" \
+  -d '{"op": "add", "quick": true}'
+
+# Check status
+curl http://localhost:8000/api/train/status
+
+# Query the trained model
+curl -X POST http://localhost:8000/generate \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "12+34="}'
+# {"result": "46", ...}</pre>
+
+<h3>2. Train with EWC (continual learning)</h3>
+<pre># Train addition first
+curl -X POST http://localhost:8000/api/train/start \
+  -H "Content-Type: application/json" \
+  -d '{"op": "add"}'
+
+# Train subtraction while preserving addition
+curl -X POST http://localhost:8000/api/train/start \
+  -H "Content-Type: application/json" \
+  -d '{"op": "sub", "ewc": true}'</pre>
+
+<h3>3. Auto-train loop</h3>
+<pre># Let the system train all operations automatically
+curl -X POST http://localhost:8000/api/train/auto \
+  -H "Content-Type: application/json" \
+  -d '{"target": 70, "budget": 10000}'
+
+# Monitor progress
+curl http://localhost:8000/api/train/auto/status</pre>
+
+<h3>4. Export and import specialists</h3>
+<pre># Export addition specialist
+curl -X POST http://localhost:8000/api/export \
+  -H "Content-Type: application/json" \
+  -d '{"op": "add"}'
+# exports/add.zip created
+
+# Import from a shared URL
+curl -X POST http://localhost:8000/api/import \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://example.com/specialist.zip"}'</pre>
+
+<p style="margin-top: 32px; color: var(--muted); font-size: 0.75rem;">
+API server: <code>api_server.py</code> (port 8000) — <code>serve.py</code> (port 8000, older version).<br>
+All endpoints accept <code>Content-Type: application/json</code>. CORS headers set for all origins.
+</p>
+</body>
+</html>
