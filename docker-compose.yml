@@ -1,0 +1,25 @@
+version: "3.9"
+
+services:
+  tabula-rasa:
+    build: .
+    container_name: tabula-rasa
+    ports:
+      - "8000:8000"
+    volumes:
+      # Persist trained specialists across restarts
+      - tabula_rasa_data:/app/specialists
+      - tabula_rasa_data:/app/checkpoints
+      - tabula_rasa_data:/app/exports
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    # Resource limits (adjust based on your hardware)
+    deploy:
+      resources:
+        limits:
+          cpus: "4"
+          memory: "4G"
+
+volumes:
+  tabula_rasa_data:

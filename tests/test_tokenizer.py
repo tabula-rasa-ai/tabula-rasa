@@ -141,6 +141,54 @@ class TestTokenizerEdgeCases:
         decoded = ''.join(tok.itos[i] for i in ids)
         assert decoded == text
 
+    def test_leading_spaces(self, tok):
+        """Leading spaces are handled."""
+        ids = tok.encode("  5+3=8", add_special_tokens=False)
+        decoded = ''.join(tok.itos[i] for i in ids)
+        assert decoded == "  5+3=8"
+
+    def test_trailing_spaces(self, tok):
+        """Trailing spaces are handled."""
+        ids = tok.encode("5+3=8  ", add_special_tokens=False)
+        decoded = ''.join(tok.itos[i] for i in ids)
+        assert decoded == "5+3=8  "
+
+    def test_no_space_around_op(self, tok):
+        """No-space formatting works."""
+        text = "10-4=6"
+        ids = tok.encode(text, add_special_tokens=False)
+        decoded = ''.join(tok.itos[i] for i in ids)
+        assert decoded == text
+
+    def test_multiple_operators(self, tok):
+        """Chained operations tokenize correctly."""
+        text = "2+3+4=9"
+        ids = tok.encode(text, add_special_tokens=False)
+        decoded = ''.join(tok.itos[i] for i in ids)
+        assert decoded == text
+
+    def test_negative_result(self, tok):
+        """Expressions with negative results work (minus sign handled)."""
+        text = "3-5=-2"
+        ids = tok.encode(text, add_special_tokens=False)
+        decoded = ''.join(tok.itos[i] for i in ids)
+        assert decoded == text
+
+    def test_decimal_numbers(self, tok):
+        """Decimal point is a valid token."""
+        text = "3.5+2.5=6.0"
+        ids = tok.encode(text, add_special_tokens=False)
+        decoded = ''.join(tok.itos[i] for i in ids)
+        assert decoded == text
+
+    def test_percent(self, tok):
+        """Percent sign is a valid token."""
+        text = "10%5=0"
+        assert '%' in tok.stoi
+        ids = tok.encode(text, add_special_tokens=False)
+        decoded = ''.join(tok.itos[i] for i in ids)
+        assert decoded == text
+
     def test_all_operations(self, tok):
         """All math operations tokenize correctly."""
         for op, text in [('+', "5+3=8"), ('-', "10-4=6"), ('*', "3*4=12"), ('/', "8/2=4")]:

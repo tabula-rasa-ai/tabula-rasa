@@ -125,26 +125,29 @@ class Attention(nn.Module):
             v = torch.cat([past_kv[1], v], dim=2)
         current_kv = (k, v)
 
-        scale = math.sqrt(self.head_dim)
-        attn_weights = torch.matmul(q, k.transpose(-2, -1)) / scale
+        # ── FlashAttention-2 via PyTorch 2.0+ scaled_dot_product_attention ──
+        # Uses FlashAttention (CUDA), Memory-Efficient Attention, or fallback
+        # based on hardware and input characteristics.
+        if past_kv is not None:
+            # KV cache scenario: build shifted causal mask manually
+            q_len = seq_len
+            total_len = k.size(2)
+            causal = torch.tril(torch.ones(q_len, total_len, device=x.device))
+            for i in range(q_len):
+                causal[i, kv_len + i + 1:] = 0
+            attn_mask = causal.view(1, 1, q_len, total_len).bool()
+        else:
+            # No KV cache: use built-in causal masking
+            attn_mask = None
 
-        if mask is not None:
-            # For cached attention: mask is relative to current q positions against full k
-            if past_kv is not None:
-                # Build causal mask for q_len queries attending to kv_len+q_len keys
-                q_len = seq_len
-                total_len = k.size(2)
-                causal = torch.tril(torch.ones(q_len, total_len, device=x.device))
-                # Shift: queries can only attend to positions up to kv_len + their index
-                for i in range(q_len):
-                    causal[i, kv_len + i + 1:] = 0
-                mask = causal.view(1, 1, q_len, total_len)
-            attn_weights = attn_weights.masked_fill(mask == 0, float('-inf'))
-
-        attn_weights = F.softmax(attn_weights, dim=-1)
-        attn_weights = self.dropout(attn_weights)
-
-        out = torch.matmul(attn_weights, v)
+        # SDPA: is_causal=True when no explicit mask and no KV cache
+        use_causal = (mask is None and past_kv is None)
+        out = F.scaled_dot_product_attention(
+            q, k, v,
+            attn_mask=attn_mask,
+            dropout_p=self.dropout.p if self.training else 0.0,
+            is_causal=use_causal,
+        )
         out = out.transpose(1, 2).contiguous().view(batch, seq_len, -1)
         return self.wo(out), current_kv
 
