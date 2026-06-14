@@ -179,7 +179,7 @@ class Config:
     PRESETS: dict[str, dict] = {
         "1M": {
             "d_model": 128, "n_layers": 4, "n_heads": 4, "d_ff": 512,
-            "max_seq_len": 32, "dropout": 0.1, "params_approx": 1_060_992,
+            "max_seq_len": 32, "dropout": 0.1, "params_approx": 1_061_504,
         },
         "10M": {
             "d_model": 320, "n_layers": 6, "n_heads": 8, "d_ff": 1280,
