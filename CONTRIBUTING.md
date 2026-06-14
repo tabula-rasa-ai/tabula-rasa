@@ -137,32 +137,90 @@ python auto_train.py --target 70 --budget 10000
 
 ## Testing
 
-Tests are in `test_partial.py` and individual experiment scripts under `experiments/`.
+Tests live in `tests/` and use pytest. The suite has two tiers:
 
-```bash
-# Run existing tests
-python test_partial.py
-
-# Run an experiment as a test
-python experiments/run_ablation_no_ewc.py
+```
+tests/
+├── test_config.py       # Config defaults, presets, validation
+├── test_dataset.py      # Dataset generation, curriculum
+├── test_model.py        # Model forward, causal mask, param count
+├── test_tokenizer.py    # Tokenizer encode/decode, special tokens
+├── test_text.py         # Text reversal pipeline
+├── test_lora.py         # LoRA integration
+└── test_integration.py  # Slow: real training subprocesses (~30-120s)
 ```
 
-When adding new functionality, include:
-- A self-contained test script or experiment runner
-- Expected results documented in the script header
-- JSON results output for cross-validation
+### Quick test (unit tests, ~2s)
+
+```bash
+pytest tests/ -x -q --ignore=tests/test_integration.py
+```
+
+### Full test suite (unit + integration, ~4 min)
+
+```bash
+pytest tests/ -x -q
+```
+
+### Coverage report
+
+```bash
+pip install pytest-cov
+pytest --cov=src/tabula_rasa tests/ --ignore=tests/test_integration.py
+open htmlcov/index.html
+```
 
 ### Writing a test
+
+Use pytest conventions — plain assert, no unittest.TestCase:
+
 ```python
 """Test for my new feature."""
 import torch
-from model import Transformer
+from tabula_rasa.model import MathTransformer
+from tabula_rasa.config import Config
 
 def test_feature():
-    model = Transformer.from_config()
-    # ... test logic ...
-    assert result == expected, f"Expected {expected}, got {result}"
+    cfg = Config()
+    cfg.d_model = 64   # keep fast
+    cfg.n_layers = 2
+    model = MathTransformer(cfg)
+    x = torch.randint(0, cfg.vocab_size, (2, 8))
+    logits, loss, _ = model(x, x)
+    assert logits.shape == (2, 8, cfg.vocab_size)
+    assert loss.numel() == 1
 ```
+
+### Test data strategy
+
+- **Small models:** Use `d_model=64, n_layers=2` in tests (not 128/4) for speed
+- **Deterministic seeds:** Use `torch.manual_seed(42)` at test top to stabilize flaky tests
+- **No GPU dependency:** All tests run on CPU (CUDA-only features get `@pytest.mark.skipif(not torch.cuda.is_available(), ...)`)
+- **No network:** Integration tests that simulate training use subprocess, not HTTP
+
+### Marking slow tests
+
+```python
+import pytest
+
+@pytest.mark.slow
+def test_full_training():
+    ...  # runs only with: pytest -m slow
+```
+
+Slow tests (in `test_integration.py`) are excluded from `--ignore` but run on CI.
+
+### Pre-commit hooks
+
+This repo enforces formatting and linting via pre-commit:
+
+```bash
+pip install pre-commit
+pre-commit install     # activates on every git commit
+pre-commit run --all-files  # run manually
+```
+
+Checked on every commit: trailing whitespace, EOF newline, YAML validity, large files, merge conflict markers, **black** formatting, **isort** import sorting, **flake8** style, **mypy** static types.
 
 ## Pull Request Process
 

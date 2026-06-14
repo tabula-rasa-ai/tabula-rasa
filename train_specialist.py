@@ -610,6 +610,8 @@ def train_specialist(
     dialectic=False,
     dialectic_steps=200,
     dialectic_problems=50,
+    eval_interval=0,
+    patience=0,
 ):
     """Train a specialist for one arithmetic operation.
 
@@ -651,6 +653,12 @@ def train_specialist(
         cfg.batch_size = batch_size
     if lr > 0:
         cfg.learning_rate = lr
+    if eval_interval > 0:
+        cfg.eval_every = eval_interval
+        if quick:
+            cfg.eval_every = min(eval_interval, 100)
+    if patience > 0:
+        cfg.early_stop_patience = patience
     if use_reversed is not None:
         cfg.use_reversed = use_reversed
     if use_loss_masking is not None:
@@ -868,7 +876,8 @@ def train_specialist(
     t_start = time.time()
     last_eval_time = t_start
     eval_history = []  # Track recent accuracies for early stopping
-    loss_streak_count = 0  # Consecutive evals with no improvement
+    acc_streak_count = 0  # Consecutive evals with no accuracy improvement
+    patience = getattr(cfg, 'early_stop_patience', 5)
     recent_losses = []  # Recent loss values for entropy-based curriculum
     entropy_msg = ""  # Entropy trigger message (for curriculum logging)
     curriculum_phase = 0  # Current curriculum phase index
@@ -928,7 +937,12 @@ def train_specialist(
                     new_steps, new_digits = cfg.curriculum_phases[curriculum_phase]
                     curriculum_step_offset = global_step
                     entropy_info = entropy_msg if cfg.use_entropy_curriculum and entropy_msg else ""
-                    curr_msg = f"\n  >>> Curriculum phase {curriculum_phase + 1}/{len(cfg.curriculum_phases)}: max_digits={new_digits} ({new_steps} steps){entropy_info} <<<\n"
+                    curr_msg = (
+                        f"\n  >>> Curriculum phase {curriculum_phase + 1}/{len(cfg.curriculum_phases)}:"
+                        f" max_digits={new_digits} ({new_steps} steps){entropy_info} <<<\n"
+                        f"  >>> Loss spike expected — normal recovery in ~500 steps. Do NOT kill."
+                        f" Accuracy is the signal, not loss. <<<\n"
+                    )
                     print(curr_msg, flush=True)
                     log_file.write(curr_msg + "\n")
                     log_file.flush()
@@ -1095,7 +1109,7 @@ def train_specialist(
 
                 if acc > best_acc:
                     best_acc = acc
-                    loss_streak_count = 0
+                    acc_streak_count = 0
                     if use_lora and lora_layers:
                         save_lora_adapters(lora_layers, str(op_dir / "best_lora.pt"))
                         torch.save(
@@ -1143,11 +1157,11 @@ def train_specialist(
                             op_dir / "best.pt",
                         )
                 else:
-                    loss_streak_count += 1
+                    acc_streak_count += 1
 
-                # ── Early stopping: 5 evals with no improvement ──
-                if loss_streak_count >= 5 and global_step > cfg.max_steps * 0.3:
-                    early_msg = f"  [!] Early stop at step {global_step} — no improvement for {loss_streak_count} evals (best: {best_acc:.1f}%)"
+                # ── Early stopping on accuracy plateau (default: 5 evals) ──
+                if acc_streak_count >= patience and global_step > cfg.max_steps * 0.3:
+                    early_msg = f"  [!] Early stop at step {global_step} — no improvement for {acc_streak_count} evals (best: {best_acc:.1f}%)"
                     print(early_msg, flush=True)
                     log_file.write(early_msg + "\n")
                     log_file.flush()
@@ -1386,6 +1400,14 @@ Examples:
     )
     parser.add_argument("--batch", type=int, default=0, help="Batch size (0=config default)")
     parser.add_argument("--lr", type=float, default=0, help="Learning rate (0=config default)")
+    parser.add_argument(
+        "--eval-interval", type=int, default=0,
+        help="Evaluate every N steps (0=config default, default 500). Primary progress signal is accuracy, not loss."
+    )
+    parser.add_argument(
+        "--patience", type=int, default=0,
+        help="Early stop after N evals without accuracy improvement (0=config default, default 5)"
+    )
     parser.add_argument("--no-reversed", action="store_true", help="Disable reversed digits")
     parser.add_argument("--no-loss-mask", action="store_true", help="Disable loss masking")
     parser.add_argument(
@@ -1526,6 +1548,8 @@ Examples:
                 dialectic_steps=args.dialectic_steps,
                 dialectic_problems=args.dialectic_problems,
                 cot_scratchpad=args.cot,
+                eval_interval=args.eval_interval,
+                patience=args.patience,
             )
             results[op_name] = "OK" if model is not None else "FAILED"
         print(f"\n  Results: {results}")
@@ -1619,4 +1643,6 @@ Examples:
         dialectic_steps=args.dialectic_steps,
         dialectic_problems=args.dialectic_problems,
         cot_scratchpad=args.cot,
+        eval_interval=args.eval_interval,
+        patience=args.patience,
     )

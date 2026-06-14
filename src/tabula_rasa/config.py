@@ -181,6 +181,10 @@ class Config:
             "d_model": 128, "n_layers": 4, "n_heads": 4, "d_ff": 512,
             "max_seq_len": 32, "dropout": 0.1, "params_approx": 1_061_504,
         },
+        "5M": {
+            "d_model": 256, "n_layers": 5, "n_heads": 8, "d_ff": 1024,
+            "max_seq_len": 48, "dropout": 0.1, "params_approx": 5_269_248,
+        },
         "10M": {
             "d_model": 320, "n_layers": 6, "n_heads": 8, "d_ff": 1280,
             "max_seq_len": 64, "dropout": 0.1, "params_approx": 9_860_000,
@@ -195,7 +199,8 @@ class Config:
 
         Presets:
             "1M"  — Default 1M-param (d=128, L=4, h=4, ff=512, seq=32)
-            "10M" — Scaled 10M-param (d=256, L=6, h=8, ff=1024, seq=128)
+            "5M"  — Scaling law baseline (d=256, L=5, h=8, ff=1024, seq=48)
+            "10M" — Scaled 10M-param (d=320, L=6, h=8, ff=1280, seq=64)
         """
         preset = name or self.config_preset
         cfg = self.PRESETS.get(preset)

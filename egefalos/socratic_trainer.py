@@ -379,6 +379,7 @@ class SocraticSelfTrainer:
                     prediction_error=1.0 - ex.loss_drop_pct / 100.0,
                     output_text=ex.correct_trace,
                     skill=f"socratic_correction_{self.op}",
+                    tier="longterm",
                 )
             except Exception:
                 pass  # Hippocampus may not be available

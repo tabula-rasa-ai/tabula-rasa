@@ -223,29 +223,28 @@ class OnlineEWC:
 
         if self.use_archive and self.fisher_archive:
             # Archive mode: sum over all per-task penalties
-            total = torch.tensor(0.0, device=device)
+            # Use list + sum() for O(1) graph depth (not O(N) from in-place +=)
+            device = next(self.model.parameters()).device
+            terms = []
             for task_idx, f_dict in enumerate(self.fisher_archive):
                 a_dict = self.anchor_archive[task_idx]
                 lam = self.archive_lambdas[task_idx] if task_idx < len(self.archive_lambdas) else lambda_ewc
-                task_penalty = torch.tensor(0.0, device=device)
                 for name, param in self.model.named_parameters():
                     if param.requires_grad and name in f_dict and name in a_dict:
-                        theta_delta = param - a_dict[name]
-                        task_penalty += (f_dict[name] * theta_delta ** 2).sum()
-                total += (lam / 2.0) * task_penalty
-            return total
+                        delta = param - a_dict[name]
+                        terms.append((lam / 2.0) * (f_dict[name] * delta ** 2).sum())
+            return sum(terms) if terms else torch.tensor(0.0, device=device)
 
         # Standard mode: single merged Fisher
-        penalty = torch.tensor(0.0, device=device)
+        terms = []
         for name, param in self.model.named_parameters():
             if param.requires_grad and name in self.fisher_dict and name in self.anchor_dict:
                 # fisher_dict and anchor_dict are already on the correct device
                 # (load() moves them; save_anchor_weights() clones in-place)
-                f = self.fisher_dict[name]
-                theta_delta = param - self.anchor_dict[name]
-                penalty += (f * theta_delta ** 2).sum()
+                delta = param - self.anchor_dict[name]
+                terms.append((self.fisher_dict[name] * delta ** 2).sum())
 
-        return (lambda_ewc / 2.0) * penalty
+        return (lambda_ewc / 2.0) * (sum(terms) if terms else torch.tensor(0.0, device=device))
 
     def save(self, path):
         """Serialize Fisher matrix and anchor weights to disk."""

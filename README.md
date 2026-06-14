@@ -4,6 +4,7 @@
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![Tests](https://github.com/tabula-rasa-ai/tabula-rasa/actions/workflows/test.yml/badge.svg)](https://github.com/tabula-rasa-ai/tabula-rasa/actions/workflows/test.yml)
 [![GitHub Stars](https://img.shields.io/github/stars/tabula-rasa-ai/tabula-rasa?style=social)](https://github.com/tabula-rasa-ai/tabula-rasa)
+[![Coverage](assets/coverage.svg)](https://github.com/tabula-rasa-ai/tabula-rasa/actions/workflows/test.yml)
 
 A transformer trained from a **blank slate** — no pretraining, no transfer learning,
 just gradient descent from random initialization. Currently proving that a 1M-parameter
