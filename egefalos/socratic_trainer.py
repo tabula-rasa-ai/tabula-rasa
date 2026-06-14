@@ -70,6 +70,108 @@ class CorrectionExample:
     loss_drop_pct: float  # How much loss dropped from round 1 to final
 
 
+class DPODataset(Dataset):
+    """Dataset for Direct Preference Optimization on correction pairs.
+
+    Each sample provides a (chosen_trace, rejected_trace) pair where:
+    - **chosen** = the correct trace after critique (y_w)
+    - **rejected** = the initial wrong trace before critique (y_l)
+
+    The DPO loss uses these log-probability pairs::
+
+        L_DPO = -E[log σ(β * (log π(chosen) - log π(rejected)))]
+    """
+
+    def __init__(
+        self,
+        tokenizer: MathTokenizer,
+        corrections: list[CorrectionExample],
+        max_seq_len: int = 64,
+    ):
+        self.tok = tokenizer
+        self.max_seq_len = max_seq_len
+        self.pairs: list[tuple[list[int], list[int]]] = []
+
+        for ex in corrections:
+            if not ex.correct_trace or not ex.first_round_trace:
+                continue
+            prompt = ex.hint if ex.hint else f"{ex.problem}="
+            chosen_ids = tokenizer.encode(prompt + ex.correct_trace, add_special_tokens=True)
+            rejected_ids = tokenizer.encode(prompt + ex.first_round_trace, add_special_tokens=True)
+            if len(chosen_ids) <= max_seq_len and len(rejected_ids) <= max_seq_len:
+                self.pairs.append((chosen_ids, rejected_ids))
+
+    def __len__(self) -> int:
+        return len(self.pairs)
+
+    def __getitem__(self, idx: int) -> dict:
+        chosen_ids, rejected_ids = self.pairs[idx]
+
+        def _pad(ids):
+            pad_id = self.tok.pad_id
+            padded = ids + [pad_id] * (self.max_seq_len - len(ids))
+            return torch.tensor(padded, dtype=torch.long)
+
+        return {
+            "chosen": _pad(chosen_ids),
+            "rejected": _pad(rejected_ids),
+            "chosen_mask": torch.tensor(
+                [1] * len(chosen_ids) + [0] * (self.max_seq_len - len(chosen_ids)),
+                dtype=torch.bool,
+            ),
+            "rejected_mask": torch.tensor(
+                [1] * len(rejected_ids) + [0] * (self.max_seq_len - len(rejected_ids)),
+                dtype=torch.bool,
+            ),
+        }
+
+
+def dpo_loss(
+    policy_logps: torch.Tensor,
+    ref_logps: torch.Tensor | None,
+    beta: float = 0.1,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Compute DPO loss for a batch of preference pairs.
+
+    Args:
+        policy_logps: Log probabilities under current policy for
+            chosen and rejected, shape ``(2*batch,)`` or ``(batch, 2)``.
+            Expected format: odd indices = chosen, even = rejected.
+        ref_logps: Reference model log probs (optional, for KL penalty).
+        beta: DPO temperature (default 0.1). Higher = stronger preference.
+
+    Returns:
+        Tuple ``(loss, chosen_reward, rejected_reward)``.
+    """
+    # Split into chosen and rejected
+    if policy_logps.dim() == 1:
+        chosen = policy_logps[0::2]
+        rejected = policy_logps[1::2]
+    else:
+        chosen = policy_logps[:, 0]
+        rejected = policy_logps[:, 1]
+
+    log_ratio = chosen - rejected  # log π(chosen) - log π(rejected)
+
+    if ref_logps is not None:
+        if ref_logps.dim() == 1:
+            ref_chosen = ref_logps[0::2]
+            ref_rejected = ref_logps[1::2]
+        else:
+            ref_chosen = ref_logps[:, 0]
+            ref_rejected = ref_logps[:, 1]
+        log_ratio = log_ratio - (ref_chosen - ref_rejected)
+
+    # DPO loss: -E[log σ(β * log_ratio)]
+    loss = -F.logsigmoid(beta * log_ratio).mean()
+
+    # Implicit rewards (for monitoring)
+    chosen_reward = beta * log_ratio.detach()
+    rejected_reward = -chosen_reward
+
+    return loss, chosen_reward.mean(), rejected_reward.mean()
+
+
 class CorrectionDataset(Dataset):
     """Dataset of correction pairs for Socratic self-training.
 
@@ -413,7 +515,52 @@ class SocraticSelfTrainer:
                 correct += 1
         return correct / max(1, num) * 100
 
-    # ── Full Self-Improvement Loop ──────────────────────────────
+    # DPO Training
+
+    def dpo_on_corrections(
+        self,
+        corrections: list[CorrectionExample],
+        steps: int = 100,
+        batch_size: int = 16,
+        beta: float = 0.1,
+        quiet: bool = False,
+    ) -> dict:
+        from torch.utils.data import DataLoader
+        if len(corrections) < 3:
+            return {"trained": False, "reason": "too few corrections"}
+        ds = DPODataset(self.tok, corrections, max_seq_len=self.cfg.max_seq_len)
+        if len(ds) < 1:
+            return {"trained": False, "reason": "empty dataset"}
+        loader = DataLoader(ds, batch_size=min(batch_size, len(ds)), shuffle=True)
+        opt = torch.optim.AdamW(self.model.parameters(), lr=self.lr * 0.5)
+        self.model.train()
+        total_loss = 0.0
+        n = 0
+        for step in range(steps):
+            for batch in loader:
+                ch = batch["chosen"].to(self.device)
+                rej = batch["rejected"].to(self.device)
+                lc, _, _ = self.model(ch[:, :-1], targets=ch[:, 1:])
+                lr, _, _ = self.model(rej[:, :-1], targets=rej[:, 1:])
+                lcp = lc.log_softmax(dim=-1).gather(-1, ch[:, 1:].unsqueeze(-1)).squeeze(-1)
+                lrp = lr.log_softmax(dim=-1).gather(-1, rej[:, 1:].unsqueeze(-1)).squeeze(-1)
+                cm = batch["chosen_mask"][:, 1:].to(self.device)
+                rm = batch["rejected_mask"][:, 1:].to(self.device)
+                lcp = (lcp * cm).sum(dim=1) / cm.sum(dim=1).clamp(min=1)
+                lrp = (lrp * rm).sum(dim=1) / rm.sum(dim=1).clamp(min=1)
+                stacked = torch.stack([lcp, lrp], dim=1).flatten()
+                loss, _, _ = dpo_loss(stacked, ref_logps=None, beta=beta)
+                opt.zero_grad()
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+                opt.step()
+                total_loss += loss.item()
+                n += 1
+            if not quiet and (step + 1) % max(1, steps // 5) == 0:
+                print(f"    [DPO] Step {step + 1}/{steps} | loss={total_loss / max(1, n):.4f}")
+        return {"trained": True, "steps": steps, "loss": total_loss / max(1, n)}
+
+    # Full Self-Improvement Loop
 
     def run_iteration(
         self,
@@ -458,6 +605,16 @@ class SocraticSelfTrainer:
             batch_size=batch_size,
             quiet=quiet,
         )
+
+        # ── DPO refinement (optional) ──
+        if getattr(self, "_use_dpo", False) and len(corrections) > 5:
+            dpo_summary = self.dpo_on_corrections(
+                corrections=corrections,
+                steps=max(10, train_steps // 2),
+                batch_size=batch_size,
+                quiet=quiet,
+            )
+            train_summary["dpo"] = dpo_summary
 
         return {
             "collection": collect_summary,

@@ -605,6 +605,7 @@ def train_specialist(
     socratic=False,
     socratic_steps=500,
     socratic_problems=200,
+    dpo=False,
     cot_scratchpad=False,
     dialectic=False,
     dialectic_steps=200,
@@ -1223,6 +1224,7 @@ def train_specialist(
                 max_digits=cfg.max_digits,
                 lr=cfg.learning_rate,
             )
+            trainer._use_dpo = dpo
             socratic_results = trainer.run_self_improvement(
                 iterations=1,
                 problems_per_iter=socratic_problems,
@@ -1463,6 +1465,11 @@ Examples:
         help="Problems per Socratic iteration (default: 200)",
     )
     parser.add_argument(
+        "--dpo", action="store_true",
+        help="Use Direct Preference Optimization instead of SFT in Socratic loop. "
+             "Trains on (chosen=correct, rejected=wrong) pairs."
+    )
+    parser.add_argument(
         "--dialectic", action="store_true", help="Enable dialectical self-play (Generator vs Critic debate)"
     )
     parser.add_argument(
@@ -1514,6 +1521,7 @@ Examples:
                 socratic=args.socratic,
                 socratic_steps=args.socratic_steps,
                 socratic_problems=args.socratic_problems,
+                dpo=args.dpo,
                 dialectic=args.dialectic,
                 dialectic_steps=args.dialectic_steps,
                 dialectic_problems=args.dialectic_problems,
@@ -1542,6 +1550,7 @@ Examples:
                     "loss_masking": not args.no_loss_mask,
                     "cot": args.cot,
                     "socratic": args.socratic,
+                    "dpo": args.dpo,
                     "dialectic": args.dialectic,
                     "ewc": args.ewc, "expert_ewc": args.expert_ewc, "fisher_archive": args.fisher_archive, "deep": args.deep, "lora": args.lora,
                 },
@@ -1573,6 +1582,7 @@ Examples:
         print(f"  FisherArchive: {'ON' if args.fisher_archive else 'OFF'}")
         print(f"  CoT:     {'ON' if args.cot else 'OFF'}")
         print(f"  Socratic: {'ON (steps=' + str(args.socratic_steps) + ')' if args.socratic else 'OFF'}")
+        print(f"  DPO:     {'ON' if args.dpo else 'OFF'}")
         print(f"  Dialectic: {'ON (problems=' + str(args.dialectic_problems) + ')' if args.dialectic else 'OFF'}")
         print(f"  LoRA:    {'ON (rank=' + str(args.lora_rank) + ')' if args.lora else 'OFF'}")
         print(f"  WandB:   {'ON' if args.wandb else 'OFF'}")
@@ -1604,6 +1614,7 @@ Examples:
         socratic=args.socratic,
         socratic_steps=args.socratic_steps,
         socratic_problems=args.socratic_problems,
+        dpo=args.dpo,
         dialectic=args.dialectic,
         dialectic_steps=args.dialectic_steps,
         dialectic_problems=args.dialectic_problems,
