@@ -597,6 +597,19 @@ class MathTransformer(nn.Module):
             eq = f'{before}={candidate}'
             if verify_equation(eq).get('valid') or verify_scratchpad(eq).get('valid'):
                 return eq
+        
+        # Fallback: strip runs of 3+ consecutive same chars even if math doesn't validate
+        # The model often generates a few correct digits then repeats the last one
+        import re
+        cleaned = after
+        for c in set(after):
+            cleaned = re.sub(f'{re.escape(c)}{{3,}}', c, cleaned)
+        if cleaned != after:
+            return f'{before}={cleaned}'
+        
+        # Last resort: take first 4 chars (longest plausible answer length)
+        if len(after) > 6:
+            return f'{before}={after[:4]}'
         return raw
 
     def quantize_(self, bits: int = 8) -> None:
