@@ -184,7 +184,7 @@ class Attention(nn.Module):
 
         self.pos_type = config.pos_encoding
         if self.pos_type == "rope":
-            self.rope = RotaryEmbedding(self.head_dim, config.max_seq_len * 2)
+            self.rope = RotaryEmbedding(self.head_dim, max(512, config.max_seq_len * 2))
         elif self.pos_type == "learned":
             self.pos_embed = LearnedPositionEmbedding(config.max_seq_len, config.d_model)
         self.dropout = nn.Dropout(config.dropout)

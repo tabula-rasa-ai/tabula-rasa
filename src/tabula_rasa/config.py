@@ -40,7 +40,7 @@ class Config:
     n_layers: int = 4  # Number of transformer layers (depth)
     n_heads: int = 4  # Attention heads (must divide d_model)
     d_ff: int = 512  # Feed-forward hidden dimension
-    max_seq_len: int = 64  # 32 is tight for CoT; 64 fits 4-digit + steps
+    max_seq_len: int = 256  # Default context window; supports CoT/MCTS reasoning; KV-cache makes O(n) generation
     dropout: float = 0.1  # Dropout rate (0=off, 0.0-0.5)
 
     # Architecture variants
