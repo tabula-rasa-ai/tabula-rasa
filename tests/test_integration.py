@@ -179,18 +179,19 @@ class TestEndToEndQuickTraining:
     """Run the actual train_specialist.py script as a subprocess."""
 
     def test_quick_training_subprocess(self, tmp_path):
-        """``train_specialist.py add --quick`` completes without error,
+        """``train_specialist.py add --steps 100 --batch 64`` completes without error,
         creates checkpoint files, and produces a model that generates
-        reasonable output.
+        reasonable output. Uses explicit step count instead of --quick
+        so the test is predictable across CI and local environments.
         """
         import subprocess
         import sys
 
-        # Run in tmp_path so we don't pollute the real specialist dirs
         cwd = Path(__file__).resolve().parent.parent
         result = subprocess.run(
-            [sys.executable, 'train_specialist.py', 'add', '--quick'],
-            capture_output=True, text=True, timeout=120, cwd=str(cwd),
+            [sys.executable, 'train_specialist.py', 'add',
+             '--steps', '100', '--batch', '64'],
+            capture_output=True, text=True, timeout=300, cwd=str(cwd),
         )
 
         # Check exit code
@@ -201,8 +202,8 @@ class TestEndToEndQuickTraining:
         )
 
         # Check output contains expected messages
-        assert 'Quick mode' in result.stdout or 'Done!' in result.stdout, (
-            f"Expected training output not found:\n{result.stdout[:1000]}"
+        assert 'Done!' in result.stdout, (
+            f"Expected 'Done!' not found in output:\n{result.stdout[:1000]}"
         )
 
         # Check that checkpoint files were created
@@ -243,9 +244,10 @@ class TestEndToEndQuickTraining:
 
         cwd = Path(__file__).resolve().parent.parent
         result = subprocess.run(
-            [sys.executable, 'train_specialist.py', 'add', '--quick',
+            [sys.executable, 'train_specialist.py', 'add',
+             '--steps', '100', '--batch', '64',
              '--no-reversed', '--no-loss-mask'],
-            capture_output=True, text=True, timeout=120, cwd=str(cwd),
+            capture_output=True, text=True, timeout=300, cwd=str(cwd),
         )
         assert result.returncode == 0, (
             f"Exit code {result.returncode}\n{result.stdout[:500]}"
