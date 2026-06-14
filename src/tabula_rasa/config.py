@@ -110,6 +110,10 @@ class Config:
     rl_horizon: int = 512  # Steps between PPO updates
     rl_max_grad_norm: float = 0.5  # PPO gradient clip norm
 
+    # ── Socratic Stage 3 ──
+    use_socratic_stage3: bool = False  # Enable multi-persona arithmetic debate
+    stage3_problems: int = 20  # Number of problems to debate in Stage 3
+
     # ── Low-Rank Adaptation (LoRA) ──────────────────────────
     use_lora: bool = False  # Enable LoRA fine-tuning
     lora_rank: int = 8  # LoRA rank (r)

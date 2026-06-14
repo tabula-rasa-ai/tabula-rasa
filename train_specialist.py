@@ -615,6 +615,7 @@ def train_specialist(
     use_rl=False,
     rl_total_steps=0,
     rl_lr=0,
+    use_socratic_stage3=False,
 ):
     """Train a specialist for one arithmetic operation.
 
@@ -662,6 +663,8 @@ def train_specialist(
             cfg.eval_every = min(eval_interval, 100)
     if patience > 0:
         cfg.early_stop_patience = patience
+    if use_socratic_stage3:
+        cfg.use_socratic_stage3 = True
     if use_reversed is not None:
         cfg.use_reversed = use_reversed
     if use_loss_masking is not None:
@@ -1340,6 +1343,27 @@ def train_specialist(
             print(f"  [!] PPO not available: {e}")
             print(f"  Install: pip install gymnasium")
 
+    # ── Stage 3: Arithmetic Dialectical Self-Play ──
+    socratic_stage3 = getattr(cfg, 'use_socratic_stage3', False)
+    if socratic_stage3 and not _INTERRUPTED:
+        print(f'\n{"="*60}')
+        print(f"  Stage 3: Dialectical Self-Play (Arithmetic Debate)")
+        print(f'{"="*60}')
+        try:
+            from egefalos.socratic_stage3 import run_arithmetic_session
+            session_result = run_arithmetic_session(
+                model, tok, cfg,
+                num_problems=cfg.stage3_problems,
+                turns_per_problem=3,
+                op=op,
+                max_digits=cfg.max_digits or 1,
+            )
+            print(f"  Stage 3 complete: {session_result['accuracy']:.1f}% accuracy, "
+                  f"{session_result['corrections']} corrections")
+        except Exception as e:
+            print(f"  [!] Stage 3 failed: {e}")
+            import traceback; traceback.print_exc()
+
     # ── Dialectical Self-Play (Generator vs Critic debate) ──
     if dialectic and not _INTERRUPTED and best_acc > 30.0:
         print(f'\n{"="*60}')
@@ -1584,6 +1608,13 @@ Examples:
         "--rl-lr", type=float, default=0, help="PPO learning rate (0=config default 3e-4)"
     )
     parser.add_argument(
+        "--socratic-stage3", action="store_true",
+        help="Enable Stage 3 dialectical self-play (multi-persona debate with arithmetic)"
+    )
+    parser.add_argument(
+        "--stage3-problems", type=int, default=20, help="Stage 3 problems to debate (default: 20)"
+    )
+    parser.add_argument(
         "--log-level",
         type=str,
         default="INFO",
@@ -1636,6 +1667,7 @@ Examples:
                 use_rl=args.rl,
                 rl_total_steps=args.rl_steps,
                 rl_lr=args.rl_lr,
+                use_socratic_stage3=args.socratic_stage3,
             )
             results[op_name] = "OK" if model is not None else "FAILED"
         print(f"\n  Results: {results}")
@@ -1734,4 +1766,5 @@ Examples:
         use_rl=args.rl,
         rl_total_steps=args.rl_steps,
         rl_lr=args.rl_lr,
+        use_socratic_stage3=args.socratic_stage3,
     )
