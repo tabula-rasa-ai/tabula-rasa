@@ -20,8 +20,9 @@ from tabula_rasa.tokenizer import MathTokenizer
 class TestQuickTraining:
     """End-to-end quick training smoke test."""
 
+    @classmethod
     @pytest.fixture(scope="class")
-    def trained_model(self):
+    def trained_model(cls):
         """Train a tiny model quickly and return it."""
         cfg = Config()
         cfg.d_model = 32
