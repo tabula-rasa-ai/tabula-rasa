@@ -240,7 +240,18 @@ def consolidate_sleep_cycle(
             print(f"  [Sleep] Gradient replay: {n_replayed} gradient-enhanced experiences applied")
     except Exception as e:
         print(f"  [Sleep] Gradient replay skipped: {e}")
-    print(f"{'='*60}\n")
+
+    # Latent Replay — representation-level distillation
+    try:
+        from egefalos.hippocampus import replay_latents
+        n_latent = replay_latents(model, tokenizer, lr=0.0005,
+                                   limit=num_samples, tier='longterm',
+                                   distill_coef=0.3)
+        if n_latent > 0:
+            print(f"  [Sleep] Latent replay: {n_latent} representations distilled")
+    except Exception as e:
+        print(f"  [Sleep] Latent replay: {n_latent} representations distilled")
+    print(f"{'='*60}\\n")
 
 
 def _find_latest_checkpoint() -> Optional[Path]:

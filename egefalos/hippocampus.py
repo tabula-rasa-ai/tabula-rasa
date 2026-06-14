@@ -19,6 +19,7 @@ import io
 from pathlib import Path
 from typing import Optional
 import torch
+import torch.nn as nn
 
 DB_PATH = Path('memory/hippocampus.db')
 
@@ -77,6 +78,12 @@ def _init_schema(conn: sqlite3.Connection):
     except sqlite3.OperationalError:
         pass  # Already exists
 
+    # Add latent_data BLOB column (new for latent replay)
+    try:
+        conn.execute("ALTER TABLE experiences ADD COLUMN latent_data BLOB")
+    except sqlite3.OperationalError:
+        pass  # Already exists
+
     # Indexes
     conn.execute("""
         CREATE INDEX IF NOT EXISTS idx_tier_consolidated
@@ -123,6 +130,51 @@ def deserialize_gradients(data: bytes) -> dict[str, torch.Tensor]:
         return {}
 
 
+# ─── Latent Serialization ─────────────────────────────────────────
+
+
+def serialize_latent(tensor: torch.Tensor) -> bytes:
+    """Serialize a single latent tensor to bytes."""
+    buffer = io.BytesIO()
+    torch.save(tensor.detach().cpu(), buffer)
+    return buffer.getvalue()
+
+
+def deserialize_latent(data: bytes) -> Optional[torch.Tensor]:
+    """Deserialize latent bytes back to tensor. Returns None on fail."""
+    if not data:
+        return None
+    try:
+        buffer = io.BytesIO(data)
+        return torch.load(buffer, weights_only=True)
+    except Exception:
+        return None
+
+
+@torch.no_grad()
+def capture_latents(model, input_ids: torch.Tensor) -> torch.Tensor:
+    """Run forward pass and capture the last hidden state (before LM head).
+
+    Used for latent replay: stores the representation so it can be
+    replayed later without re-running the full transformer.
+
+    Args:
+        model: MathTransformer.
+        input_ids: (1, seq_len) tensor of token IDs.
+
+    Returns:
+        (d_model,) tensor — the last token's hidden state.
+    """
+    model.eval()
+    # Forward pass through transformer layers only (not LM head)
+    x = model.token_embedding(input_ids)
+    for layer in model.layers:
+        x, _ = layer(x, mask=None)
+    # x is (1, seq_len, d_model); take last token
+    latent = x[0, -1, :].detach().cpu()  # (d_model,)
+    return latent
+
+
 # ─── CRUD ──────────────────────────────────────────────────────────
 
 
@@ -134,8 +186,9 @@ def store_experience(
     is_correction: bool = False,
     tier: str = 'active',
     gradient_data: Optional[dict[str, torch.Tensor]] = None,
+    latent_data: Optional[torch.Tensor] = None,
 ):
-    """Store an experience with optional gradient information.
+    """Store an experience with optional gradient and latent information.
 
     Args:
         input_text: The input/prompt text.
@@ -146,19 +199,22 @@ def store_experience(
         tier: Memory tier ('active', 'working', 'longterm').
         gradient_data: Optional dict of parameter_name -> gradient tensor.
                        Serialized to BLOB for gradient replay.
+        latent_data: Optional last hidden state tensor (d_model,).
+                     Serialized to BLOB for latent replay.
     """
     conn = get_db()
     ts = time.time()
     grad_bytes = serialize_gradients(gradient_data) if gradient_data else None
+    latent_bytes = serialize_latent(latent_data) if latent_data is not None else None
 
     conn.execute("""
         INSERT INTO experiences (timestamp, input_text, output_text,
                                  prediction_error, skill, is_correction,
-                                 tier, gradient_data)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                                 tier, gradient_data, latent_data)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (ts, input_text, output_text,
           prediction_error, skill, 1 if is_correction else 0,
-          tier, grad_bytes))
+          tier, grad_bytes, latent_bytes))
     conn.commit()
 
 
@@ -197,8 +253,9 @@ def get_old_memories(
     tier: str = 'longterm',
     use_per: bool = True,
     only_with_gradients: bool = False,
+    include_latents: bool = False,
 ) -> list[dict]:
-    """Get consolidated memories, optionally filtered to those with gradients."""
+    """Get consolidated memories, optionally with gradient and latent data."""
     conn = get_db()
     grad_filter = "AND gradient_data IS NOT NULL" if only_with_gradients else ""
 
@@ -210,11 +267,14 @@ def get_old_memories(
     if total == 0:
         return []
 
+    cols = "id, input_text, output_text, prediction_error, "\
+           "skill, is_correction, tier, access_count, last_access, gradient_data"
+    if include_latents:
+        cols += ", latent_data"
+
     if not use_per:
         rows = conn.execute(f"""
-            SELECT id, input_text, output_text, prediction_error,
-                   skill, is_correction, tier, access_count, last_access,
-                   gradient_data
+            SELECT {cols}
             FROM experiences WHERE consolidated = 1 AND tier = ? {grad_filter}
             ORDER BY RANDOM() LIMIT ?
         """, (tier, limit)).fetchall()
@@ -222,13 +282,14 @@ def get_old_memories(
         for r in result:
             r['gradients'] = deserialize_gradients(r.get('gradient_data', b''))
             del r['gradient_data']
+            if include_latents:
+                r['latent'] = deserialize_latent(r.get('latent_data'))
+                del r['latent_data']
         return result
 
     # PER sampling
     rows = conn.execute(f"""
-        SELECT id, input_text, output_text, prediction_error,
-               skill, is_correction, tier, access_count, last_access,
-               gradient_data
+        SELECT {cols}
         FROM experiences WHERE consolidated = 1 AND tier = ? {grad_filter}
     """, (tier,)).fetchall()
     if not rows:
@@ -238,6 +299,9 @@ def get_old_memories(
     for r in records:
         r['gradients'] = deserialize_gradients(r.get('gradient_data', b''))
         del r['gradient_data']
+        if include_latents:
+            r['latent'] = deserialize_latent(r.get('latent_data'))
+            del r['latent_data']
 
     actual_limit = min(limit, len(records))
     errors = torch.tensor(
@@ -427,6 +491,89 @@ def gradient_replay(
                     grad_tensor.to(device) * lr * error_weight
                 )
         replay_count += 1
+
+    return replay_count
+
+
+def replay_latents(
+    model: torch.nn.Module,
+    tokenizer,
+    lr: float = 0.001,
+    limit: int = 50,
+    tier: str = 'longterm',
+    distill_coef: float = 0.5,
+) -> int:
+    """Replay stored latent representations as distillation targets.
+
+    For each experience with latent data:
+    1. Run the input through the full model to get current hidden state
+    2. Compute MSE loss between current hidden state and stored latent
+    3. Backprop to pull current representations toward stored ones
+
+    This is more efficient than full re-training because:
+    - Only needs the forward pass + one loss.backward()
+    - Representation-level replay preserves task structure
+    - Complements gradient replay (which operates on parameter grads)
+
+    Args:
+        model: The model to update.
+        tokenizer: MathTokenizer for encoding.
+        lr: Learning rate for latent distillation.
+        limit: Max experiences to replay.
+        tier: Memory tier to sample from.
+        distill_coef: Weight of distillation loss vs standard CE.
+
+    Returns:
+        Number of experiences replayed.
+    """
+    experiences = get_old_memories(
+        limit=limit, tier=tier, use_per=True, include_latents=True
+    )
+    if not experiences:
+        return 0
+
+    device = next(model.parameters()).device
+    model.train()
+    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-5)
+    replay_count = 0
+
+    for exp in experiences:
+        text = exp.get('input_text', '')
+        if not text:
+            continue
+
+        # Tokenize
+        ids = tokenizer.encode(text, add_special_tokens=True)
+        if len(ids) < 2:
+            continue
+        x = torch.tensor([ids[:-1]], dtype=torch.long, device=device)
+
+        # Forward pass through full model (with gradients)
+        logits, loss, _ = model(x, x)  # CE loss on next-token prediction
+
+        # Get current hidden state (with gradients for backprop)
+        h = model.token_embedding(x)
+        for layer in model.layers:
+            h, _ = layer(h, mask=None)
+        current_hidden = h[0, -1, :]  # (d_model,)
+
+        # Latent distillation loss
+        target = exp.get('latent')
+        if target is not None:
+            target = target.to(device)
+            distill_loss = nn.MSELoss()(current_hidden, target)
+            total_loss = loss + distill_coef * distill_loss
+        else:
+            total_loss = loss
+
+        optimizer.zero_grad()
+        total_loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+        optimizer.step()
+        replay_count += 1
+
+        if replay_count % 10 == 0:
+            print(f"    [Latent replay] {replay_count}/{limit}: loss={total_loss.item():.4f}")
 
     return replay_count
 
