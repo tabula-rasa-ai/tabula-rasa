@@ -1078,6 +1078,71 @@ def load_checkpoint(checkpoint_path: str):
     return MODEL_CACHE
 
 
+def run_mcts_search(problem: str, sims: int = 32) -> dict:
+    """Run MCTS on a problem and return the tree for visualization."""
+    import sys as _sys
+    _p = Path(__file__).resolve().parent
+    if str(_p) not in _sys.path: _sys.path.insert(0, str(_p))
+    if str(_p / "src") not in _sys.path: _sys.path.insert(0, str(_p / "src"))
+    try:
+        from egefalos.mcts import MicroMCTS
+        from egefalos.math_gym_env import MathGymEnv
+        from tabula_rasa.tokenizer import MathTokenizer
+        from tabula_rasa.config import Config
+        from tabula_rasa.model import MathTransformer
+
+        tok = MathTokenizer()
+        cfg = Config()
+        cfg.vocab_size = tok.vocab_size
+        model = MathTransformer(cfg)
+        model.eval()
+
+        env = MathGymEnv(tokenizer=tok, op="add", max_digits=4, max_seq_len=32)
+        mcts = MicroMCTS(model=model, tokenizer=tok, num_simulations=sims,
+                         c_puct=1.0, discount=0.99, device="cpu")
+
+        obs, info = env.reset()
+        input_ids = obs["input_ids"].unsqueeze(0)
+        trajectory, _ = mcts.search(input_ids)
+
+        def serialize_node(node, max_depth=6, depth=0):
+            if depth > max_depth: return None
+            d = {
+                "token_ids": node.token_ids if hasattr(node, "token_ids") else [],
+                "visit_count": node.visit_count,
+                "mean_value": node.mean_value if hasattr(node, "mean_value") else 0.0,
+                "prior_prob": node.prior_prob,
+                "is_terminal": node.is_terminal,
+                "children": {},
+            }
+            if hasattr(node, "children") and node.children:
+                for tid, child in node.children.items():
+                    child_d = serialize_node(child, max_depth, depth + 1)
+                    if child_d:
+                        d["children"][str(tid)] = child_d
+            return d
+
+        root_s = serialize_node(mcts.root if hasattr(mcts, "root") else None)
+        top_path = tok.decode(trajectory, skip_special=True) if trajectory else ""
+
+        return {
+            "root": root_s, "top_path": top_path,
+            "nodes": _count_mcts_nodes(root_s),
+            "best_value": root_s.get("mean_value", 0) if root_s else 0,
+        }
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return {"error": str(e), "root": None, "top_path": "", "nodes": 0, "best_value": 0}
+
+
+def _count_mcts_nodes(node):
+    if node is None: return 0
+    c = 1
+    for ch in (node.get("children") or {}).values():
+        c += _count_mcts_nodes(ch)
+    return c
+
+
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urlparse(self.path).path
@@ -1101,6 +1166,12 @@ class Handler(BaseHTTPRequestHandler):
             self._json(get_ewc_fisher())
         elif path == "/api/ewc-stress-test":
             self._json(run_ewc_stress_test())
+        elif path == "/api/mcts-tree":
+            from urllib.parse import urlparse, parse_qs
+            params = parse_qs(urlparse(self.path).query)
+            problem = params.get("problem", ["12+34"])[0]
+            sims = int(params.get("sims", [32])[0])
+            self._json(run_mcts_search(problem, sims))
         elif path == "/training-log":
             # Find the most recently updated training log
             log_candidates = [

@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tabula Rasa — MCTS Tree Visualizer</title>
+<style>
+:root { --bg: #0f172a; --panel: #1e293b; --border: #334155; --text: #f1f5f9; --muted: #94a3b8; --accent: #3b82f6; --green: #22c55e; --amber: #f59e0b; --red: #ef4444; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); padding: 24px; }
+h1 { font-size: 1.3rem; color: var(--accent); margin-bottom: 16px; }
+.controls { display: flex; gap: 8px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
+.controls input { flex: 1; min-width: 200px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); color: var(--text); font-size: 0.9rem; }
+.controls input:focus { outline: none; border-color: var(--accent); }
+.controls button { padding: 8px 20px; border: none; border-radius: 6px; background: var(--accent); color: white; font-weight: 600; cursor: pointer; font-size: 0.85rem; }
+.controls button:hover { opacity: 0.85; }
+.controls label { font-size: 0.8rem; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+.controls input[type=number] { width: 60px; min-width: 60px; padding: 6px 8px; }
+.stats { display: flex; gap: 16px; margin-bottom: 12px; font-size: 0.8rem; color: var(--muted); flex-wrap: wrap; }
+.stats span { background: var(--panel); padding: 4px 10px; border-radius: 4px; }
+.stats .val { color: var(--text); font-weight: 600; }
+#canvas-wrap { border: 1px solid var(--border); border-radius: 8px; background: #0d1117; overflow: hidden; position: relative; min-height: 500px; }
+canvas { display: block; width: 100%; height: 100%; }
+#status { font-size: 0.8rem; color: var(--muted); margin: 8px 0; min-height: 1.2em; }
+.node-tooltip { position: absolute; display: none; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; font-size: 0.75rem; pointer-events: none; z-index: 10; max-width: 300px; }
+.node-tooltip.visible { display: block; }
+.node-tooltip .tt-label { color: var(--muted); margin-right: 6px; }
+</style>
+</head>
+<body>
+<h1>&#x1F332; MCTS Tree Visualizer</h1>
+<p style="font-size:0.82rem;color:var(--muted);margin-bottom:16px;">Watch the model explore reasoning paths. Each node is a token sequence, edges show visit counts.</p>
+
+<div class="controls">
+  <input id="problem-input" type="text" placeholder="Enter problem (e.g. 12+34)" value="12+34">
+  <label>Sims: <input id="sims-input" type="number" value="32" min="4" max="200"></label>
+  <button id="search-btn">&#x25B6; Search</button>
+</div>
+
+<div class="stats" id="stats-bar">
+  <span>Nodes: <span class="val" id="node-count">0</span></span>
+  <span>Depth: <span class="val" id="tree-depth">0</span></span>
+  <span>Top path: <span class="val" id="top-path">-</span></span>
+  <span>Best value: <span class="val" id="best-value">-</span></span>
+</div>
+
+<div id="status">Enter a problem and click Search.</div>
+<div id="canvas-wrap">
+  <canvas id="tree-canvas"></canvas>
+  <div class="node-tooltip" id="tooltip"></div>
+</div>
+
+<script>
+var API = 'http://localhost:8000';
+var canvas = document.getElementById('tree-canvas');
+var ctx = canvas.getContext('2d');
+var tooltip = document.getElementById('tooltip');
+
+function resize() {
+  var wrap = document.getElementById('canvas-wrap');
+  canvas.width = wrap.clientWidth * 2;
+  canvas.height = Math.max(500, document.body.scrollHeight - 250) * 2;
+  canvas.style.height = (canvas.height / 2) + 'px';
+}
+window.addEventListener('resize', resize);
+
+function $(id) { return document.getElementById(id); }
+
+// Layout tree using Reingold-Tilford algorithm
+function layoutTree(rootNode, canvasW, startY) {
+  var nodeMap = {};
+  var maxDepth = 0;
+  var depthCounts = {};
+
+  function traverse(node, depth, parentId) {
+    var id = nodeMap.count++;
+    nodeMap[id] = { node: node, depth: depth, parentId: parentId, children: [] };
+    if (parentId !== null) nodeMap[parentId].children.push(id);
+    maxDepth = Math.max(maxDepth, depth);
+    depthCounts[depth] = (depthCounts[depth] || 0) + 1;
+    if (node.children) {
+      Object.values(node.children).forEach(function(c) { traverse(c, depth + 1, id); });
+    }
+  }
+  nodeMap.count = 0;
+  traverse(rootNode, 0, null);
+
+  // Horizontal positions: center children under parent
+  var depthPositions = {};
+  for (var d = maxDepth; d >= 0; d--) {
+    var nodesAtDepth = Object.keys(nodeMap).filter(function(k) { return k !== 'count' && nodeMap[k].depth === d; });
+    var spacing = Math.max(40, Math.min(120, canvasW / (nodesAtDepth.length + 1)));
+    var totalW = nodesAtDepth.length * spacing;
+    var startX = (canvasW - totalW) / 2 + spacing / 2;
+
+    nodesAtDepth.sort(function(a, b) { return parseInt(a) - parseInt(b); });
+    nodesAtDepth.forEach(function(id, i) {
+      nodeMap[id].x = startX + i * spacing;
+      nodeMap[id].y = 60 + d * 90;
+    });
+  }
+
+  return { nodeMap: nodeMap, maxDepth: maxDepth };
+}
+
+function drawTree(data) {
+  resize();
+  var w = canvas.width, h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+
+  if (!data || !data.root) { return; }
+
+  var layout = layoutTree(data.root, w, 60);
+  var nm = layout.nodeMap;
+
+  // Draw edges
+  ctx.strokeStyle = '#334155';
+  ctx.lineWidth = 1.5;
+  Object.keys(nm).forEach(function(id) {
+    if (id === 'count') return;
+    var n = nm[id];
+    if (n.parentId !== null) {
+      var p = nm[n.parentId];
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y + 14);
+      ctx.lineTo(n.x, n.y - 14);
+      ctx.stroke();
+      // Edge label: visit count
+      ctx.fillStyle = '#64748b';
+      ctx.font = '10px sans-serif';
+      ctx.textAlign = 'center';
+      var mx = (p.x + n.x) / 2, my = (p.y + n.y) / 2;
+      ctx.fillText(n.node.visit_count || '0', mx, my - 2);
+    }
+  });
+
+  // Draw nodes
+  Object.keys(nm).forEach(function(id) {
+    if (id === 'count') return;
+    var n = nm[id];
+    var nd = n.node;
+    var r = Math.min(20, 8 + Math.sqrt(nd.visit_count || 1) * 3);
+
+    // Color by value: green (good), amber (mixed), red (bad)
+    var val = nd.mean_value || 0;
+    ctx.fillStyle = val > 0.3 ? '#1a3a2a' : (val < -0.3 ? '#3a1a1a' : '#1e293b');
+    ctx.strokeStyle = val > 0.3 ? '#22c55e' : (val < -0.3 ? '#ef4444' : '#334155');
+    ctx.lineWidth = 2;
+
+    ctx.beginPath();
+    ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Token label (first 3 chars)
+    ctx.fillStyle = '#e2e8f0';
+    ctx.font = '9px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    var label = nd.token_ids && nd.token_ids.length > 0 ? nd.token_ids.slice(-1)[0] : '';
+    ctx.fillText(String(label).substring(0, 3), n.x, n.y);
+
+    // Visit count below
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '8px sans-serif';
+    ctx.textBaseline = 'top';
+    ctx.fillText('v=' + (nd.visit_count || 0), n.x, n.y + r + 2);
+  });
+
+  $('node-count').textContent = Object.keys(nm).length - 1;
+  $('tree-depth').textContent = layout.maxDepth;
+
+  // Canvas click → tooltip
+  canvas.onclick = function(e) {
+    var rect = canvas.getBoundingClientRect();
+    var scaleX = canvas.width / rect.width;
+    var scaleY = canvas.height / rect.height;
+    var mx = (e.clientX - rect.left) * scaleX;
+    var my = (e.clientY - rect.top) * scaleY;
+    var found = null;
+
+    Object.keys(nm).forEach(function(id) {
+      if (id === 'count') return;
+      var n = nm[id];
+      var r = Math.min(20, 8 + Math.sqrt(n.node.visit_count || 1) * 3);
+      var dx = mx - n.x, dy = my - n.y;
+      if (dx * dx + dy * dy < r * r + 10) {
+        found = n;
+      }
+    });
+
+    if (found) {
+      var nd = found.node;
+      var seq = (nd.token_ids || []).join(',');
+      tooltip.innerHTML = '<div><span class="tt-label">Tokens:</span> ' + seq + '</div>' +
+        '<div><span class="tt-label">Visits:</span> ' + (nd.visit_count || 0) + '</div>' +
+        '<div><span class="tt-label">Value:</span> ' + (nd.mean_value || 0).toFixed(4) + '</div>' +
+        '<div><span class="tt-label">Prior:</span> ' + (nd.prior_prob || 0).toFixed(4) + '</div>' +
+        '<div><span class="tt-label">Depth:</span> ' + found.depth + '</div>';
+      tooltip.className = 'node-tooltip visible';
+      tooltip.style.left = (e.clientX - canvas.getBoundingClientRect().left + 15) + 'px';
+      tooltip.style.top = (e.clientY - canvas.getBoundingClientRect().top - 10) + 'px';
+    } else {
+      tooltip.className = 'node-tooltip';
+    }
+  };
+}
+
+$('search-btn').onclick = function() {
+  var problem = $('problem-input').value.trim();
+  var sims = parseInt($('sims-input').value) || 32;
+  if (!problem) { $('status').textContent = 'Enter a problem.'; return; }
+
+  $('status').textContent = 'Searching ' + sims + ' simulations...';
+  $('search-btn').disabled = true;
+  tooltip.className = 'node-tooltip';
+
+  fetch(API + '/api/mcts-tree?problem=' + encodeURIComponent(problem) + '&sims=' + sims)
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      $('status').textContent = 'Done. ' + (data.nodes || 0) + ' nodes explored.';
+      if (data.root && data.top_path) {
+        $('top-path').textContent = data.top_path;
+      }
+      if (data.best_value !== undefined) {
+        $('best-value').textContent = data.best_value.toFixed(3);
+      }
+      drawTree(data);
+    })
+    .catch(function(err) {
+      $('status').textContent = 'Error: ' + err.message + ' (is API server running on port 8000?)';
+    })
+    .finally(function() { $('search-btn').disabled = false; });
+};
+
+// Allow Enter key
+$('problem-input').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') $('search-btn').click();
+});
+
+resize();
+</script>
+</body>
+</html>
