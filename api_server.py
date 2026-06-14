@@ -195,6 +195,113 @@ def auto_train_status() -> dict:
     return result
 
 
+# ─── CL Metrics ────────────────────────────────────────────────
+
+def get_cl_metrics() -> dict:
+    """Load CL benchmark results and return formatted metrics."""
+    import torch
+    path = Path("experiments/cl_benchmark_results.json")
+    if not path.exists():
+        return {"available": False, "message": "Run experiments/run_cl_benchmark.py first"}
+
+    try:
+        data = json.loads(path.read_text())
+    except Exception:
+        return {"available": False, "error": "Failed to parse CL benchmark results"}
+
+    methods = {}
+    for method_name, results in data.items():
+        if not isinstance(results, dict):
+            continue
+        summary = results.get("summary", {})
+        methods[method_name] = {
+            "avg_final_accuracy": summary.get("avg_final_accuracy", 0),
+            "bwt": summary.get("min_bwt", 0),
+            "fwt": summary.get("avg_fwt", 0),
+            "total_steps": summary.get("total_steps_to_mastery", 0),
+            "time_seconds": summary.get("time_seconds", 0),
+        }
+
+    return {"available": True, "methods": methods}
+
+
+# ─── Specialist Usage ──────────────────────────────────────────
+
+def get_specialist_usage() -> dict:
+    """Scan specialists directory and return utilization stats."""
+    specialists_dir = Path("specialists/math")
+    if not specialists_dir.exists():
+        return {"available": False}
+
+    ops = []
+    for op_dir in sorted(specialists_dir.iterdir()):
+        if not op_dir.is_dir():
+            continue
+        best_pt = op_dir / "best.pt"
+        log_file = op_dir / "training.log"
+        stats = {
+            "operation": op_dir.name,
+            "checkpoint_exists": best_pt.exists(),
+        }
+        if best_pt.exists():
+            stats["size_kb"] = round(best_pt.stat().st_size / 1024, 1)
+        if log_file.exists():
+            stats["log_size_kb"] = round(log_file.stat().st_size / 1024, 1)
+            stats["last_modified"] = time.strftime(
+                "%Y-%m-%d %H:%M", time.localtime(log_file.stat().st_mtime)
+            )
+        # Try to extract best accuracy from log
+        if log_file.exists():
+            try:
+                text = log_file.read_text()
+                for line in text.split("\n"):
+                    if "Best:" in line:
+                        m = re.search(r"Best:\s*([\d.]+)%", line)
+                        if m:
+                            stats["best_accuracy"] = float(m.group(1))
+                        break
+            except Exception:
+                pass
+        ops.append(stats)
+
+    return {"available": True, "specialists": ops}
+
+
+# ─── Batch Inference ───────────────────────────────────────────
+
+def batch_inference(data: dict) -> dict:
+    """Run inference on multiple prompts in batch.
+
+    POST body: {"prompts": ["2+2=", "3+4=", ...], "max_tokens": 10}
+    """
+    prompts = (data or {}).get("prompts", [])
+    max_tokens = int((data or {}).get("max_tokens", 10))
+
+    if not prompts:
+        return {"ok": False, "error": "No prompts provided"}
+
+    if len(prompts) > 100:
+        return {"ok": False, "error": "Max 100 prompts per batch"}
+
+    model, tok, cfg = load_model()
+    if model is None:
+        return {"ok": False, "error": "No model loaded. Train one first."}
+
+    model.eval()
+    results = []
+    for prompt in prompts:
+        try:
+            output = model.generate(
+                tok, prompt, max_new_tokens=max_tokens, temperature=0.0
+            )
+            answer = output.replace(prompt, "").replace("<EOS>", "").strip()
+            results.append({"prompt": prompt, "output": output, "answer": answer})
+        except Exception as e:
+            results.append({"prompt": prompt, "error": str(e)})
+
+    return {"ok": True, "count": len(results), "results": results}
+
+
 def get_server_status():
     return {
         "pid": os.getpid(),
@@ -1172,6 +1279,10 @@ class Handler(BaseHTTPRequestHandler):
             problem = params.get("problem", ["12+34"])[0]
             sims = int(params.get("sims", [32])[0])
             self._json(run_mcts_search(problem, sims))
+        elif path == "/api/cl-metrics":
+            self._json(get_cl_metrics())
+        elif path == "/api/specialist-usage":
+            self._json(get_specialist_usage())
         elif path == "/training-log":
             # Find the most recently updated training log
             log_candidates = [

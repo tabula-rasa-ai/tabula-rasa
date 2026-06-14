@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>CL Metrics — Tabula Rasa</title>
+<style>
+:root{--bg:#0d1117;--surface:#161b22;--border:#30363d;--text:#e6edf3;--dim:#848d97;--accent:#58a6ff;--green:#3fb950;--orange:#d79333;--red:#f85149}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);padding:30px}
+h1{font-size:24px;margin-bottom:20px}
+h1 span{color:var(--accent)}
+.sub{color:var(--dim);font-size:13px;margin-bottom:20px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:18px;margin-bottom:16px}
+.card h2{font-size:15px;margin-bottom:10px;font-weight:600}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{padding:8px 10px;text-align:left;border-bottom:1px solid var(--border)}
+th{color:var(--dim);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+td{font-variant-numeric:tabular-nums}
+.bwt-pos{color:var(--green)}.bwt-neg{color:var(--red)}
+.fwt-pos{color:var(--red)}.fwt-neg{color:var(--green)}
+.bar-container{background:var(--bg);height:20px;border-radius:4px;overflow:hidden;margin:4px 0}
+.bar-fill{height:100%;border-radius:4px;transition:width .5s}
+.bar{background:var(--accent)}.bar.best{background:var(--green)}
+.legend{display:flex;gap:16px;flex-wrap:wrap;margin:10px 0;font-size:12px;color:var(--dim)}
+.legend span{display:flex;align-items:center;gap:4px}
+.legend .dot{width:10px;height:10px;border-radius:2px;display:inline-block}
+.loading{color:var(--dim);text-align:center;padding:40px;font-size:14px}
+.error{color:var(--red);text-align:center;padding:20px}
+</style>
+</head>
+<body>
+<h1><span>CL</span> Benchmark Metrics</h1>
+<div class="sub">Continual learning method comparison — Backward Transfer, Forward Transfer, efficiency</div>
+<div id="loading" class="loading">Loading CL benchmark results...</div>
+<div id="content" style="display:none">
+  <div class="card">
+    <h2>Method Comparison</h2>
+    <table>
+      <thead>
+        <tr><th>Method</th><th>Avg Retention</th><th>BWT</th><th>FWT</th><th>Steps</th><th>Time</th></tr>
+      </thead>
+      <tbody id="method-table"></tbody>
+    </table>
+  </div>
+  <div class="card">
+    <h2>Backward Transfer (BWT)</h2>
+    <div class="legend">
+      <span><span class="dot" style="background:var(--green)"></span> Positive (old task improved)</span>
+      <span><span class="dot" style="background:var(--red)"></span> Negative (forgetting)</span>
+    </div>
+    <div id="bwt-chart"></div>
+  </div>
+  <div class="card">
+    <h2>Forward Transfer (FWT)</h2>
+    <div class="legend">
+      <span><span class="dot" style="background:var(--green)"></span> Positive (faster learning)</span>
+      <span><span class="dot" style="background:var(--red)"></span> Negative (slower learning)</span>
+    </div>
+    <div id="fwt-chart"></div>
+  </div>
+  <div class="card">
+    <h2>Training Efficiency</h2>
+    <div id="efficiency-chart"></div>
+  </div>
+</div>
+
+<script>
+const API = window.location.origin;
+
+async function load() {
+  try {
+    const res = await fetch(API + '/api/cl-metrics');
+    const data = await res.json();
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('content').style.display = 'block';
+
+    if (!data.available) {
+      document.getElementById('content').innerHTML =
+        '<div class="card"><p class="error">No CL benchmark results found. Run: experiments/run_cl_benchmark.py --full</p></div>';
+      return;
+    }
+
+    const methods = data.methods;
+    const entries = Object.entries(methods);
+    entries.sort((a, b) => b[1].avg_final_accuracy - a[1].avg_final_accuracy);
+
+    // Method table
+    const tbody = document.getElementById('method-table');
+    tbody.innerHTML = entries.map(([name, m]) =>
+      `<tr>
+        <td><strong>${name}</strong></td>
+        <td>${m.avg_final_accuracy.toFixed(1)}%</td>
+        <td class="${m.bwt >= 0 ? 'bwt-pos' : 'bwt-neg'}">${m.bwt >= 0 ? '+' : ''}${m.bwt.toFixed(1)}%</td>
+        <td class="${m.fwt <= 0 ? 'fwt-neg' : 'fwt-pos'}">${m.fwt >= 0 ? '+' : ''}${m.fwt.toFixed(1)}%</td>
+        <td>${m.total_steps}</td>
+        <td>${m.time_seconds.toFixed(0)}s</td>
+      </tr>`
+    ).join('');
+
+    // BWT chart
+    const bwtDiv = document.getElementById('bwt-chart');
+    const maxBwt = Math.max(...entries.map(e => Math.abs(e[1].bwt)), 5);
+    bwtDiv.innerHTML = entries.map(([name, m]) =>
+      `<div style="margin:6px 0">
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px">
+          <span>${name}</span>
+          <span class="${m.bwt >= 0 ? 'bwt-pos' : 'bwt-neg'}">${m.bwt >= 0 ? '+' : ''}${m.bwt.toFixed(1)}%</span>
+        </div>
+        <div class="bar-container">
+          <div class="bar-fill ${m.bwt >= 0 ? 'bar' : ''}"
+               style="width:${Math.abs(m.bwt) / maxBwt * 100}%;background:${m.bwt >= 0 ? 'var(--green)' : 'var(--red)'};float:${m.bwt >= 0 ? 'left' : 'right'}"></div>
+        </div>
+      </div>`
+    ).join('');
+
+    // FWT chart
+    const fwtDiv = document.getElementById('fwt-chart');
+    const maxFwt = Math.max(...entries.map(e => Math.abs(e[1].fwt)), 5);
+    fwtDiv.innerHTML = entries.map(([name, m]) =>
+      `<div style="margin:6px 0">
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px">
+          <span>${name}</span>
+          <span class="${m.fwt <= 0 ? 'fwt-neg' : 'fwt-pos'}">${m.fwt >= 0 ? '+' : ''}${m.fwt.toFixed(1)}%</span>
+        </div>
+        <div class="bar-container">
+          <div class="bar-fill"
+               style="width:${Math.abs(m.fwt) / maxFwt * 100}%;background:${m.fwt <= 0 ? 'var(--green)' : 'var(--red)'};float:${m.fwt <= 0 ? 'left' : 'right'}"></div>
+        </div>
+      </div>`
+    ).join('');
+
+    // Efficiency chart
+    const effDiv = document.getElementById('efficiency-chart');
+    const maxSteps = Math.max(...entries.map(e => e[1].total_steps), 100);
+    effDiv.innerHTML = entries.map(([name, m]) =>
+      `<div style="margin:6px 0">
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px">
+          <span>${name}</span>
+          <span>${m.total_steps} steps / ${m.time_seconds.toFixed(0)}s</span>
+        </div>
+        <div class="bar-container">
+          <div class="bar-fill" style="width:${m.total_steps / maxSteps * 100}%"></div>
+        </div>
+      </div>`
+    ).join('');
+
+  } catch (e) {
+    document.getElementById('loading').textContent = 'Error: ' + e.message;
+  }
+}
+load();
+</script>
+</body>
+</html>
