@@ -603,9 +603,6 @@ def train_specialist(
     socratic_steps=500,
     socratic_problems=200,
     cot_scratchpad=False,
-    mcts=False,
-    mcts_steps=500,
-    mcts_sims=16,
 ):
     """Train a specialist for one arithmetic operation.
 
@@ -654,8 +651,6 @@ def train_specialist(
     if cot_scratchpad:
         cfg.cot_scratchpad = True
         cfg.use_scratchpad = True  # CoT implies scratchpad
-    if mcts:
-        cfg.use_value_head = True  # MCTS needs value head for reward prediction
     if test_hard:
         cfg.test_hard = True
 
@@ -1224,50 +1219,6 @@ def train_specialist(
         except Exception as e:
             print(f"  [!] Socratic refinement failed: {e}")
 
-    # ── Online MCTS Self-Play (post-training RL refinement) ──
-    if mcts and not _INTERRUPTED and best_acc > 30.0:
-        print(f'\n{"="*60}')
-        print(f"  Online MCTS Self-Play Phase")
-        print(f"  Outcome-based RL: {mcts_steps} steps, {mcts_sims} sims/search")
-        print(f'{"="*60}')
-        try:
-            from scripts.train_mcts import MCTSTrainer
-            from torch.optim import AdamW
-
-            mcts_optimizer = AdamW(model.parameters(), lr=cfg.learning_rate * 0.1, weight_decay=0.01)
-            mcts_trainer = MCTSTrainer(
-                model=model, tokenizer=tok, config=cfg, device=device,
-                op=op, mcts_simulations=mcts_sims, max_digits=cfg.max_digits,
-            )
-            mcts_ok = 0
-            mcts_total = 0
-            for s in range(mcts_steps):
-                if _INTERRUPTED:
-                    break
-                result = mcts_trainer.train_step(mcts_optimizer, None)
-                if result['correct']:
-                    mcts_ok += 1
-                mcts_total += 1
-                if (s + 1) % 100 == 0:
-                    acc = mcts_ok / max(1, mcts_total) * 100
-                    print(f"  [MCTS] Step {s+1:>4d}/{mcts_steps} | loss={result['loss']:.4f} | "
-                          f"reward={result['reward']:+.1f} | acc={acc:.0f}%", flush=True)
-            mcts_final_acc = mcts_ok / max(1, mcts_total) * 100
-            if mcts_final_acc > best_acc:
-                best_acc = mcts_final_acc
-                torch.save({
-                    "model_state_dict": model.state_dict(),
-                    "acc": best_acc,
-                    "global_step": global_step,
-                    "mcts_refined": True,
-                }, op_dir / "best.pt")
-                print(f"  [MCTS] New best accuracy: {best_acc:.1f}%")
-            print(f"  [MCTS] Overall: {mcts_ok}/{mcts_total} correct ({mcts_final_acc:.0f}%)")
-        except Exception as e:
-            print(f"  [!] MCTS self-play failed: {e}")
-            import traceback
-            traceback.print_exc()
-
     # ── Log experiment for comparator ──
     _log_experiment(
         {
@@ -1319,8 +1270,6 @@ Examples:
   python3 train_specialist.py add --resume       # Resume from checkpoint
   python3 train_specialist.py all                # Train all 4 operations
   python3 train_specialist.py add --steps 5000 --batch 64 --lr 0.0005
-  python3 train_specialist.py add --mcts         # Online MCTS self-play after training
-  python3 train_specialist.py add --cot --mcts   # CoT + MCTS reasoning
         """,
     )
     parser.add_argument("op", nargs="?", default="add", help="Operation: add|sub|mul|div|all")
@@ -1400,15 +1349,6 @@ Examples:
         help="Problems per Socratic iteration (default: 200)",
     )
     parser.add_argument(
-        "--mcts", action="store_true", help="Enable online MCTS self-play after training (outcome-based RL)"
-    )
-    parser.add_argument(
-        "--mcts-steps", type=int, default=500, help="MCTS training steps (default: 500)"
-    )
-    parser.add_argument(
-        "--mcts-sims", type=int, default=16, help="MCTS simulations per search (default: 16)"
-    )
-    parser.add_argument(
         "--log-level",
         type=str,
         default="INFO",
@@ -1450,9 +1390,6 @@ Examples:
                 socratic_steps=args.socratic_steps,
                 socratic_problems=args.socratic_problems,
                 cot_scratchpad=args.cot,
-                mcts=args.mcts,
-                mcts_steps=args.mcts_steps,
-                mcts_sims=args.mcts_sims,
             )
             results[op_name] = "OK" if model is not None else "FAILED"
         print(f"\n  Results: {results}")
@@ -1476,7 +1413,6 @@ Examples:
                     "reversed": not args.no_reversed,
                     "loss_masking": not args.no_loss_mask,
                     "cot": args.cot,
-                    "mcts": args.mcts,
                     "socratic": args.socratic,
                     "ewc": args.ewc, "deep": args.deep, "lora": args.lora,
                 },
@@ -1505,7 +1441,6 @@ Examples:
         print(f"  MoE:     {'ON (config.use_moe)' if hasattr(args, 'moe') and args.moe else 'OFF'}")
         print(f"  EWC:     {'ON (lambda=' + str(args.ewc_lambda) + ')' if args.ewc else 'OFF'}")
         print(f"  CoT:     {'ON' if args.cot else 'OFF'}")
-        print(f"  MCTS:    {'ON (sims=' + str(args.mcts_sims) + ', steps=' + str(args.mcts_steps) + ')' if args.mcts else 'OFF'}")
         print(f"  Socratic: {'ON (steps=' + str(args.socratic_steps) + ')' if args.socratic else 'OFF'}")
         print(f"  LoRA:    {'ON (rank=' + str(args.lora_rank) + ')' if args.lora else 'OFF'}")
         print(f"  WandB:   {'ON' if args.wandb else 'OFF'}")
@@ -1536,7 +1471,4 @@ Examples:
         socratic_steps=args.socratic_steps,
         socratic_problems=args.socratic_problems,
         cot_scratchpad=args.cot,
-        mcts=args.mcts,
-        mcts_steps=args.mcts_steps,
-        mcts_sims=args.mcts_sims,
     )
