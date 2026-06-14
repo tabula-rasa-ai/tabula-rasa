@@ -48,8 +48,8 @@ The system is built on three principles:
 ### 1.3 Training Infrastructure
 
 **Hardware Setup:**
-- Primary: AMD Ryzen 5 3600 CPU (6 cores, 12 threads)
-- No GPU acceleration (training speed: 0.3-0.4 batches/sec at batch_size=64)
+- Primary: Intel CPU (training speed: 0.3-0.4 batches/sec at batch_size=64)
+- No GPU acceleration (CPU-only training environment)
 - Budget constraint: ~8 hours per full training run
 
 **Software Stack:**
