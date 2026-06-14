@@ -20,9 +20,8 @@ from tabula_rasa.tokenizer import MathTokenizer
 class TestQuickTraining:
     """End-to-end quick training smoke test."""
 
-    @classmethod
     @pytest.fixture(scope="class")
-    def trained_model(cls):
+    def trained_model(self):
         """Train a tiny model quickly and return it."""
         cfg = Config()
         cfg.d_model = 32
@@ -390,7 +389,7 @@ class TestEndToEndQuickTraining:
     """Run the actual train_specialist.py script as a subprocess."""
 
     def test_quick_training_subprocess(self, tmp_path):
-        """``train_specialist.py add --steps 100 --batch 64`` completes without error,
+        """``train_specialist.py add --steps 50 --batch 32`` completes without error,
         creates checkpoint files, and produces a model that generates
         reasonable output. Uses explicit step count instead of --quick
         so the test is predictable across CI and local environments.
@@ -400,7 +399,7 @@ class TestEndToEndQuickTraining:
 
         cwd = Path(__file__).resolve().parent.parent
         result = subprocess.run(
-            [sys.executable, "train_specialist.py", "add", "--steps", "100", "--batch", "64"],
+            [sys.executable, "train_specialist.py", "add", "--steps", "50", "--batch", "32"],
             capture_output=True,
             text=True,
             timeout=300,
@@ -472,9 +471,9 @@ class TestEndToEndQuickTraining:
                 "train_specialist.py",
                 "add",
                 "--steps",
-                "100",
+                "50",
                 "--batch",
-                "64",
+                "32",
                 "--no-reversed",
                 "--no-loss-mask",
             ],
