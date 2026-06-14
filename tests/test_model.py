@@ -1,9 +1,10 @@
 """Tests for transformer model — init, forward pass, parameter count."""
-import torch
-import pytest
 
-from tabula_rasa.model import MathTransformer, count_parameters, alphazero_loss
+import pytest
+import torch
+
 from tabula_rasa.config import Config
+from tabula_rasa.model import MathTransformer, alphazero_loss, count_parameters
 
 
 class TestModelInit:
@@ -79,8 +80,8 @@ class TestModelForward:
         x = torch.randint(0, model.config.vocab_size, (batch_size, seq_len))
         y = torch.full((batch_size, seq_len), -100, dtype=torch.long)
         # Set one valid target per batch
-        y[0, -1] = tok.stoi['=']
-        y[1, -1] = tok.stoi['+']
+        y[0, -1] = tok.stoi["="]
+        y[1, -1] = tok.stoi["+"]
         _, loss, _ = model(x, y)
         assert isinstance(loss, torch.Tensor)
         assert loss.item() >= 0
@@ -103,8 +104,9 @@ class TestModelForward:
         _, loss, _ = model(x, y)
         loss.backward()
         # Check at least one parameter has a gradient
-        has_grad = any(p.grad is not None and p.grad.abs().sum().item() > 0
-                       for p in model.parameters())
+        has_grad = any(
+            p.grad is not None and p.grad.abs().sum().item() > 0 for p in model.parameters()
+        )
         assert has_grad, "No gradients flowing through model"
 
 
@@ -117,7 +119,7 @@ class TestModelGenerate:
         assert isinstance(output, str)
         # Output should contain the prompt (model may or may not add new tokens
         # depending on configuration and training state)
-        assert prompt in output or output.startswith(prompt.rstrip('='))
+        assert prompt in output or output.startswith(prompt.rstrip("="))
 
     def test_generate_deterministic(self, model, tok):
         """Generate with temperature=0 produces same output."""
@@ -169,8 +171,8 @@ class TestModelEdgeCases:
         cfg.n_heads = 2
         cfg.d_ff = 64
         model = MathTransformer(cfg)
-        model.to('cpu')
-        assert next(model.parameters()).device.type == 'cpu'
+        model.to("cpu")
+        assert next(model.parameters()).device.type == "cpu"
 
 
 class TestCausalAttention:
@@ -217,9 +219,9 @@ class TestCausalAttention:
         # position where the input actually differs)
         last_a = logits_a[0, 4, :]
         last_b = logits_b[0, 4, :]
-        assert not torch.equal(last_a, last_b), (
-            "Last position logits should differ (different input tokens)"
-        )
+        assert not torch.equal(
+            last_a, last_b
+        ), "Last position logits should differ (different input tokens)"
 
     def test_causal_with_targets(self):
         """When targets are provided, causal masking still works (loss
@@ -237,8 +239,8 @@ class TestCausalAttention:
         model = MathTransformer(cfg)
 
         x = torch.tensor([[1, 2, 3, 4, 5, 6]])
-        y_a = torch.tensor([[1, 2, 3, 4, 5, 9]])   # last target = 9
-        y_b = torch.tensor([[1, 2, 3, 4, 5, 0]])   # last target = 0
+        y_a = torch.tensor([[1, 2, 3, 4, 5, 9]])  # last target = 9
+        y_b = torch.tensor([[1, 2, 3, 4, 5, 0]])  # last target = 0
 
         _, loss_a, _ = model(x, y_a)
         _, loss_b, _ = model(x, y_b)

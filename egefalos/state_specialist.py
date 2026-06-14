@@ -46,34 +46,34 @@ ACTIONS_DIVIDE = ['share equally among {n}', 'split into {n} groups']
 
 def generate_narrative(steps: int = 5, rng=None) -> tuple:
     """Generate a multi-step state narrative.
-    
+
     Returns:
         (narrative_text, final_value, python_code)
     """
     if rng is None:
         rng = random.Random()
-    
+
     obj = rng.choice(OBJECTS)
     obj_name = obj  # e.g., "apples"
     var_name = obj.rstrip('s') if obj.endswith('s') else obj  # e.g., "apple"
-    
+
     # Initial state
     init = rng.randint(1, 20)
     value = init
-    
+
     narrative = f'I have {init} {obj_name}.'
     code_lines = [f'{var_name} = {init}']
-    
+
     for step in range(steps):
         action_type = rng.choice(['add', 'remove', 'multiply', 'divide'])
-        
+
         if action_type == 'add':
             delta = rng.randint(1, 15)
             action = rng.choice(ACTIONS_ADD)
             narrative += f' I {action} {delta} {obj_name}.'
             code_lines.append(f'{var_name} += {delta}')
             value += delta
-        
+
         elif action_type == 'remove':
             delta = rng.randint(1, min(value, 10))
             if delta <= 0:
@@ -82,13 +82,13 @@ def generate_narrative(steps: int = 5, rng=None) -> tuple:
             narrative += f' I {action} {delta} {obj_name}.'
             code_lines.append(f'{var_name} -= {delta}')
             value -= delta
-        
+
         elif action_type == 'multiply':
             factor = rng.choice([2, 3])
             narrative += f' I double my {obj_name}.'
             code_lines.append(f'{var_name} *= {factor}')
             value *= factor
-        
+
         elif action_type == 'divide':
             divisor = rng.choice([2, 3])
             if value % divisor != 0:
@@ -98,13 +98,13 @@ def generate_narrative(steps: int = 5, rng=None) -> tuple:
             narrative += f' I share my {obj_name} equally into {divisor} groups.'
             code_lines.append(f'{var_name} //= {divisor}')
             value //= divisor
-        
+
         value = max(0, value)
-    
+
     narrative += f' How many {obj_name} do I have?'
     code_lines.append(f'result = {var_name}')
     code = '\n'.join(code_lines)
-    
+
     return narrative, str(value), code
 
 
@@ -112,14 +112,14 @@ def generate_physics_narrative(steps: int = 3, rng=None) -> tuple:
     """Generate a physics state narrative (position, speed, temperature)."""
     if rng is None:
         rng = random.Random()
-    
+
     var = rng.choice(['position', 'speed', 'distance', 'height', 'temperature'])
     init = rng.randint(0, 100)
     value = init
-    
+
     narrative = f'The {var} is {init}.'
     code_lines = [f'{var} = {init}']
-    
+
     for _ in range(steps):
         delta = rng.randint(-20, 30)
         direction = 'increases by' if delta >= 0 else 'decreases by'
@@ -127,11 +127,11 @@ def generate_physics_narrative(steps: int = 3, rng=None) -> tuple:
         code_lines.append(f'{var} += {delta}')
         value += delta
         value = max(0, value)
-    
+
     narrative += f' What is the final {var}?'
     code_lines.append(f'result = {var}')
     code = '\n'.join(code_lines)
-    
+
     return narrative, str(value), code
 
 
@@ -141,21 +141,21 @@ def generate_physics_narrative(steps: int = 3, rng=None) -> tuple:
 
 class StateGame:
     """The State Tracking game.
-    
+
     The model reads an English narrative, generates Python code to track
     the state variables, and the sandbox verifies the result.
     """
-    
+
     def __init__(self, timeout=2):
         self.env = PythonEnvironment(timeout_sec=timeout)
-    
+
     def play(self, model, tokenizer, narrative: str, expected: str,
              code: str = None) -> dict:
         """Play one state-tracking game.
-        
+
         If code is provided, we evaluate that code directly.
         If not, the model must generate the code from the narrative.
-        
+
         Returns:
             {'reward': -1..+1, 'feedback': str, 'code': str}
         """
@@ -165,37 +165,37 @@ class StateGame:
             generated = model.generate_code(tokenizer, prompt,
                                              max_new_tokens=100,
                                              temperature=0.5, top_k=10)
-            
+
             # Extract code
             if hasattr(tokenizer, 'decode'):
                 generated_text = generated
             else:
                 generated_text = generated
-            
+
             # Heuristic: extract the code block
             code = self._extract_code(generated_text)
-        
+
         if not code:
             return {'reward': -1.0, 'feedback': 'No code generated', 'code': ''}
-        
+
         # Build test: run the code and check the result
         test = f'assert result == {expected}, f"Got {{result}}, expected {expected}"'
-        
+
         result = self.env.evaluate_move(code, [test])
-        
+
         return {
             'reward': result['reward'],
             'feedback': result['feedback'],
             'code': code,
             'syntax_valid': result['syntax_valid'],
         }
-    
+
     def _extract_code(self, text: str) -> str:
         """Extract Python code from model output."""
         lines = text.split('\n')
         code_lines = []
         in_code = False
-        
+
         for line in lines:
             stripped = line.strip()
             if '=' in stripped and not stripped.startswith('['):
@@ -203,7 +203,7 @@ class StateGame:
                 in_code = True
             elif in_code and stripped and not stripped.startswith('['):
                 code_lines.append(stripped)
-        
+
         return '\n'.join(code_lines) if code_lines else ''
 
 
@@ -249,25 +249,25 @@ def train_state_specialist(model, tokenizer,
     model = model.to(device)
     optimizer = AdamW(model.parameters(), lr=learning_rate, weight_decay=0.01)
     game = StateGame(timeout=2)
-    
+
     model.train()
     total_loss = 0.0
     correct = 0
     total = 0
     step = 0
-    
+
     while step < train_steps:
         problems = generate_dataset(batch_size, seed=step)
-        
+
         for narrative, expected, code in problems:
             # Play the state game (model generates code from narrative)
             result = game.play(model, tokenizer, narrative, expected)
             reward = result['reward']
-            
+
             if reward >= 0.5:
                 correct += 1
             total += 1
-            
+
             # Train on the narrative → code mapping
             prompt = f'[STATE:{narrative}]'
             model_code = result.get('code', '')
@@ -280,24 +280,24 @@ def train_state_specialist(model, tokenizer,
                 x = torch.tensor(padded[:-1], dtype=torch.long, device=device).unsqueeze(0)
                 y = torch.tensor(padded[1:], dtype=torch.long, device=device).unsqueeze(0)
                 y[y == tokenizer.pad_id] = -100
-                
+
                 logits, loss, _ = model(x, y)
-                
+
                 optimizer.zero_grad()
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
                 optimizer.step()
-                
+
                 total_loss += loss.item()
-        
+
         step += 1
-        
+
         if step % 200 == 0:
             acc = correct / max(total, 1)
             print(f'  [State] Step {step:>5d}/{train_steps} | '
                   f'loss={total_loss/max(step,1):.4f} | '
                   f'sandbox_acc={acc*100:.1f}%')
-    
+
     model.eval()
     return {
         'stage': 'state',
@@ -317,12 +317,12 @@ def evaluate_state(model, tokenizer, num_problems: int = 50,
     game = StateGame(timeout=2)
     problems = generate_dataset(num_problems, seed=999)
     correct = 0
-    
+
     for narrative, expected, code in problems:
         result = game.play(model, tokenizer, narrative, expected)
         if result['reward'] >= 0.5:
             correct += 1
-    
+
     return correct / max(num_problems, 1)
 
 
@@ -333,13 +333,13 @@ def evaluate_state(model, tokenizer, num_problems: int = 50,
 if __name__ == '__main__':
     print('=== Stage 4: State & Causality ===')
     rng = random.Random(42)
-    
+
     for i in range(5):
         narrative, expected, code = generate_state_problem(rng)
         print(f'\n  Narrative: {narrative[:80]}')
         print(f'  Python:    {code}')
         print(f'  Expected:  {expected}')
-        
+
         # Verify with sandbox
         from egefalos.code_sandbox import PythonEnvironment
         env = PythonEnvironment(timeout_sec=2)

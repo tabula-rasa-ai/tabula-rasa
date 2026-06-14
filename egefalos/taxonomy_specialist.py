@@ -83,15 +83,15 @@ ALL_ENTITIES = set(TAXONOMY_TREE.keys()) | set(REVERSE_TAXONOMY.keys())
 
 def generate_is_a_problem(rng=None):
     """Generate an Is-A verification problem.
-    
+
     Example:    is_a(apple,fruit)
     Expected:   True
-    
+
     The model must learn hierarchical category membership.
     """
     if rng is None:
         rng = random.Random()
-    
+
     if rng.random() > 0.4:
         # True statement
         item = rng.choice(list(REVERSE_TAXONOMY.keys()))
@@ -109,19 +109,19 @@ def generate_is_a_problem(rng=None):
 
 def generate_chain_problem(rng=None):
     """Generate a hierarchical chain problem.
-    
+
     Example:    chain(apple,food)
     Expected:   apple -> fruit -> food
-    
+
     The model must trace multi-level category membership.
     """
     if rng is None:
         rng = random.Random()
-    
+
     # Pick a leaf and trace up the hierarchy
     leaf = rng.choice(list(REVERSE_TAXONOMY.keys()))
     parents = REVERSE_TAXONOMY[leaf]
-    
+
     if parents:
         top = parents[0]
         while top in REVERSE_TAXONOMY:
@@ -130,7 +130,7 @@ def generate_chain_problem(rng=None):
                 top = grandparents[0]
             else:
                 break
-        
+
         # Build chain
         chain = [leaf]
         current = leaf
@@ -140,56 +140,56 @@ def generate_chain_problem(rng=None):
             current = next_parent
             if len(chain) > 4:
                 break
-        
+
         expected = ' -> '.join(chain)
         return f'chain({leaf},{chain[-1]})', expected
-    
+
     return generate_is_a_problem(rng)
 
 
 def generate_commonality_problem(rng=None):
     """Generate a commonality problem.
-    
+
     Example:    common(apple,banana)
     Expected:   fruit
-    
+
     The model must find the Lowest Common Ancestor in the taxonomy.
     """
     if rng is None:
         rng = random.Random()
-    
+
     items = rng.sample(list(REVERSE_TAXONOMY.keys()), 2)
     a_parents = set(REVERSE_TAXONOMY.get(items[0], []))
     b_parents = set(REVERSE_TAXONOMY.get(items[1], []))
-    
+
     # Add transitive parents
     all_a = set(a_parents)
     for p in a_parents:
         if p in REVERSE_TAXONOMY:
             all_a.update(REVERSE_TAXONOMY[p])
-    
+
     all_b = set(b_parents)
     for p in b_parents:
         if p in REVERSE_TAXONOMY:
             all_b.update(REVERSE_TAXONOMY[p])
-    
+
     common = all_a & all_b
     if common:
         common_parent = common.pop()
         return f'common({items[0]},{items[1]})', common_parent
-    
+
     return generate_is_a_problem(rng)
 
 
 def generate_negation_problem(rng=None):
     """Generate a negation problem.
-    
+
     Example:    is_not(dog,rock)
     Expected:   True (a dog is not a rock)
     """
     if rng is None:
         rng = random.Random()
-    
+
     item = rng.choice(list(REVERSE_TAXONOMY.keys()))
     non_category = rng.choice(['mineral', 'planet', 'ocean', 'mountain', 'continent'])
     return f'is_not({item},{non_category})', 'True'
@@ -201,28 +201,28 @@ def generate_negation_problem(rng=None):
 
 def verify_taxonomy_with_z3(taxonomy_text: str) -> dict:
     """Verify a taxonomy statement using Z3.
-    
+
     Converts "is_a(apple,fruit)" into TRLD format:
       [PREMISE: All fruits are food]
       [PREMISE: All apples are fruit]
       [CONCLUSION: An apple is food]
-    
+
     Returns:
         {'valid': True/False/None, 'reason': str}
     """
     try:
         from egefalos.logic_verifier import LogicVerifier
         verifier = LogicVerifier()
-        
+
         # Parse the taxonomy text
         # Format: is_a(thing,category) or chain(thing,category)
         m = re.match(r'is_a\((\w+),(\w+)\)', taxonomy_text)
         if m:
             thing, category = m.group(1), m.group(2)
-            
+
             # Build TRLD verification
             premises = []
-            
+
             # Add known taxonomy relationships
             if category in REVERSE_TAXONOMY or category in TAXONOMY_TREE:
                 # This is a known category
@@ -232,9 +232,9 @@ def verify_taxonomy_with_z3(taxonomy_text: str) -> dict:
                     f'[CONCLUSION: An apple is food]'
                 )
                 return result if result else {'valid': None, 'reason': 'Z3 check attempted'}
-        
+
         return {'valid': None, 'reason': 'Could not parse taxonomy'}
-    
+
     except Exception as e:
         return {'valid': None, 'reason': str(e)}
 
@@ -277,17 +277,17 @@ def train_taxonomy_specialist(model, tokenizer,
     """Train the Taxonomy Specialist."""
     model = model.to(device)
     optimizer = AdamW(model.parameters(), lr=learning_rate, weight_decay=0.01)
-    
+
     model.train()
     total_loss = 0.0
     step = 0
-    
+
     while step < train_steps:
         problems = generate_dataset(batch_size, seed=step)
-        
+
         batch_inputs = []
         batch_targets = []
-        
+
         for inp, expected in problems:
             text = f'{inp}={expected}'
             ids = tokenizer.encode(text, add_special_tokens=True)
@@ -296,21 +296,21 @@ def train_taxonomy_specialist(model, tokenizer,
             padded = ids + [tokenizer.pad_id] * (model.config.max_seq_len - len(ids))
             batch_inputs.append(padded[:-1])
             batch_targets.append(padded[1:])
-        
+
         x = torch.tensor(batch_inputs, dtype=torch.long, device=device)
         y = torch.tensor(batch_targets, dtype=torch.long, device=device)
         y[y == tokenizer.pad_id] = -100
-        
+
         logits, loss, _ = model(x, y)
-        
+
         optimizer.zero_grad()
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         optimizer.step()
-        
+
         total_loss += loss.item()
         step += 1
-        
+
         if step % 500 == 0:
             predictions = logits.argmax(dim=-1)
             mask = y != -100
@@ -318,7 +318,7 @@ def train_taxonomy_specialist(model, tokenizer,
             acc = match.sum().item() / max(mask.sum().item(), 1)
             print(f'  [Taxonomy] Step {step:>5d}/{train_steps} | '
                   f'loss={total_loss/step:.4f} | acc={acc*100:.1f}%')
-    
+
     model.eval()
     return {
         'stage': 'taxonomy',
@@ -355,29 +355,29 @@ def evaluate_taxonomy(model, tokenizer, num_problems: int = 200,
 if __name__ == '__main__':
     from tabula_rasa.config import Config
     from tabula_rasa.tokenizer import MathTokenizer
-    
+
     cfg = Config()
     cfg.d_model = 128
     cfg.n_layers = 4
     cfg.max_seq_len = 128
-    
+
     tok = MathTokenizer()
     for c in 'abcdefghijklmnopqrstuvwxyz ABCDGHIJKLMNOPQRSTUVWXYZ.,!?-_:>()':
         if c not in tok.char_to_id:
             tok.add_token(c)
     cfg.vocab_size = tok.vocab_size
     tok.max_seq_len = cfg.max_seq_len
-    
+
     model = MathTransformer(cfg)
     print(f'Taxonomy Specialist: {count_parameters(model):,} params')
     print(f'Tokenizer: {tok.vocab_size} tokens')
-    
+
     print('\n=== Sample Problems ===')
     rng = random.Random(42)
     for name, gen in TAXONOMY_GENERATORS:
         inp, exp = gen(rng)
         print(f'  {name:15s}: {inp} = {exp}')
-    
+
     print(f'\nKnowledge base: {len(ALL_ENTITIES)} entities')
     print(f'  Categories: {len(TAXONOMY_TREE)}')
     print(f'  Leaf items: {len(REVERSE_TAXONOMY)}')

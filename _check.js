@@ -56,4 +56,3 @@ var document=null;
     }
 
     renderVocab();loadAPI();encode();
-    

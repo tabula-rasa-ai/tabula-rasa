@@ -249,7 +249,7 @@ function formatDate(ts) {
 function renderTable() {
   var opFilter = document.getElementById('op-filter').value;
   var filtered = opFilter === 'all' ? experiments : experiments.filter(function(e) { return e.operation === opFilter; });
-  
+
   var sorted = filtered.slice().sort(function(a, b) {
     var av = a[sortKey], bv = b[sortKey];
     if (av === null || av === undefined) av = '';

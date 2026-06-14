@@ -84,6 +84,21 @@ services:
           cpus: "1"
           memory: "1G"
 
+  # ── Self-Improvement Daemon ───────────────────────────
+  # Autonomous self-play critique loop
+  self-improve:
+    <<: *common
+    container_name: tabula-rasa-self-improve
+    command: ["python", "egefalos/self_improve.py", "--daemon", "--interval", "7200", "--problems", "100", "--train-steps", "300"]
+    depends_on:
+      api-server:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: "2G"
+
 volumes:
   tabula_rasa_specialists:
   tabula_rasa_data:

@@ -14,7 +14,9 @@ Backend servers needed by each tab:
   - Tabula Rasa  → port 8002 (run: python3 -m egefalos.tabula_rasa)
 """
 
-import sys, os, socketserver
+import os
+import socketserver
+import sys
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8080
@@ -36,10 +38,11 @@ class SilentHandler(SimpleHTTPRequestHandler):
         except Exception:
             # log other errors briefly
             import traceback
+
             traceback.print_exc()
 
     def log_message(self, fmt, *args):
-        sys.stderr.write(f'  [*] {args[0]} {args[1]} {args[2]}\n')
+        sys.stderr.write(f"  [*] {args[0]} {args[1]} {args[2]}\n")
 
 
 class ReuseTCPServer(socketserver.TCPServer):
@@ -47,21 +50,21 @@ class ReuseTCPServer(socketserver.TCPServer):
 
 
 print()
-print(f'  Tabula Rasa Dashboard')
-print(f'  ─────────────────────')
-print(f'  Open:  http://localhost:{PORT}/dashboard.html')
-print(f'  Dir:   {DIR}')
+print(f"  Tabula Rasa Dashboard")
+print(f"  ─────────────────────")
+print(f"  Open:  http://localhost:{PORT}/dashboard.html")
+print(f"  Dir:   {DIR}")
 print()
-print(f'  Backend servers needed:')
-print(f'    localhost:8000  — Math Tester API  (root serve.py)')
-print(f'    localhost:8002  — Tabula Rasa API  (egefalos/tabula_rasa.py)')
+print(f"  Backend servers needed:")
+print(f"    localhost:8000  — Math Tester API  (root serve.py)")
+print(f"    localhost:8002  — Tabula Rasa API  (egefalos/tabula_rasa.py)")
 print()
-print(f'  Ctrl+C to stop')
+print(f"  Ctrl+C to stop")
 
 ReuseTCPServer.allow_reuse_address = True
 httpd = ReuseTCPServer(("", PORT), SilentHandler)
 try:
     httpd.serve_forever()
 except KeyboardInterrupt:
-    print('\n  [*] Stopped.')
+    print("\n  [*] Stopped.")
     httpd.server_close()

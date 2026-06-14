@@ -1,6 +1,7 @@
 """Transformer from scratch in PyTorch.
 All architecture choices controlled by Config — edit config.py or use Model Config dashboard.
 """
+
 from __future__ import annotations
 
 import math
@@ -11,7 +12,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-def _make_norm(dim: int, norm_type: str = 'rmsnorm') -> nn.Module:
+def _make_norm(dim: int, norm_type: str = "rmsnorm") -> nn.Module:
     """Create a normalisation layer based on configuration.
 
     Args:
@@ -25,7 +26,7 @@ def _make_norm(dim: int, norm_type: str = 'rmsnorm') -> nn.Module:
         ValueError: If *norm_type* is not recognised (falls through to
             RMSNorm by default).
     """
-    if norm_type == 'layernorm':
+    if norm_type == "layernorm":
         return nn.LayerNorm(dim, eps=1e-6)
 
     # RMSNorm (default)
@@ -42,7 +43,7 @@ def _make_norm(dim: int, norm_type: str = 'rmsnorm') -> nn.Module:
     return RMSNorm(dim)
 
 
-def _make_activation(name: str = 'swiglu') -> callable[[torch.Tensor], torch.Tensor]:
+def _make_activation(name: str = "swiglu") -> callable[[torch.Tensor], torch.Tensor]:
     """Return an activation function by name.
 
     Args:
@@ -51,9 +52,9 @@ def _make_activation(name: str = 'swiglu') -> callable[[torch.Tensor], torch.Ten
     Returns:
         A callable activation function operating on tensors.
     """
-    if name == 'relu':
+    if name == "relu":
         return F.relu
-    elif name == 'gelu':
+    elif name == "gelu":
         return F.gelu
     return F.silu  # swiglu (default)
 
@@ -71,9 +72,9 @@ def _rotate_half(x: torch.Tensor) -> torch.Tensor:
     return torch.cat([-x2, x1], dim=-1)
 
 
-def _apply_pos_encoding(q: torch.Tensor, k: torch.Tensor,
-                        cos: torch.Tensor, sin: torch.Tensor,
-                        pos_type: str = 'rope') -> tuple[torch.Tensor, torch.Tensor]:
+def _apply_pos_encoding(
+    q: torch.Tensor, k: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor, pos_type: str = "rope"
+) -> tuple[torch.Tensor, torch.Tensor]:
     """Apply position encoding to query and key tensors.
 
     Supports RoPE (default) and pass-through for ``'none'``.
@@ -88,7 +89,7 @@ def _apply_pos_encoding(q: torch.Tensor, k: torch.Tensor,
     Returns:
         Tuple ``(q, k)`` with position encoding applied.
     """
-    if pos_type == 'none':
+    if pos_type == "none":
         return q, k
     # RoPE (default)
     q = q * cos + _rotate_half(q) * sin
@@ -114,7 +115,7 @@ class RotaryEmbedding(nn.Module):
         super().__init__()
         self.dim = dim
         inv_freq: torch.Tensor = 1.0 / (10000 ** (torch.arange(0, dim, 2).float() / dim))
-        self.register_buffer('inv_freq', inv_freq)
+        self.register_buffer("inv_freq", inv_freq)
 
     def forward(self, seq_len: int, device: torch.device) -> tuple[torch.Tensor, torch.Tensor]:
         """Compute cosine and sine position encodings.
@@ -127,7 +128,7 @@ class RotaryEmbedding(nn.Module):
             Tuple ``(cos, sin)`` each of shape ``(seq_len, dim)``.
         """
         position_ids = torch.arange(seq_len, device=device)
-        freqs = torch.einsum('i,j->ij', position_ids.float(), self.inv_freq.float())
+        freqs = torch.einsum("i,j->ij", position_ids.float(), self.inv_freq.float())
         emb = torch.cat([freqs, freqs], dim=-1)
         return emb.cos(), emb.sin()
 
@@ -174,7 +175,7 @@ class Attention(nn.Module):
         self.d_model = config.d_model
         self.n_heads = config.n_heads
         self.head_dim = config.d_model // config.n_heads
-        assert config.d_model % config.n_heads == 0, 'd_model must be divisible by n_heads'
+        assert config.d_model % config.n_heads == 0, "d_model must be divisible by n_heads"
 
         self.wq = nn.Linear(config.d_model, config.d_model, bias=False)
         self.wk = nn.Linear(config.d_model, config.d_model, bias=False)
@@ -182,15 +183,18 @@ class Attention(nn.Module):
         self.wo = nn.Linear(config.d_model, config.d_model, bias=False)
 
         self.pos_type = config.pos_encoding
-        if self.pos_type == 'rope':
+        if self.pos_type == "rope":
             self.rope = RotaryEmbedding(self.head_dim, config.max_seq_len * 2)
-        elif self.pos_type == 'learned':
+        elif self.pos_type == "learned":
             self.pos_embed = LearnedPositionEmbedding(config.max_seq_len, config.d_model)
         self.dropout = nn.Dropout(config.dropout)
 
-    def forward(self, x: torch.Tensor, mask: torch.Tensor | None = None,
-                past_kv: tuple[torch.Tensor, torch.Tensor] | None = None
-                ) -> tuple[torch.Tensor, tuple[torch.Tensor, torch.Tensor]]:
+    def forward(
+        self,
+        x: torch.Tensor,
+        mask: torch.Tensor | None = None,
+        past_kv: tuple[torch.Tensor, torch.Tensor] | None = None,
+    ) -> tuple[torch.Tensor, tuple[torch.Tensor, torch.Tensor]]:
         """Apply multi-head self-attention.
 
         Args:
@@ -214,13 +218,13 @@ class Attention(nn.Module):
         # Position offset: when using KV cache, this token is at position len(past_kv) + current_pos
         kv_len = past_kv[0].size(2) if past_kv is not None else 0
 
-        if self.pos_type == 'rope':
+        if self.pos_type == "rope":
             cos, sin = self.rope(seq_len + kv_len, x.device)
             # Only apply to current positions
-            cos = cos[kv_len:kv_len + seq_len].view(1, 1, seq_len, self.head_dim)
-            sin = sin[kv_len:kv_len + seq_len].view(1, 1, seq_len, self.head_dim)
-            q, k = _apply_pos_encoding(q, k, cos, sin, 'rope')
-        elif self.pos_type == 'learned':
+            cos = cos[kv_len : kv_len + seq_len].view(1, 1, seq_len, self.head_dim)
+            sin = sin[kv_len : kv_len + seq_len].view(1, 1, seq_len, self.head_dim)
+            q, k = _apply_pos_encoding(q, k, cos, sin, "rope")
+        elif self.pos_type == "learned":
             pe = self.pos_embed(seq_len, x.device)
             x = x + pe
             q = self.wq(x).view(batch, seq_len, self.n_heads, self.head_dim).transpose(1, 2)
@@ -241,16 +245,18 @@ class Attention(nn.Module):
             total_len = k.size(2)
             causal = torch.tril(torch.ones(q_len, total_len, device=x.device))
             for i in range(q_len):
-                causal[i, kv_len + i + 1:] = 0
+                causal[i, kv_len + i + 1 :] = 0
             attn_mask = causal.view(1, 1, q_len, total_len).bool()
         else:
             # No KV cache: use built-in causal masking
             attn_mask = None
 
         # SDPA: is_causal=True when no explicit mask and no KV cache
-        use_causal = (mask is None and past_kv is None)
+        use_causal = mask is None and past_kv is None
         out = F.scaled_dot_product_attention(
-            q, k, v,
+            q,
+            k,
+            v,
             attn_mask=attn_mask,
             dropout_p=self.dropout.p if self.training else 0.0,
             is_causal=use_causal,
@@ -305,9 +311,12 @@ class TransformerBlock(nn.Module):
         self.ffn_norm = _make_norm(config.d_model, config.norm_type)
         self.dropout = nn.Dropout(config.dropout)
 
-    def forward(self, x: torch.Tensor, mask: torch.Tensor | None = None,
-                past_kv: tuple[torch.Tensor, torch.Tensor] | None = None
-                ) -> tuple[torch.Tensor, tuple[torch.Tensor, torch.Tensor]]:
+    def forward(
+        self,
+        x: torch.Tensor,
+        mask: torch.Tensor | None = None,
+        past_kv: tuple[torch.Tensor, torch.Tensor] | None = None,
+    ) -> tuple[torch.Tensor, tuple[torch.Tensor, torch.Tensor]]:
         """Apply self-attention and feed-forward with residual connections.
 
         Args:
@@ -345,17 +354,13 @@ class MathTransformer(nn.Module):
         super().__init__()
         self.config = config
 
-        self.token_embedding = nn.Embedding(
-            config.vocab_size, config.d_model, padding_idx=0
-        )
-        self.layers = nn.ModuleList([
-            TransformerBlock(config, i) for i in range(config.n_layers)
-        ])
+        self.token_embedding = nn.Embedding(config.vocab_size, config.d_model, padding_idx=0)
+        self.layers = nn.ModuleList([TransformerBlock(config, i) for i in range(config.n_layers)])
         self.norm = _make_norm(config.d_model, config.norm_type)
         self.lm_head = nn.Linear(config.d_model, config.vocab_size, bias=False)
 
         # AlphaZero-style Value Head: outputs scalar -1 to +1 (intuition)
-        if getattr(config, 'use_value_head', False):
+        if getattr(config, "use_value_head", False):
             self.value_head = nn.Sequential(
                 nn.Linear(config.d_model, config.d_model // 2),
                 nn.Tanh(),
@@ -381,19 +386,19 @@ class MathTransformer(nn.Module):
         Args:
             module: A PyTorch module whose weights will be initialised.
         """
-        init_type = getattr(self.config, 'weight_init', 'normal')
-        init_std = getattr(self.config, 'init_std', 0.02)
+        init_type = getattr(self.config, "weight_init", "normal")
+        init_std = getattr(self.config, "init_std", 0.02)
         if isinstance(module, nn.Linear):
-            if init_type == 'xavier':
+            if init_type == "xavier":
                 nn.init.xavier_uniform_(module.weight)
-            elif init_type == 'kaiming':
+            elif init_type == "kaiming":
                 nn.init.kaiming_uniform_(module.weight, a=math.sqrt(5))
             else:  # normal
                 torch.nn.init.normal_(module.weight, mean=0.0, std=init_std)
             if module.bias is not None:
                 torch.nn.init.zeros_(module.bias)
         elif isinstance(module, nn.Embedding):
-            if init_type == 'normal':
+            if init_type == "normal":
                 torch.nn.init.normal_(module.weight, mean=0.0, std=init_std)
             # xavier/kaiming for embeddings often just uses uniform
 
@@ -410,9 +415,9 @@ class MathTransformer(nn.Module):
         mask = torch.tril(torch.ones(seq_len, seq_len, device=device))
         return mask.view(1, 1, seq_len, seq_len)
 
-    def forward(self, input_ids: torch.Tensor, targets: torch.Tensor | None = None,
-                use_cache: bool = True
-                ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor | None]:
+    def forward(
+        self, input_ids: torch.Tensor, targets: torch.Tensor | None = None, use_cache: bool = True
+    ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor | None]:
         """Forward pass through the full transformer stack.
 
         Args:
@@ -456,15 +461,17 @@ class MathTransformer(nn.Module):
                 logits.view(-1, logits.size(-1)),
                 targets.view(-1),
                 ignore_index=-100,
-                label_smoothing=getattr(self.config, 'label_smoothing', 0.0),
+                label_smoothing=getattr(self.config, "label_smoothing", 0.0),
             )
 
         return logits, loss, value
 
     @torch.no_grad()
-    def generate_step(self, input_ids: torch.Tensor,
-                      past_kv_caches: list[tuple[torch.Tensor, torch.Tensor]] | None = None
-                      ) -> tuple[torch.Tensor, list[tuple[torch.Tensor, torch.Tensor]]]:
+    def generate_step(
+        self,
+        input_ids: torch.Tensor,
+        past_kv_caches: list[tuple[torch.Tensor, torch.Tensor]] | None = None,
+    ) -> tuple[torch.Tensor, list[tuple[torch.Tensor, torch.Tensor]]]:
         """Single forward step for generation with KV cache.
 
         Args:
@@ -494,8 +501,14 @@ class MathTransformer(nn.Module):
         return logits, new_kvs
 
     @torch.no_grad()
-    def generate(self, tokenizer: Any, prompt: str, max_new_tokens: int = 20,
-                 temperature: float = 1.0, top_k: int = 5) -> str:
+    def generate(
+        self,
+        tokenizer: Any,
+        prompt: str,
+        max_new_tokens: int = 20,
+        temperature: float = 1.0,
+        top_k: int = 5,
+    ) -> str:
         """Generate text from a prompt with KV cache for efficiency.
 
         KV cache avoids recomputing attention over previous tokens on each
@@ -531,7 +544,7 @@ class MathTransformer(nn.Module):
             next_logits = next_logits / temperature
             if top_k > 0:
                 top_vals, _ = torch.topk(next_logits, min(top_k, next_logits.size(-1)))
-                next_logits[next_logits < top_vals[-1]] = float('-inf')
+                next_logits[next_logits < top_vals[-1]] = float("-inf")
             probs = F.softmax(next_logits, dim=-1)
             next_id = torch.multinomial(probs, 1).unsqueeze(0)
 
@@ -556,7 +569,7 @@ class MathTransformer(nn.Module):
                 next_logits = next_logits / temperature
                 if top_k > 0:
                     top_vals, _ = torch.topk(next_logits, min(top_k, next_logits.size(-1)))
-                    next_logits[next_logits < top_vals[-1]] = float('-inf')
+                    next_logits[next_logits < top_vals[-1]] = float("-inf")
                 probs = F.softmax(next_logits, dim=-1)
                 next_id = torch.multinomial(probs, 1).unsqueeze(0)
 
@@ -585,9 +598,9 @@ class MathTransformer(nn.Module):
             '12+34=46'         -> '12+34=46'  (already clean)
             '99+1=100'         -> '99+1=100'  (already clean)
         """
-        if '=' not in raw:
+        if "=" not in raw:
             return raw
-        before, after = raw.split('=', 1)
+        before, after = raw.split("=", 1)
         # Try shorter candidates until one validates mathematically
         try:
             from tabula_rasa.math_parser import verify_equation, verify_scratchpad
@@ -595,22 +608,23 @@ class MathTransformer(nn.Module):
             return raw
         for end in range(len(after), 0, -1):
             candidate = after[:end]
-            eq = f'{before}={candidate}'
-            if verify_equation(eq).get('valid') or verify_scratchpad(eq).get('valid'):
+            eq = f"{before}={candidate}"
+            if verify_equation(eq).get("valid") or verify_scratchpad(eq).get("valid"):
                 return eq
-        
+
         # Fallback: strip runs of 3+ consecutive same chars even if math doesn't validate
         # The model often generates a few correct digits then repeats the last one
         import re
+
         cleaned = after
         for c in set(after):
-            cleaned = re.sub(f'{re.escape(c)}{{3,}}', c, cleaned)
+            cleaned = re.sub(f"{re.escape(c)}{{3,}}", c, cleaned)
         if cleaned != after:
-            return f'{before}={cleaned}'
-        
+            return f"{before}={cleaned}"
+
         # Last resort: take first 4 chars (longest plausible answer length)
         if len(after) > 6:
-            return f'{before}={after[:4]}'
+            return f"{before}={after[:4]}"
         return raw
 
     def quantize_(self, bits: int = 8) -> None:
@@ -635,22 +649,22 @@ class MathTransformer(nn.Module):
             import bitsandbytes as bnb  # noqa: F811
         except ImportError:
             raise ImportError(
-                'bitsandbytes is required for quantization. '
-                'Install with: pip install bitsandbytes'
+                "bitsandbytes is required for quantization. "
+                "Install with: pip install bitsandbytes"
             )
 
         if bits not in (8, 4):
-            raise ValueError(f'bits must be 8 or 4, got {bits}')
+            raise ValueError(f"bits must be 8 or 4, got {bits}")
 
         quant_cls = bnb.nn.Linear8bitLt if bits == 8 else bnb.nn.Linear4bit
-        bit_label = f'{bits}-bit'
+        bit_label = f"{bits}-bit"
         replaced = 0
 
         for name, module in self.named_modules():
             if isinstance(module, nn.Linear):
                 # Skip the final lm_head if it is shared via weight tying
-                if name == 'lm_head' and getattr(self.config, 'tie_embeddings', False):
-                    print(f'  [*] Skipping {name} (weight tied with embedding)')
+                if name == "lm_head" and getattr(self.config, "tie_embeddings", False):
+                    print(f"  [*] Skipping {name} (weight tied with embedding)")
                     continue
 
                 # Build quantized replacement
@@ -664,7 +678,7 @@ class MathTransformer(nn.Module):
                     new_module.bias.data = module.bias.data
 
                 # Walk the module hierarchy to set the attribute at the right level
-                parts = name.split('.')
+                parts = name.split(".")
                 parent = self
                 for p in parts[:-1]:
                     parent = getattr(parent, p)
@@ -675,10 +689,10 @@ class MathTransformer(nn.Module):
             # Move quantized parameters to the target device
             device = next(self.parameters()).device
             self.to(device)
-            print(f'  [*] Quantized {replaced} linear layers to {bit_label}')
+            print(f"  [*] Quantized {replaced} linear layers to {bit_label}")
 
     @classmethod
-    def from_config_quantized(cls, config: Any, device: str = 'cpu') -> 'MathTransformer':
+    def from_config_quantized(cls, config: Any, device: str = "cpu") -> "MathTransformer":
         """Create a model and optionally quantize for inference.
 
         If ``config.load_in_8bit`` or ``config.load_in_4bit`` is ``True``,
@@ -701,8 +715,8 @@ class MathTransformer(nn.Module):
         """
         model = cls(config)
 
-        want_8bit = getattr(config, 'load_in_8bit', False)
-        want_4bit = getattr(config, 'load_in_4bit', False)
+        want_8bit = getattr(config, "load_in_8bit", False)
+        want_4bit = getattr(config, "load_in_4bit", False)
 
         if want_8bit or want_4bit:
             # 4-bit takes precedence if both are set
@@ -710,17 +724,20 @@ class MathTransformer(nn.Module):
             try:
                 model.quantize_(bits=bits)
             except ImportError:
-                print(f'  [!] bitsandbytes not installed. Skipping {bits}-bit quantization.')
+                print(f"  [!] bitsandbytes not installed. Skipping {bits}-bit quantization.")
         else:
-            print('  [*] Quantization not requested. Loading standard model.')
+            print("  [*] Quantization not requested. Loading standard model.")
 
         return model
 
 
-def alphazero_loss(policy_logits: torch.Tensor, value_pred: torch.Tensor | None,
-                   targets: torch.Tensor,
-                   value_target_z: torch.Tensor | None,
-                   config: Any = None) -> tuple[torch.Tensor, torch.Tensor]:
+def alphazero_loss(
+    policy_logits: torch.Tensor,
+    value_pred: torch.Tensor | None,
+    targets: torch.Tensor,
+    value_target_z: torch.Tensor | None,
+    config: Any = None,
+) -> tuple[torch.Tensor, torch.Tensor]:
     """AlphaZero-style dual loss: policy cross-entropy + value MSE.
 
     Args:
@@ -742,7 +759,7 @@ def alphazero_loss(policy_logits: torch.Tensor, value_pred: torch.Tensor | None,
         policy_logits.view(-1, policy_logits.size(-1)),
         targets.view(-1),
         ignore_index=-100,
-        label_smoothing=getattr(config, 'label_smoothing', 0.0) if config else 0.0,
+        label_smoothing=getattr(config, "label_smoothing", 0.0) if config else 0.0,
     )
 
     # Value loss: MSE between predicted intuition and actual outcome
@@ -769,7 +786,7 @@ def count_parameters(model: nn.Module) -> int:
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     from tabula_rasa.config import Config
     from tabula_rasa.tokenizer import MathTokenizer
 
@@ -778,14 +795,14 @@ if __name__ == '__main__':
     cfg.vocab_size = tok.vocab_size
 
     model = MathTransformer(cfg)
-    print(f'Model params: {count_parameters(model):,}')
-    print(f'Arch: d={cfg.d_model} L={cfg.n_layers} ff={cfg.d_ff} heads={cfg.n_heads}')
-    print(f'Act: {cfg.activation}  Norm: {cfg.norm_type}  Pos: {cfg.pos_encoding}')
-    print(f'Init: {cfg.weight_init}  Tie: {cfg.tie_embeddings}')
+    print(f"Model params: {count_parameters(model):,}")
+    print(f"Arch: d={cfg.d_model} L={cfg.n_layers} ff={cfg.d_ff} heads={cfg.n_heads}")
+    print(f"Act: {cfg.activation}  Norm: {cfg.norm_type}  Pos: {cfg.pos_encoding}")
+    print(f"Init: {cfg.weight_init}  Tie: {cfg.tie_embeddings}")
 
-    ids = tok.encode('12+34=46', add_special_tokens=True)
+    ids = tok.encode("12+34=46", add_special_tokens=True)
     x = torch.tensor([ids])
     logits, loss, value = model(x, x)
-    print(f'Logits shape: {logits.shape}')
-    print(f'Loss (random init): {loss.item():.4f}')
-    print(f'Value (random init): {value}')
+    print(f"Logits shape: {logits.shape}")
+    print(f"Loss (random init): {loss.item():.4f}")
+    print(f"Value (random init): {value}")

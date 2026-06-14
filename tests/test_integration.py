@@ -1,20 +1,26 @@
 """Integration tests — end-to-end training, checkpointing, API."""
-import sys, os, json, time, signal, subprocess
+
+import json
+import os
+import signal
+import subprocess
+import sys
+import time
 from pathlib import Path
 
 import pytest
 import torch
 
 from tabula_rasa.config import Config
-from tabula_rasa.tokenizer import MathTokenizer
-from tabula_rasa.model import MathTransformer, count_parameters
 from tabula_rasa.eval import evaluate_accuracy
+from tabula_rasa.model import MathTransformer, count_parameters
+from tabula_rasa.tokenizer import MathTokenizer
 
 
 class TestQuickTraining:
     """End-to-end quick training smoke test."""
 
-    @pytest.fixture(scope='class')
+    @pytest.fixture(scope="class")
     def trained_model(self):
         """Train a tiny model quickly and return it."""
         cfg = Config()
@@ -36,8 +42,9 @@ class TestQuickTraining:
         tok = MathTokenizer()
         model = MathTransformer(cfg)
 
-        from tabula_rasa.dataset import generate_problem
         from torch import optim
+
+        from tabula_rasa.dataset import generate_problem
 
         optimizer = optim.AdamW(model.parameters(), lr=0.001)
         model.train()
@@ -47,9 +54,9 @@ class TestQuickTraining:
             total_loss = 0.0
             for _ in range(cfg.batch_size):
                 expr, ans = generate_problem(1, 2)
-                text = f'{expr}={ans}'
+                text = f"{expr}={ans}"
                 ids = tok.encode(text, add_special_tokens=True)
-                ids = (ids + [tok.pad_id] * cfg.max_seq_len)[:cfg.max_seq_len]
+                ids = (ids + [tok.pad_id] * cfg.max_seq_len)[: cfg.max_seq_len]
                 x = torch.tensor(ids[:-1]).unsqueeze(0)
                 y = torch.tensor(ids[1:]).unsqueeze(0)
                 _, loss, _ = model(x, y)
@@ -80,8 +87,9 @@ class TestEWCFlag:
 
     def test_ewc_module_importable(self):
         """OnlineEWC can be imported."""
-        from tabula_rasa.model import MathTransformer
         from egefalos.online_ewc import OnlineEWC
+        from tabula_rasa.model import MathTransformer
+
         cfg = Config()
         cfg.vocab_size = 44
         cfg.d_model = 32
@@ -94,10 +102,10 @@ class TestEWCFlag:
 
     def test_ewc_fisher_compute(self):
         """Fisher matrix computation doesn't crash."""
-        from tabula_rasa.model import MathTransformer
         from egefalos.online_ewc import OnlineEWC
-        from tabula_rasa.tokenizer import MathTokenizer
         from tabula_rasa.dataset import generate_problem
+        from tabula_rasa.model import MathTransformer
+        from tabula_rasa.tokenizer import MathTokenizer
 
         cfg = Config()
         cfg.vocab_size = 44
@@ -114,17 +122,19 @@ class TestEWCFlag:
         samples = []
         for _ in range(10):
             expr, ans = generate_problem(1, 2)
-            text = f'{expr}={ans}'
+            text = f"{expr}={ans}"
             ids = tok.encode(text, add_special_tokens=True)
-            ids = (ids + [tok.pad_id] * cfg.max_seq_len)[:cfg.max_seq_len]
+            ids = (ids + [tok.pad_id] * cfg.max_seq_len)[: cfg.max_seq_len]
             samples.append(torch.tensor(ids))
 
         # Create a dataloader from samples
         class SimpleDataset(torch.utils.data.Dataset):
             def __init__(self, data):
                 self.data = data
+
             def __len__(self):
                 return len(self.data)
+
             def __getitem__(self, i):
                 return self.data[i]
 
@@ -157,13 +167,13 @@ class TestCheckpointSave:
         save_path = tmp_path / "test_model.pt"
 
         # Save
-        torch.save({'model_state_dict': model.state_dict()}, save_path)
+        torch.save({"model_state_dict": model.state_dict()}, save_path)
         assert save_path.exists()
 
         # Load
-        state = torch.load(save_path, map_location='cpu', weights_only=True)
+        state = torch.load(save_path, map_location="cpu", weights_only=True)
         model2 = MathTransformer(cfg)
-        model2.load_state_dict(state['model_state_dict'])
+        model2.load_state_dict(state["model_state_dict"])
 
         # Verify same output
         model.eval()
@@ -189,9 +199,11 @@ class TestEndToEndQuickTraining:
 
         cwd = Path(__file__).resolve().parent.parent
         result = subprocess.run(
-            [sys.executable, 'train_specialist.py', 'add',
-             '--steps', '100', '--batch', '64'],
-            capture_output=True, text=True, timeout=300, cwd=str(cwd),
+            [sys.executable, "train_specialist.py", "add", "--steps", "100", "--batch", "64"],
+            capture_output=True,
+            text=True,
+            timeout=300,
+            cwd=str(cwd),
         )
 
         # Check exit code
@@ -202,32 +214,33 @@ class TestEndToEndQuickTraining:
         )
 
         # Check output contains expected messages
-        assert 'Done!' in result.stdout, (
-            f"Expected 'Done!' not found in output:\n{result.stdout[:1000]}"
-        )
+        assert (
+            "Done!" in result.stdout
+        ), f"Expected 'Done!' not found in output:\n{result.stdout[:1000]}"
 
         # Check that checkpoint files were created
-        op_dir = cwd / 'specialists' / 'math' / 'add'
-        assert (op_dir / 'best.pt').exists() or (op_dir / 'final.pt').exists(), (
-            f"Checkpoint not found in {op_dir}"
-        )
+        op_dir = cwd / "specialists" / "math" / "add"
+        assert (op_dir / "best.pt").exists() or (
+            op_dir / "final.pt"
+        ).exists(), f"Checkpoint not found in {op_dir}"
 
         # Verify the checkpoint loads and can generate
         import torch
-        from tabula_rasa.config import Config
-        from tabula_rasa.tokenizer import MathTokenizer
-        from tabula_rasa.model import MathTransformer
 
-        ckpt = op_dir / 'best.pt'
+        from tabula_rasa.config import Config
+        from tabula_rasa.model import MathTransformer
+        from tabula_rasa.tokenizer import MathTokenizer
+
+        ckpt = op_dir / "best.pt"
         if not ckpt.exists():
-            ckpt = op_dir / 'final.pt'
-        tok = MathTokenizer.load(str(op_dir / 'tokenizer.json'))
+            ckpt = op_dir / "final.pt"
+        tok = MathTokenizer.load(str(op_dir / "tokenizer.json"))
         cfg = Config()
         cfg.vocab_size = tok.vocab_size
         tok.max_seq_len = cfg.max_seq_len
         model = MathTransformer(cfg)
-        state = torch.load(ckpt, map_location='cpu', weights_only=True)
-        model.load_state_dict(state['model_state_dict'])
+        state = torch.load(ckpt, map_location="cpu", weights_only=True)
+        model.load_state_dict(state["model_state_dict"])
         model.eval()
 
         # Generate something
@@ -244,11 +257,20 @@ class TestEndToEndQuickTraining:
 
         cwd = Path(__file__).resolve().parent.parent
         result = subprocess.run(
-            [sys.executable, 'train_specialist.py', 'add',
-             '--steps', '100', '--batch', '64',
-             '--no-reversed', '--no-loss-mask'],
-            capture_output=True, text=True, timeout=300, cwd=str(cwd),
+            [
+                sys.executable,
+                "train_specialist.py",
+                "add",
+                "--steps",
+                "100",
+                "--batch",
+                "64",
+                "--no-reversed",
+                "--no-loss-mask",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=300,
+            cwd=str(cwd),
         )
-        assert result.returncode == 0, (
-            f"Exit code {result.returncode}\n{result.stdout[:500]}"
-        )
+        assert result.returncode == 0, f"Exit code {result.returncode}\n{result.stdout[:500]}"

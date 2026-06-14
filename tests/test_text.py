@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-import pytest
+import os
+import sys
 from pathlib import Path
-import sys, os
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'src'))
+import pytest
 
-from tabula_rasa.bpe_tokenizer import BPETokenizer, log_verified_output, learn_from_verified_log
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+
+from tabula_rasa.bpe_tokenizer import BPETokenizer, learn_from_verified_log, log_verified_output
 from tabula_rasa.text_dataset import TextReversalDataset, evaluate_reversal
 
 
@@ -56,11 +58,13 @@ class TestBPETokenizer:
         tok.learn_bpe_from_texts(["ab" * 20], num_merges=1, min_frequency=1, verbose=False)
         # After learning, encode() should produce BPE tokens for 'ab' pairs
         ids = tok.encode("ab")
-        assert any(len(tok.itos.get(i, '')) > 1 for i in ids) or len(ids) < 2
+        assert any(len(tok.itos.get(i, "")) > 1 for i in ids) or len(ids) < 2
 
     def test_save_load(self):
         tok = BPETokenizer()
-        tok.learn_bpe_from_texts(["ab" * 10, "bc" * 10], num_merges=2, min_frequency=1, verbose=False)
+        tok.learn_bpe_from_texts(
+            ["ab" * 10, "bc" * 10], num_merges=2, min_frequency=1, verbose=False
+        )
         tok.save("/tmp/test_bpe_tok.json")
         tok2 = BPETokenizer.load("/tmp/test_bpe_tok.json")
         # Vocab size may differ by 1 due to merge key serialization edge case
@@ -88,7 +92,7 @@ class TestTextDataset:
         ds = TextReversalDataset(num_samples=10, max_len=4)
         for i in range(10):
             prompt, answer = ds[i]
-            assert prompt.endswith('=')
+            assert prompt.endswith("=")
             original = prompt[:-1]
             assert answer == original[::-1]
 
@@ -103,6 +107,7 @@ class TestTextDataset:
     def test_compatibility_with_bpe_tokenizer(self):
         """Verify BPETokenizer can encode reversal problems."""
         from tabula_rasa.bpe_tokenizer import BPETokenizer
+
         tok = BPETokenizer()
         ds = TextReversalDataset(num_samples=5, max_len=4)
         for i in range(5):
@@ -119,16 +124,18 @@ class TestTextTrainingPipeline:
     def test_train_text_script_imports(self):
         """Verify all imports in train_text.py resolve."""
         from scripts import train_text
-        assert hasattr(train_text, 'TextReversalDataset')
-        assert hasattr(train_text, 'train_reversal')
-        assert hasattr(train_text, 'evaluate_reversal')
+
+        assert hasattr(train_text, "TextReversalDataset")
+        assert hasattr(train_text, "train_reversal")
+        assert hasattr(train_text, "evaluate_reversal")
 
     def test_reversal_model_creation(self, tmp_path):
         """Create a tiny model and verify it can process text reversal."""
         import torch
+
+        from tabula_rasa.bpe_tokenizer import BPETokenizer
         from tabula_rasa.config import Config
         from tabula_rasa.model import MathTransformer, count_parameters
-        from tabula_rasa.bpe_tokenizer import BPETokenizer
 
         cfg = Config()
         cfg.d_model = 64

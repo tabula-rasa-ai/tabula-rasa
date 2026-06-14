@@ -10,20 +10,30 @@ Penalty = λ · Σ(F₁ · (θ−θ*₁)² + F₂ · (θ−θ*₂)² + ...)
 If Standard EWC preserves >85% on all tasks: the merge IS the problem.
 If Standard EWC also collapses: the problem is model capacity or λ.
 """
-import sys, json, time
+
+import json
+import sys
+import time
 from pathlib import Path
+
 import torch
 from torch.utils.data import DataLoader
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from tabula_rasa.config import Config
-from tabula_rasa.tokenizer import MathTokenizer
-from tabula_rasa.model import MathTransformer
-from train_specialist import evaluate, evaluate_per_digit, generate_problem, SpecialistDataset, _get_lr
 from egefalos.online_ewc import OnlineEWC
+from tabula_rasa.config import Config
+from tabula_rasa.model import MathTransformer
+from tabula_rasa.tokenizer import MathTokenizer
+from train_specialist import (
+    SpecialistDataset,
+    _get_lr,
+    evaluate,
+    evaluate_per_digit,
+    generate_problem,
+)
 
-DEVICE = 'cpu'
-ADD_DIR = Path('specialists/math/add')
+DEVICE = "cpu"
+ADD_DIR = Path("specialists/math/add")
 LAMBDA_EWC = 500
 GAMMA = 0.9
 STEPS = 2000
@@ -54,17 +64,19 @@ class StandardEWC:
                 if param.requires_grad and name in fisher and name in anchor:
                     f = fisher[name].to(device)
                     delta = param - anchor[name].to(device)
-                    pen += (f * delta ** 2).sum()
+                    pen += (f * delta**2).sum()
             total += pen
         return (self.lambda_ewc / 2.0) * total
 
 
 def load_clean_model(tok):
-    checkpoint = torch.load(ADD_DIR / 'best_original.pt', map_location='cpu', weights_only=True)
-    sd = checkpoint.get('model_state_dict', checkpoint)
-    d_model = sd['token_embedding.weight'].shape[1]
-    n_layers = len([k for k in sd if k.startswith('layers.') and k.endswith('.attention.wq.weight')])
-    d_ff = sd['layers.0.feed_forward.w1.weight'].shape[0] if n_layers > 0 else 256
+    checkpoint = torch.load(ADD_DIR / "best_original.pt", map_location="cpu", weights_only=True)
+    sd = checkpoint.get("model_state_dict", checkpoint)
+    d_model = sd["token_embedding.weight"].shape[1]
+    n_layers = len(
+        [k for k in sd if k.startswith("layers.") and k.endswith(".attention.wq.weight")]
+    )
+    d_ff = sd["layers.0.feed_forward.w1.weight"].shape[0] if n_layers > 0 else 256
     n_heads = {128: 4, 64: 2, 96: 4, 256: 8}.get(d_model, max(1, d_model // 32))
     cfg = Config()
     cfg.vocab_size = tok.vocab_size
@@ -92,8 +104,8 @@ def compute_fisher(model, tok, cfg, num_samples=100):
             fisher[name] = torch.zeros_like(param)
     samples = 0
     for _ in range(num_samples):
-        expr, ans = generate_problem('add', 1, 1, reversed=True, scratchpad=True)
-        full = f'{expr}={ans}'
+        expr, ans = generate_problem("add", 1, 1, reversed=True, scratchpad=True)
+        full = f"{expr}={ans}"
         ids = tok.encode(full, add_special_tokens=True)
         ids_t = torch.tensor([ids])
         model.zero_grad()
@@ -114,7 +126,9 @@ def get_anchor(model):
 
 
 def train_task(model, cfg, tok, operation, ewc, steps=STEPS):
-    optimizer = torch.optim.AdamW(model.parameters(), lr=0.001, weight_decay=0.01, betas=(0.9, 0.999))
+    optimizer = torch.optim.AdamW(
+        model.parameters(), lr=0.001, weight_decay=0.01, betas=(0.9, 0.999)
+    )
     cfg.max_digits = 1
     cfg.min_digits = 1
     ds = SpecialistDataset(tok, operation, cfg)
@@ -132,32 +146,33 @@ def train_task(model, cfg, tok, operation, ewc, steps=STEPS):
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
             for pg in optimizer.param_groups:
-                pg['lr'] = 0.001 * _get_lr(global_step, 200, steps, 'cosine')
+                pg["lr"] = 0.001 * _get_lr(global_step, 200, steps, "cosine")
             global_step += 1
     return global_step
 
 
 def measure_all(model, tok, cfg):
     model.eval()
-    return {op: evaluate(model, tok, cfg, op, num=100) for op in ['add', 'sub', 'mul']}
+    return {op: evaluate(model, tok, cfg, op, num=100) for op in ["add", "sub", "mul"]}
 
 
 def run_seed(seed):
     """Run one seed of Standard EWC three-task sequence."""
     import random
+
     random.seed(seed)
     torch.manual_seed(seed)
 
-    print(f'\n  --- Seed {seed} ---')
+    print(f"\n  --- Seed {seed} ---")
     tok = MathTokenizer()
     model, cfg = load_clean_model(tok)
     std_ewc = StandardEWC(model, lambda_ewc=LAMBDA_EWC)
 
-    results = {'seed': seed}
+    results = {"seed": seed}
 
     # ─── Addition baseline ───
     before = measure_all(model, tok, cfg)
-    results['after_addition'] = before
+    results["after_addition"] = before
     print(f'  Baseline: add={before["add"]:.0f}%')
 
     # Compute Fisher on addition model
@@ -166,9 +181,9 @@ def run_seed(seed):
     std_ewc.add_task(fisher_add, anchor_add)
 
     # ─── Train subtraction ───
-    train_task(model, cfg, tok, 'sub', std_ewc)
+    train_task(model, cfg, tok, "sub", std_ewc)
     after_sub = measure_all(model, tok, cfg)
-    results['after_subtraction'] = after_sub
+    results["after_subtraction"] = after_sub
     print(f'  After sub: add={after_sub["add"]:.0f}%, sub={after_sub["sub"]:.0f}%')
 
     # Compute Fisher on subtraction model + add as second task
@@ -177,10 +192,12 @@ def run_seed(seed):
     std_ewc.add_task(fisher_sub, anchor_sub)
 
     # ─── Train multiplication ───
-    train_task(model, cfg, tok, 'mul', std_ewc)
+    train_task(model, cfg, tok, "mul", std_ewc)
     after_mul = measure_all(model, tok, cfg)
-    results['after_multiplication'] = after_mul
-    print(f'  After mul: add={after_mul["add"]:.0f}%, sub={after_mul["sub"]:.0f}%, mul={after_mul["mul"]:.0f}%')
+    results["after_multiplication"] = after_mul
+    print(
+        f'  After mul: add={after_mul["add"]:.0f}%, sub={after_mul["sub"]:.0f}%, mul={after_mul["mul"]:.0f}%'
+    )
 
     return results
 
@@ -200,29 +217,32 @@ def main():
     # Stats
     def avg_std(vals):
         import statistics
+
         return statistics.mean(vals), statistics.stdev(vals) if len(vals) > 1 else 0
 
     print(f'\n\n{"=" * 60}')
-    print('  STANDARD EWC — SUMMARY')
+    print("  STANDARD EWC — SUMMARY")
     print(f'{"=" * 60}')
 
-    for task in ['add', 'sub', 'mul']:
-        after_add = [s['after_addition'][task] for s in all_seeds]
-        after_sub = [s['after_subtraction'][task] for s in all_seeds]
-        after_mul = [s['after_multiplication'][task] for s in all_seeds]
+    for task in ["add", "sub", "mul"]:
+        after_add = [s["after_addition"][task] for s in all_seeds]
+        after_sub = [s["after_subtraction"][task] for s in all_seeds]
+        after_mul = [s["after_multiplication"][task] for s in all_seeds]
         m1, s1 = avg_std(after_add)
         m2, s2 = avg_std(after_sub)
         m3, s3 = avg_std(after_mul)
-        print(f'  {task:<5} | After add: {m1:>5.1f}±{s1:.1f} | After sub: {m2:>5.1f}±{s2:.1f} | After mul: {m3:>5.1f}±{s3:.1f}')
+        print(
+            f"  {task:<5} | After add: {m1:>5.1f}±{s1:.1f} | After sub: {m2:>5.1f}±{s2:.1f} | After mul: {m3:>5.1f}±{s3:.1f}"
+        )
 
     # Compare with merged EWC (from three-task experiment)
-    print(f'\n  Comparison with Merged EWC (previous experiment):')
+    print(f"\n  Comparison with Merged EWC (previous experiment):")
     merged_add = [3.0]  # from three-task experiment
     merged_sub = [0.0]
     merged_mul = [34.0]
-    std_add = [s['after_multiplication']['add'] for s in all_seeds]
-    std_sub = [s['after_multiplication']['sub'] for s in all_seeds]
-    std_mul = [s['after_multiplication']['mul'] for s in all_seeds]
+    std_add = [s["after_multiplication"]["add"] for s in all_seeds]
+    std_sub = [s["after_multiplication"]["sub"] for s in all_seeds]
+    std_mul = [s["after_multiplication"]["mul"] for s in all_seeds]
     m_sa, _ = avg_std(std_add)
     m_ss, _ = avg_std(std_sub)
     m_sm, _ = avg_std(std_mul)
@@ -233,37 +253,45 @@ def main():
 
     # Interpretation
     if m_sa > 85 and m_ss > 85:
-        print(f'\n  ✅ STANDARD EWC RECOVERS >85% — the merge IS the cause of collapse')
+        print(f"\n  ✅ STANDARD EWC RECOVERS >85% — the merge IS the cause of collapse")
     elif m_sa > 50:
-        print(f'\n  ⚠️  Standard EWC partially recovers (>{m_sa:.0f}%) — merge is a factor, but λ or capacity also matter')
+        print(
+            f"\n  ⚠️  Standard EWC partially recovers (>{m_sa:.0f}%) — merge is a factor, but λ or capacity also matter"
+        )
     else:
-        print(f'\n  ❌ Standard EWC also collapses — the problem is not the merge, it\'s capacity or λ')
+        print(
+            f"\n  ❌ Standard EWC also collapses — the problem is not the merge, it's capacity or λ"
+        )
 
     # Save
     output = {
-        'seeds': SEEDS,
-        'lambda_ewc': LAMBDA_EWC,
-        'results': all_seeds,
+        "seeds": SEEDS,
+        "lambda_ewc": LAMBDA_EWC,
+        "results": all_seeds,
     }
-    std_add_vals = [s['after_multiplication']['add'] for s in all_seeds]
-    std_sub_vals = [s['after_multiplication']['sub'] for s in all_seeds]
-    std_mul_vals = [s['after_multiplication']['mul'] for s in all_seeds]
+    std_add_vals = [s["after_multiplication"]["add"] for s in all_seeds]
+    std_sub_vals = [s["after_multiplication"]["sub"] for s in all_seeds]
+    std_mul_vals = [s["after_multiplication"]["mul"] for s in all_seeds]
     m_a, s_a = avg_std(std_add_vals)
     m_s, s_s = avg_std(std_sub_vals)
     m_m, s_m = avg_std(std_mul_vals)
 
-    output['summary'] = {
-        'add_mean': m_a, 'add_std': s_a,
-        'sub_mean': m_s, 'sub_std': s_s,
-        'mul_mean': m_m, 'mul_std': s_m,
+    output["summary"] = {
+        "add_mean": m_a,
+        "add_std": s_a,
+        "sub_mean": m_s,
+        "sub_std": s_s,
+        "mul_mean": m_m,
+        "mul_std": s_m,
     }
 
     import json
-    out_path = Path('experiments/standard_ewc_results.json')
-    with open(out_path, 'w') as f:
+
+    out_path = Path("experiments/standard_ewc_results.json")
+    with open(out_path, "w") as f:
         json.dump(output, f, indent=2)
-    print(f'\n  Results: {out_path}')
+    print(f"\n  Results: {out_path}")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

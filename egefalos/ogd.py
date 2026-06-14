@@ -8,12 +8,12 @@ the gradients directly. They're complementary.
 
 Usage:
     ogd = OGD(model, alpha=0.5)
-    
+
     # After loss.backward(), before optimizer.step():
     ogd.project_gradients()
     optimizer.step()
     optimizer.zero_grad()
-    
+
     # After training on a task, store the gradient subspace:
     ogd.store_gradients(dataloader, num_batches=10)
 """

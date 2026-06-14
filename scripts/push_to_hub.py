@@ -11,11 +11,11 @@ Usage:
     python scripts/push_to_hub.py add --best             # Use best.pt (default: final.pt)
 """
 
-import sys
 import os
+import sys
 
 # Allow imports from the src directory
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import argparse
 import json
@@ -31,6 +31,7 @@ except ImportError:
 # Try importing huggingface_hub (optional dependency)
 try:
     from huggingface_hub import HfApi, create_repo, upload_folder
+
     _HF_AVAILABLE = True
 except ImportError:
     _HF_AVAILABLE = False
@@ -80,8 +81,7 @@ def _load_checkpoint(op: str, use_best: bool = False) -> dict[str, Any]:
             ckpt_path = fallback
         else:
             raise FileNotFoundError(
-                f"No checkpoint found in {specialist_dir} "
-                f"(tried {ckpt_name} and best.pt)"
+                f"No checkpoint found in {specialist_dir} " f"(tried {ckpt_name} and best.pt)"
             )
 
     print(f"  [*] Loading checkpoint: {ckpt_path}")
@@ -165,11 +165,13 @@ def _build_config_json(
         n_layers = metadata["n_layers"]
     else:
         n_layers = getattr(base_cfg, "n_layers", 4)
-    
+
     # Use checkpoint config values where available
     d_ff = ckpt_config.get("d_ff", getattr(base_cfg, "d_ff", 512))
     use_reversed = ckpt_config.get("use_reversed", getattr(base_cfg, "use_reversed", True))
-    use_loss_masking = ckpt_config.get("use_loss_masking", getattr(base_cfg, "use_loss_masking", True))
+    use_loss_masking = ckpt_config.get(
+        "use_loss_masking", getattr(base_cfg, "use_loss_masking", True)
+    )
     use_scratchpad = ckpt_config.get("use_scratchpad", getattr(base_cfg, "use_scratchpad", True))
 
     activation = (metadata or {}).get("activation", getattr(base_cfg, "activation", "relu"))
@@ -394,10 +396,7 @@ def push_specialist(
         The repo ID on success, or ``None`` if an error occurred.
     """
     if not _HF_AVAILABLE:
-        print(
-            "[!] huggingface_hub is required. Install with:\n"
-            "    pip install huggingface_hub"
-        )
+        print("[!] huggingface_hub is required. Install with:\n" "    pip install huggingface_hub")
         return None
 
     op = op.strip().lower()
@@ -431,30 +430,18 @@ def push_specialist(
 
     print(f"  [*] Steps: {global_step} | Accuracy: {acc:.1f}%")
     # Use metadata values when checkpoint config is empty (e.g. final.pt)
-    n_layers_display = (
-        ckpt_config.get('n_layers')
-        or (metadata and metadata.get('n_layers'))
-        or '?'
-    )
-    d_model_display = (
-        ckpt_config.get('d_model')
-        or (metadata and metadata.get('d_model'))
-        or '?'
-    )
-    n_heads_display = (
-        ckpt_config.get('n_heads')
-        or (metadata and metadata.get('n_heads'))
-        or '?'
-    )
+    n_layers_display = ckpt_config.get("n_layers") or (metadata and metadata.get("n_layers")) or "?"
+    d_model_display = ckpt_config.get("d_model") or (metadata and metadata.get("d_model")) or "?"
+    n_heads_display = ckpt_config.get("n_heads") or (metadata and metadata.get("n_heads")) or "?"
     d_ff_display = (
-        ckpt_config.get('d_ff')
-        or (metadata and metadata.get('config', {}).get('d_ff'))
-        or '?'
+        ckpt_config.get("d_ff") or (metadata and metadata.get("config", {}).get("d_ff")) or "?"
     )
-    print(f"  [*] Architecture: L={n_layers_display} "
-          f"D={d_model_display} "
-          f"H={n_heads_display} "
-          f"FF={d_ff_display}")
+    print(
+        f"  [*] Architecture: L={n_layers_display} "
+        f"D={d_model_display} "
+        f"H={n_heads_display} "
+        f"FF={d_ff_display}"
+    )
 
     # ── Build config.json ──────────────────────────────────────
     config_json = _build_config_json(ckpt_config, metadata, tokenizer_data, op)
@@ -526,6 +513,7 @@ def push_specialist(
     finally:
         # Clean up temp files
         import shutil
+
         shutil.rmtree(upload_dir, ignore_errors=True)
         print(f"  [*] Cleaned up temp files")
 
@@ -626,9 +614,7 @@ def main() -> None:
             print("\n  [!] No specialists were pushed.")
             sys.exit(1)
     else:
-        repo_id = push_specialist(
-            op, token=args.token, private=args.private, use_best=args.best
-        )
+        repo_id = push_specialist(op, token=args.token, private=args.private, use_best=args.best)
         if repo_id is None:
             sys.exit(1)
         print(f"\n  [✓] Done: {HF_BASE_URL}/{repo_id}")

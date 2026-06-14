@@ -14,8 +14,8 @@ the model outputs the solution as "x=N" where N is the answer digit.
 
 from __future__ import annotations
 
-import random
 import json
+import random
 from pathlib import Path
 from typing import ClassVar
 
@@ -31,19 +31,20 @@ class AlgebraTokenizer(MathTokenizer):
     Vocab: 4 special + 20 carry-digit + 18 math chars + 3 variables = 45 tokens
     """
 
-    VARIABLE_CHARS: ClassVar[list[str]] = list('xyz')
+    VARIABLE_CHARS: ClassVar[list[str]] = list("xyz")
 
     def _build_vocab(self) -> None:
-        all_tokens: list[str] = (self.SPECIAL_TOKENS + self.CARRY_TOKENS
-                                 + self.MATH_CHARS + self.VARIABLE_CHARS)
+        all_tokens: list[str] = (
+            self.SPECIAL_TOKENS + self.CARRY_TOKENS + self.MATH_CHARS + self.VARIABLE_CHARS
+        )
         self.stoi: dict[str, int] = {t: i for i, t in enumerate(all_tokens)}
         self.itos: dict[int, str] = {i: t for i, t in enumerate(all_tokens)}
         self.vocab_size: int = len(all_tokens)
 
-        self.pad_id = self.stoi['<PAD>']
-        self.bos_id = self.stoi['<BOS>']
-        self.eos_id = self.stoi['<EOS>']
-        self.unk_id = self.stoi['<UNK>']
+        self.pad_id = self.stoi["<PAD>"]
+        self.bos_id = self.stoi["<BOS>"]
+        self.eos_id = self.stoi["<EOS>"]
+        self.unk_id = self.stoi["<UNK>"]
 
         self._tokens_sorted = sorted(all_tokens, key=len, reverse=True)
 
@@ -59,12 +60,17 @@ class AlgebraDataset:
       - 'mix':       random from all types
     """
 
-    OPERATORS = ['+', '-', '*', '/']
-    VARIABLES = ['x', 'y', 'z']
+    OPERATORS = ["+", "-", "*", "/"]
+    VARIABLES = ["x", "y", "z"]
 
-    def __init__(self, num_samples: int = 5000, problem_type: str = 'mix',
-                 max_coeff: int = 12, max_constant: int = 20,
-                 allow_negative: bool = False):
+    def __init__(
+        self,
+        num_samples: int = 5000,
+        problem_type: str = "mix",
+        max_coeff: int = 12,
+        max_constant: int = 20,
+        allow_negative: bool = False,
+    ):
         self.num_samples = num_samples
         self.problem_type = problem_type
         self.max_coeff = max_coeff
@@ -84,23 +90,24 @@ class AlgebraDataset:
         x_val = self._rand_positive(self.max_constant)
 
         # Pick an operation
-        op = random.choice([op for op in self.OPERATORS if op in ('+', '-')])
+        op = random.choice([op for op in self.OPERATORS if op in ("+", "-")])
 
-        if op == '+':
+        if op == "+":
             # x + a = (x + a)
             b = x_val + a
-            prompt = f'{var}+{a}='
-            answer = f'{var}={x_val}'
-        elif op == '-':
+            prompt = f"{var}+{a}="
+            answer = f"{var}={x_val}"
+        elif op == "-":
             # x - a = (x - a) where x > a for positive
             if x_val <= a:
                 x_val, a = a + 1, x_val - 1
-                if x_val <= 0: x_val, a = 5, 2
+                if x_val <= 0:
+                    x_val, a = 5, 2
             b = x_val - a
-            prompt = f'{var}-{a}='
-            answer = f'{var}={x_val}'
+            prompt = f"{var}-{a}="
+            answer = f"{var}={x_val}"
         else:
-            prompt, answer = f'{var}+{a}=', f'{var}={x_val}'
+            prompt, answer = f"{var}+{a}=", f"{var}={x_val}"
 
         return prompt, answer
 
@@ -109,19 +116,19 @@ class AlgebraDataset:
         var = random.choice(self.VARIABLES)
         a = self._rand_positive(min(self.max_coeff, 10))
         x_val = self._rand_positive(10)
-        op = random.choice(['+', '-'])
+        op = random.choice(["+", "-"])
 
         ax = a * x_val
-        if op == '+':
+        if op == "+":
             b = self._rand_positive(20)
             c = ax + b
-            prompt = f'{a}{var}+{b}='
+            prompt = f"{a}{var}+{b}="
         else:
             b = self._rand_positive(min(ax - 1, 20))
             c = ax - b
-            prompt = f'{a}{var}-{b}='
+            prompt = f"{a}{var}-{b}="
 
-        answer = f'{var}={x_val}'
+        answer = f"{var}={x_val}"
         return prompt, answer
 
     def _generate_division(self) -> tuple[str, str]:
@@ -130,8 +137,8 @@ class AlgebraDataset:
         a = self._rand_positive(min(self.max_coeff, 10))
         x_val = a * self._rand_positive(10)
         b = x_val // a
-        prompt = f'{var}/{a}='
-        answer = f'{var}={x_val}'
+        prompt = f"{var}/{a}="
+        answer = f"{var}={x_val}"
         return prompt, answer
 
     def _generate_neg_coeff(self) -> tuple[str, str]:
@@ -144,19 +151,19 @@ class AlgebraDataset:
         if x_val >= a:
             x_val = max(1, a - 1)
         b = a - x_val
-        prompt = f'-{var}+{a}='
-        answer = f'{var}={x_val}'
+        prompt = f"-{var}+{a}="
+        answer = f"{var}={x_val}"
         return prompt, answer
 
     def __getitem__(self, idx: int) -> tuple[str, str]:
         ptype = self.problem_type
-        if ptype == 'mix':
-            ptype = random.choice(['linear', 'two-step', 'division', 'neg-coeff'])
+        if ptype == "mix":
+            ptype = random.choice(["linear", "two-step", "division", "neg-coeff"])
         generators = {
-            'linear': self._generate_linear,
-            'two-step': self._generate_two_step,
-            'division': self._generate_division,
-            'neg-coeff': self._generate_neg_coeff,
+            "linear": self._generate_linear,
+            "two-step": self._generate_two_step,
+            "division": self._generate_division,
+            "neg-coeff": self._generate_neg_coeff,
         }
         gen = generators.get(ptype, self._generate_linear)
         return gen()
@@ -168,6 +175,7 @@ def evaluate_algebra(model, tok, dataset, num_samples: int = 50) -> dict:
     Returns per-type accuracy and overall.
     """
     import torch
+
     model.eval()
     per_type: dict[str, dict] = {}
     overall_correct = 0
@@ -176,58 +184,57 @@ def evaluate_algebra(model, tok, dataset, num_samples: int = 50) -> dict:
         for i in range(min(num_samples, len(dataset))):
             prompt, expected = dataset[i]
             # Determine problem type
-            ptype = 'other'
-            if '--' not in prompt:
-                if '/' in prompt: ptype = 'division'
-                elif prompt.startswith('-'): ptype = 'neg-coeff'
+            ptype = "other"
+            if "--" not in prompt:
+                if "/" in prompt:
+                    ptype = "division"
+                elif prompt.startswith("-"):
+                    ptype = "neg-coeff"
                 elif any(c.isalpha() for c in prompt) and any(c.isdigit() for c in prompt):
-                    ptype = 'two-step'
+                    ptype = "two-step"
                 else:
-                    ptype = 'linear'
+                    ptype = "linear"
 
             output = model.generate(tok, prompt, max_new_tokens=15, temperature=0.0)
 
             # Extract answer
-            if '=' in output:
-                raw = output.split('=', 1)[-1].replace('<EOS>', '').replace('<PAD>', '').strip()
+            if "=" in output:
+                raw = output.split("=", 1)[-1].replace("<EOS>", "").replace("<PAD>", "").strip()
             else:
                 raw = output.strip()
 
-            is_correct = raw.strip() == expected.split('=')[-1].strip()
+            is_correct = raw.strip() == expected.split("=")[-1].strip()
 
             if ptype not in per_type:
-                per_type[ptype] = {'correct': 0, 'total': 0}
-            per_type[ptype]['total'] += 1
+                per_type[ptype] = {"correct": 0, "total": 0}
+            per_type[ptype]["total"] += 1
             if is_correct:
-                per_type[ptype]['correct'] += 1
+                per_type[ptype]["correct"] += 1
                 overall_correct += 1
 
     model.train()
     overall = overall_correct / max(1, num_samples) * 100
-    details = {
-        k: v['correct'] / max(1, v['total']) * 100
-        for k, v in per_type.items()
-    }
-    return {'overall': overall, 'per_type': details}
+    details = {k: v["correct"] / max(1, v["total"]) * 100 for k, v in per_type.items()}
+    return {"overall": overall, "per_type": details}
 
 
 # ══════════════════════════════════════════════════════════════
 # Quick Test
 # ══════════════════════════════════════════════════════════════
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     # Test tokenizer
     tok = AlgebraTokenizer()
-    print(f'AlgebraTokenizer: {tok.vocab_size} tokens')
+    print(f"AlgebraTokenizer: {tok.vocab_size} tokens")
 
-    for test in ['x+3=', '2x+1=', 'x/2=', '-x+5=', 'x+y=z']:
+    for test in ["x+3=", "2x+1=", "x/2=", "-x+5=", "x+y=z"]:
         ids = tok.encode(test, add_special_tokens=True)
         dec = tok.decode(ids, skip_special=True)
-        print(f'  {test:>10} -> {ids} -> {dec}')
+        print(f"  {test:>10} -> {ids} -> {dec}")
 
     # Test dataset
-    ds = AlgebraDataset(num_samples=10, problem_type='mix')
-    print(f'\nAlgebraDataset samples:')
+    ds = AlgebraDataset(num_samples=10, problem_type="mix")
+    print(f"\nAlgebraDataset samples:")
     for i in range(8):
         p, a = ds[i]
-        print(f'  {p:>12} -> {a}')
+        print(f"  {p:>12} -> {a}")

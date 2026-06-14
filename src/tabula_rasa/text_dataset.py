@@ -26,8 +26,9 @@ class TextReversalDataset:
 
     CHARS = string.ascii_lowercase + string.digits
 
-    def __init__(self, num_samples: int = 5000, max_len: int = 8,
-                 min_len: int = 2, chars: str | None = None):
+    def __init__(
+        self, num_samples: int = 5000, max_len: int = 8, min_len: int = 2, chars: str | None = None
+    ):
         self.num_samples = num_samples
         self.max_len = max_len
         self.min_len = min_len
@@ -38,8 +39,8 @@ class TextReversalDataset:
 
     def __getitem__(self, idx: int) -> tuple[str, str]:
         length = random.randint(self.min_len, self.max_len)
-        s = ''.join(random.choice(self.chars) for _ in range(length))
-        prompt = s + '='
+        s = "".join(random.choice(self.chars) for _ in range(length))
+        prompt = s + "="
         answer = s[::-1]
         return prompt, answer
 
@@ -47,28 +48,27 @@ class TextReversalDataset:
         """Generate a single problem with optional fixed length."""
         if length is None:
             length = random.randint(self.min_len, self.max_len)
-        s = ''.join(random.choice(self.chars) for _ in range(length))
-        return s + '=', s[::-1]
+        s = "".join(random.choice(self.chars) for _ in range(length))
+        return s + "=", s[::-1]
 
 
-def evaluate_reversal(model, tokenizer, num_samples: int = 100,
-                      max_len: int = 8) -> dict:
+def evaluate_reversal(model, tokenizer, num_samples: int = 100, max_len: int = 8) -> dict:
     """Evaluate string reversal accuracy.
 
     Returns per-length accuracy dict and overall accuracy.
     """
     ds = TextReversalDataset(num_samples, max_len=max_len)
-    per_length = {l: {'correct': 0, 'total': 0} for l in range(2, max_len + 1)}
+    per_length = {l: {"correct": 0, "total": 0} for l in range(2, max_len + 1)}
 
     total_correct = 0
     for i in range(num_samples):
         prompt, expected = ds[i]
-        output = model.generate(tokenizer, prompt,
-                                max_new_tokens=len(expected) + 3,
-                                temperature=0.0)
+        output = model.generate(
+            tokenizer, prompt, max_new_tokens=len(expected) + 3, temperature=0.0
+        )
         # Extract answer after '='
-        if '=' in output:
-            raw = output.split('=', 1)[-1].replace('<EOS>', '').replace('<PAD>', '').strip()
+        if "=" in output:
+            raw = output.split("=", 1)[-1].replace("<EOS>", "").replace("<PAD>", "").strip()
         else:
             raw = output.strip()
 
@@ -76,29 +76,30 @@ def evaluate_reversal(model, tokenizer, num_samples: int = 100,
         is_correct = raw == expected
         if is_correct:
             total_correct += 1
-            per_length[length]['correct'] += 1
-        per_length[length]['total'] += 1
+            per_length[length]["correct"] += 1
+        per_length[length]["total"] += 1
 
     overall = total_correct / num_samples * 100
     details = {
-        str(l): (d['correct'] / d['total'] * 100) if d['total'] > 0 else 0
+        str(l): (d["correct"] / d["total"] * 100) if d["total"] > 0 else 0
         for l, d in per_length.items()
     }
-    return {'overall': overall, 'per_length': details}
+    return {"overall": overall, "per_length": details}
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     ds = TextReversalDataset(100, max_len=6)
     for i in range(5):
         p, a = ds[i]
-        print(f'  {p:12} -> {a}')
-    print(f'\nTotal samples: {len(ds)}')
+        print(f"  {p:12} -> {a}")
+    print(f"\nTotal samples: {len(ds)}")
 
     # Test BPETokenizer compatibility
     from bpe_tokenizer import BPETokenizer
+
     tok = BPETokenizer()
-    text = 'hello=olleh'
+    text = "hello=olleh"
     ids = tok.encode(text)
     dec = tok.decode(ids)
-    print(f'\nTokenizer test: {text} -> {ids} -> {dec}')
-    print(f'  Vocab size: {tok.vocab_size}')
+    print(f"\nTokenizer test: {text} -> {ids} -> {dec}")
+    print(f"  Vocab size: {tok.vocab_size}")

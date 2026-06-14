@@ -105,55 +105,55 @@ HELD_OUT_TEST_SIZE = 1000
 
 def evaluate_held_out_test(specialist_name: str, test_data: list = None) -> float:
     """Evaluate a specialist on a held-out test set.
-    
+
     The test set is 1,000 problems the specialist has NEVER seen.
     Accuracy >= 98% means the stage is mastered.
-    
+
     Args:
         specialist_name: Name of the specialist to evaluate
         test_data: Optional list of (input, expected) pairs. If None,
                    auto-generates stage-appropriate test data.
-    
+
     Returns:
         float: Accuracy (0.0 to 1.0)
     """
     from egefalos.tabula_rasa import SkillManager, SKILL_REGISTRY
-    
+
     manager = SkillManager()
-    
+
     # Load the specialist
     info = SKILL_REGISTRY.get(specialist_name)
     if not info:
         print(f'  [Graduation] Unknown specialist: {specialist_name}')
         return 0.0
-    
+
     model = manager.models.get(specialist_name)
     tok = manager.tokenizers.get(specialist_name)
-    
+
     if model is None or tok is None:
         print(f'  [Graduation] {specialist_name} not loaded')
         return 0.0
-    
+
     model.eval()
     device = next(model.parameters()).device
-    
+
     if test_data is None:
         test_data = generate_held_out_test(specialist_name, HELD_OUT_TEST_SIZE)
-    
+
     correct = 0
     total = 0
-    
+
     with torch.no_grad():
         for inp, expected in test_data:
             prompt = str(inp)
             generated = model.generate(tok, prompt, max_new_tokens=15, temperature=0.0)
-            
+
             # Extract answer
             answer = generated.replace(prompt, '').strip()
             if answer == str(expected):
                 correct += 1
             total += 1
-    
+
     accuracy = correct / max(total, 1)
     return accuracy
 
@@ -162,7 +162,7 @@ def generate_held_out_test(specialist_name: str, count: int = 1000) -> list:
     """Auto-generate held-out test data appropriate for each stage."""
     tests = []
     rng = random.Random(42)  # Deterministic seed for reproducibility
-    
+
     if specialist_name == 'math_general' or specialist_name == 'general_math':
         # Stage 1: Arithmetic problems the model hasn't seen
         for _ in range(count):
@@ -174,7 +174,7 @@ def generate_held_out_test(specialist_name: str, count: int = 1000) -> list:
             expr = f'{a}{op}{b}'
             answer = str(eval(expr))
             tests.append((f'{expr}=', answer))
-    
+
     elif specialist_name == 'pattern_specialist':
         # Stage 2: String patterns, reversals, counting
         for _ in range(count):
@@ -196,7 +196,7 @@ def generate_held_out_test(specialist_name: str, count: int = 1000) -> list:
                 pattern = ''.join(c1 + c2 for _ in range(n))
                 next_pair = c1 + c2
                 tests.append((f'next({pattern})', next_pair))
-    
+
     elif specialist_name == 'taxonomy_specialist':
         # Stage 3: Is-A taxonomy verification
         taxonomies = [
@@ -214,7 +214,7 @@ def generate_held_out_test(specialist_name: str, count: int = 1000) -> list:
             else:
                 wrong = rng.choice([c for _, c in taxonomies if c != category])
                 tests.append((f'is_a({item},{wrong})', 'False'))
-    
+
     elif specialist_name == 'state_specialist':
         # Stage 4: State tracking
         for _ in range(count):
@@ -231,7 +231,7 @@ def generate_held_out_test(specialist_name: str, count: int = 1000) -> list:
                 val = max(0, val)
             prompt = f'start={init} ' + ' '.join(changes)
             tests.append((prompt, str(val)))
-    
+
     elif specialist_name == 'grammar_specialist':
         # Stage 5: Grammaticality judgment
         from egefalos.grammar_engine import grammar_score
@@ -245,7 +245,7 @@ def generate_held_out_test(specialist_name: str, count: int = 1000) -> list:
             score = grammar_score(sentence)
             expected = 'correct' if score > 0 else 'incorrect'
             tests.append((f'grammar({sentence})', expected))
-    
+
     return tests
 
 
@@ -255,7 +255,7 @@ def generate_held_out_test(specialist_name: str, count: int = 1000) -> list:
 
 def freeze_weights(model):
     """Freeze all parameters — they will never be trained again.
-    
+
     Frozen specialists become immutable oracles. The Router dispatches
     to them, but their weights never change.
     """
@@ -326,33 +326,33 @@ def get_stage_number(stage: CognitiveStage) -> int:
 
 def run_graduation_check(specialist_name: str, force: bool = False) -> dict:
     """Run one graduation check for a specialist.
-    
+
     Evaluates on held-out test set. If >= 98%, freezes weights,
     triggers the next stage, and returns graduation result.
-    
+
     Returns:
         dict with 'graduated', 'accuracy', 'next_stage', etc.
     """
     print(f'\n  [Graduation] Checking {specialist_name}...')
-    
+
     # Generate held-out test
     test_data = generate_held_out_test(specialist_name, HELD_OUT_TEST_SIZE)
     accuracy = evaluate_held_out_test(specialist_name, test_data)
-    
+
     state = load_graduation_state()
-    
+
     result = {
         'specialist': specialist_name,
         'accuracy': accuracy,
         'graduated': accuracy >= MASTERY_THRESHOLD,
         'threshold': MASTERY_THRESHOLD,
     }
-    
+
     state['stage_accuracies'][specialist_name] = accuracy
-    
+
     if accuracy >= MASTERY_THRESHOLD:
         print(f'  [Graduation] {specialist_name} has ACHIEVED MASTERY ({accuracy*100:.1f}% >= {MASTERY_THRESHOLD*100:.0f}%)')
-        
+
         # Freeze the model
         from egefalos.tabula_rasa import SkillManager
         manager = SkillManager()
@@ -367,11 +367,11 @@ def run_graduation_check(specialist_name: str, force: bool = False) -> dict:
                 'timestamp': time.time(),
                 'stage': state['current_stage'],
             }
-            
+
             # Trigger next stage
             current_stage_num = state['current_stage']
             next_stage_num = current_stage_num + 1
-            
+
             if next_stage_num <= 6:
                 state['current_stage'] = next_stage_num
                 next_stage = CognitiveStage(next_stage_num)
@@ -382,48 +382,48 @@ def run_graduation_check(specialist_name: str, force: bool = False) -> dict:
             else:
                 print(f'  [Graduation] ALL STAGES COMPLETE! Tabula Rasa is fully developed.')
                 result['all_complete'] = True
-            
+
             state['last_graduation'] = time.time()
-        
+
         save_graduation_state(state)
     else:
         print(f'  [Graduation] {specialist_name} at {accuracy*100:.1f}% (need {MASTERY_THRESHOLD*100:.0f}%). Continuing training.')
-    
+
     return result
 
 
 def daemon_cycle(force_check: bool = False):
     """Run one cycle of the graduation daemon.
-    
+
     Checks the current stage for mastery. If graduated, triggers next stage.
     """
     state = load_graduation_state()
     current_stage_num = state['current_stage']
-    
+
     print(f'\n  ╔══════════════════════════════════════════╗')
     print(f'  ║  GRADUATION DAEMON — Stage {current_stage_num}/6    ║')
     print(f'  ╚══════════════════════════════════════════╝')
-    
+
     if current_stage_num > 6:
         print(f'  [Graduation] All 6 stages graduated!')
         return
-    
+
     current_stage = CognitiveStage(current_stage_num)
     specialist_name = STAGE_NAMES[current_stage]
     stage_dir = STAGE_DIRS[current_stage]
-    
+
     print(f'  Current: Stage {current_stage_num} — {current_stage.name}')
     print(f'  Specialist: {specialist_name}')
     print(f'  Directory: {stage_dir}')
-    
+
     # Check if checkpoint exists
     ckpt_path = Path(stage_dir) / 'best.pt'
     if not ckpt_path.exists():
         print(f'  [Graduation] No checkpoint found for {specialist_name}. Waiting for training...')
         return
-    
+
     result = run_graduation_check(specialist_name, force=force_check)
-    
+
     # Print graduated stages summary
     graduated = state.get('graduated_stages', {})
     if graduated:
@@ -431,9 +431,9 @@ def daemon_cycle(force_check: bool = False):
         for name, info in graduated.items():
             acc = info.get('accuracy', 0) * 100
             print(f'    [{info.get("stage", "?")}] {name}: {acc:.1f}%')
-    
+
     print(f'  Next stage: Stage {state["current_stage"]}/6')
-    
+
     return result
 
 
@@ -443,32 +443,32 @@ def daemon_cycle(force_check: bool = False):
 
 def spawn_stage(stage_number: int) -> tuple:
     """Spawn a specialist for a given developmental stage.
-    
+
     Creates the model with the appropriate tokenizer and config.
     Does NOT train it — just creates the architecture.
-    
+
     Args:
         stage_number: 1-6
-    
+
     Returns:
         (model, tokenizer) tuple
     """
     from tabula_rasa.config import Config
     from tabula_rasa.tokenizer import MathTokenizer
-    
+
     if stage_number < 1 or stage_number > 6:
         raise ValueError(f'Invalid stage: {stage_number}')
-    
+
     stage = CognitiveStage(stage_number)
     config = STAGE_TOKENIZER_CONFIGS[stage]
     dir_path = STAGE_DIRS[stage]
-    
+
     print(f'  [Spawn] Creating Stage {stage_number} specialist ({stage.name})...')
     print(f'  [Spawn] Tokenizer: {config["type"]}, vocab={config["vocab_size"]}')
-    
+
     # Create directory
     Path(dir_path).mkdir(parents=True, exist_ok=True)
-    
+
     # Create config
     cfg = Config()
     cfg.use_value_head = True
@@ -476,27 +476,27 @@ def spawn_stage(stage_number: int) -> tuple:
     cfg.n_layers = 4
     cfg.n_heads = 4
     cfg.max_seq_len = min(128 + stage_number * 32, 256)
-    
+
     # Create tokenizer
     tok = MathTokenizer()
     # Expand tokenizer for this stage
     for c in config['chars']:
         if c not in tok.char_to_id:
             tok.add_token(c)
-    
+
     cfg.vocab_size = tok.vocab_size
     tok.max_seq_len = cfg.max_seq_len
-    
+
     # Save tokenizer
     tok.save(str(Path(dir_path) / 'tokenizer.json'))
-    
+
     # Create model
     model = MathTransformer(cfg)
-    
+
     print(f'  [Spawn] Model: {sum(p.numel() for p in model.parameters()):,} params')
     print(f'  [Spawn] Tokenizer: {tok.vocab_size} tokens')
     print(f'  [Spawn] Saved to {dir_path}')
-    
+
     return model, tok
 
 
@@ -506,42 +506,42 @@ def spawn_stage(stage_number: int) -> tuple:
 
 def run_developmental_pipeline(start_stage: int = 1):
     """Run the full 6-stage developmental pipeline.
-    
+
     For each stage:
       1. Spawn the specialist (if not existing)
       2. Train until 98% mastery
       3. Freeze weights
       4. Move to next stage
-    
+
     This is the main entry point for autonomous development.
     """
     state = load_graduation_state()
-    
+
     for stage_num in range(start_stage, 7):
         stage = CognitiveStage(stage_num)
         specialist = STAGE_NAMES[stage]
         stage_dir = STAGE_DIRS[stage]
-        
+
         print(f'\n{"="*60}')
         print(f'  STAGE {stage_num}: {stage.name}')
         print(f'  Specialist: {specialist}')
         print(f'{"="*60}')
-        
+
         # Check if already graduated
         if specialist in state.get('graduated_stages', {}):
             print(f'  Already graduated. Skipping.')
             continue
-        
+
         # Create directory and tokenizer if needed
         Path(stage_dir).mkdir(parents=True, exist_ok=True)
         tok_path = Path(stage_dir) / 'tokenizer.json'
-        
+
         if not tok_path.exists():
             spawn_stage(stage_num)
-        
+
         # Run graduation check (will trigger training if below threshold)
         result = run_graduation_check(specialist)
-        
+
         if result.get('graduated'):
             print(f'  Stage {stage_num} complete! Moving to Stage {stage_num + 1}...')
         else:
@@ -556,7 +556,7 @@ def run_developmental_pipeline(start_stage: int = 1):
 
 if __name__ == '__main__':
     import argparse
-    
+
     parser = argparse.ArgumentParser(description='Graduation Daemon')
     parser.add_argument('--check', action='store_true', help='Run one graduation check cycle')
     parser.add_argument('--pipeline', type=int, default=None, metavar='START_STAGE',
@@ -565,16 +565,16 @@ if __name__ == '__main__':
                         help='Spawn a specialist for a given stage (1-6)')
     parser.add_argument('--status', action='store_true', help='Show graduation status')
     parser.add_argument('--force', action='store_true', help='Force re-check even if below threshold')
-    
+
     args = parser.parse_args()
-    
+
     if args.spawn:
         model, tok = spawn_stage(args.spawn)
         print(f'Spawned Stage {args.spawn} specialist.')
-    
+
     elif args.pipeline is not None:
         run_developmental_pipeline(args.pipeline)
-    
+
     elif args.status:
         state = load_graduation_state()
         print(f'Current stage: {state["current_stage"]}/6')
@@ -584,6 +584,6 @@ if __name__ == '__main__':
         print(f'Accuracies:')
         for name, acc in state.get('stage_accuracies', {}).items():
             print(f'  {name}: {acc*100:.1f}%')
-    
+
     else:
         daemon_cycle(force_check=args.force)

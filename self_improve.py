@@ -8,26 +8,29 @@ Includes Hard Negative Mining — entropy-based blind-spot detection
 that biases the curriculum toward the model's hardest examples.
 """
 
-import sys, os; sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
-import math
+import os
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 import json
-import time
+import math
 import random
+import time
 from pathlib import Path
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import Dataset, DataLoader
 from torch.optim import AdamW
+from torch.utils.data import DataLoader, Dataset
 
 from tabula_rasa.config import Config
-from tabula_rasa.tokenizer import MathTokenizer
-from tabula_rasa.dataset import generate_problem, format_math_sample
+from tabula_rasa.dataset import format_math_sample, generate_problem
 from tabula_rasa.model import MathTransformer
-
+from tabula_rasa.tokenizer import MathTokenizer
 
 # ─── Hard Negative Miner ─────────────────────────────────────────────
+
 
 class HardNegativeMiner:
     """Identifies model blind spots via softmax entropy scoring.
@@ -38,8 +41,7 @@ class HardNegativeMiner:
     for exploration stability.
     """
 
-    def __init__(self, model: MathTransformer, tokenizer: MathTokenizer,
-                 config: Config):
+    def __init__(self, model: MathTransformer, tokenizer: MathTokenizer, config: Config):
         self.model = model
         self.tokenizer = tokenizer
         self.cfg = config
@@ -56,8 +58,7 @@ class HardNegativeMiner:
             return []
 
         max_len = max(len(s) for s in samples)
-        padded = [s + [self.tokenizer.pad_id] * (max_len - len(s))
-                  for s in samples]
+        padded = [s + [self.tokenizer.pad_id] * (max_len - len(s)) for s in samples]
         batch = torch.tensor(padded, dtype=torch.long).to(self.device)
 
         logits, _, _ = self.model(batch)  # (B, T, V)
@@ -71,9 +72,9 @@ class HardNegativeMiner:
             scores.append(entropy[i, :valid].mean().item())
         return scores
 
-    def generate_curriculum(self, num_samples: int,
-                            min_digits: int = 1,
-                            max_digits: int = 4) -> list[tuple[str, str]]:
+    def generate_curriculum(
+        self, num_samples: int, min_digits: int = 1, max_digits: int = 4
+    ) -> list[tuple[str, str]]:
         """Produce num_samples × (expr, answer) with hard-negative bias.
 
         Phase 1 — Seed scoring: generate ~500 candidates, score by
@@ -94,7 +95,7 @@ class HardNegativeMiner:
 
         scored = list(zip(seeds, self.score_samples([s[2] for s in seeds])))
         scored.sort(key=lambda x: -x[1])  # hardest first
-        hard_seeds = [(s[0][0], s[0][1]) for s in scored[:max(1, len(scored) // 5)]]
+        hard_seeds = [(s[0][0], s[0][1]) for s in scored[: max(1, len(scored) // 5)]]
 
         # Phase 2: build curriculum
         curriculum: list[tuple[str, str]] = []
@@ -122,7 +123,7 @@ class HardNegativeMiner:
     def _mutate(seed: tuple[str, str]) -> tuple[str, str] | None:
         """Return a single mutated problem similar to the seed."""
         expr, _ = seed
-        for op in ['+', '-', '*', '/']:
+        for op in ["+", "-", "*", "/"]:
             if op not in expr:
                 continue
             parts = expr.split(op)
@@ -134,21 +135,21 @@ class HardNegativeMiner:
                 delta_b = random.randint(-max(1, b // 3), max(1, b // 3))
                 na, nb = max(1, a + delta_a), max(1, b + delta_b)
 
-                if op == '+':
-                    return (f'{na}+{nb}', str(na + nb))
-                elif op == '-':
+                if op == "+":
+                    return (f"{na}+{nb}", str(na + nb))
+                elif op == "-":
                     na, nb = (max(na, nb), min(na, nb))
-                    return (f'{na}-{nb}', str(na - nb))
-                elif op == '*':
-                    return (f'{na}*{nb}', str(na * nb))
-                elif op == '/':
+                    return (f"{na}-{nb}", str(na - nb))
+                elif op == "*":
+                    return (f"{na}*{nb}", str(na * nb))
+                elif op == "/":
                     # Keep division exact
                     nb = max(1, nb)
                     ans = na // nb
                     if ans == 0:
                         ans = 1
                     na = nb * ans
-                    return (f'{na}/{nb}', str(ans))
+                    return (f"{na}/{nb}", str(ans))
             except (ValueError, ZeroDivisionError):
                 pass
             break
@@ -156,6 +157,7 @@ class HardNegativeMiner:
 
 
 # ─── Verifier ───────────────────────────────────────────────────────
+
 
 class MathVerifier:
     """Verifies math expressions by evaluating them in Python."""
@@ -181,6 +183,7 @@ class MathVerifier:
 
 # ─── Difficulty Scheduler ───────────────────────────────────────────
 
+
 class DifficultyScheduler:
     """Gradually increases problem difficulty based on accuracy."""
 
@@ -195,7 +198,7 @@ class DifficultyScheduler:
             recent = self.acc_history[-3:]
             if all(a > 70.0 for a in recent):
                 self.max_digits = min(self.max_digits + 1, 6)
-                print(f'  [*] Difficulty increased to {self.max_digits}-digit problems!')
+                print(f"  [*] Difficulty increased to {self.max_digits}-digit problems!")
 
     def generate_problem(self):
         return generate_problem(1, self.max_digits)
@@ -203,11 +206,11 @@ class DifficultyScheduler:
 
 # ─── Self-Training Dataset ──────────────────────────────────────────
 
+
 class SelfTrainDataset(Dataset):
     """Dataset built from self-generated correct solutions."""
 
-    def __init__(self, tokenizer: MathTokenizer, samples: list[list[int]],
-                 max_seq_len: int = 64):
+    def __init__(self, tokenizer: MathTokenizer, samples: list[list[int]], max_seq_len: int = 64):
         self.tokenizer = tokenizer
         self.max_seq_len = max_seq_len
         self.samples = samples
@@ -225,11 +228,17 @@ class SelfTrainDataset(Dataset):
 
 # ─── Self-Improvement Loop ──────────────────────────────────────────
 
+
 class SelfImprovementLoop:
     """Self-training loop: generate → solve → verify → fine-tune."""
 
-    def __init__(self, model: MathTransformer, tokenizer: MathTokenizer,
-                 config: Config, checkpoint_dir: str = 'self_train'):
+    def __init__(
+        self,
+        model: MathTransformer,
+        tokenizer: MathTokenizer,
+        config: Config,
+        checkpoint_dir: str = "self_train",
+    ):
         self.model = model
         self.tokenizer = tokenizer
         self.cfg = config
@@ -241,8 +250,9 @@ class SelfImprovementLoop:
         self.miner = HardNegativeMiner(model, tokenizer, config)
 
     @torch.no_grad()
-    def generate_solutions(self, num_problems: int = 5000,
-                           use_hard_negative: bool = True) -> list[tuple]:
+    def generate_solutions(
+        self, num_problems: int = 5000, use_hard_negative: bool = True
+    ) -> list[tuple]:
         """Generate solutions using hard-negative-biased curriculum.
 
         When use_hard_negative=True, problems are biased toward the
@@ -251,13 +261,13 @@ class SelfImprovementLoop:
         """
         correct_samples = []
         total_attempts = 0
-        stats = {'correct': 0, 'wrong': 0, 'parse_errors': 0}
+        stats = {"correct": 0, "wrong": 0, "parse_errors": 0}
 
-        print(f'  Generating {num_problems} solutions...')
+        print(f"  Generating {num_problems} solutions...")
 
         # Build curriculum (hard-negative biased or pure random)
         if use_hard_negative:
-            print(f'  [*] Using hard-negative curriculum (entropy-guided)')
+            print(f"  [*] Using hard-negative curriculum (entropy-guided)")
             curriculum = self.miner.generate_curriculum(
                 num_problems,
                 min_digits=1,
@@ -272,11 +282,12 @@ class SelfImprovementLoop:
                 expr, expected = curriculum[idx]
             else:
                 expr, expected = self.difficulty.generate_problem()
-            prompt = f'{expr}='
+            prompt = f"{expr}="
 
             # Model generates solution
             generated = self.model.generate(
-                self.tokenizer, prompt,
+                self.tokenizer,
+                prompt,
                 max_new_tokens=10,
                 temperature=0.5,  # Some randomness for diversity
                 top_k=5,
@@ -284,51 +295,57 @@ class SelfImprovementLoop:
             total_attempts += 1
 
             # Extract predicted answer
-            if '=' in generated:
-                pred = generated.split('=')[-1].strip()
-                pred_clean = ''.join(c for c in pred if c.isdigit() or c == '-')
+            if "=" in generated:
+                pred = generated.split("=")[-1].strip()
+                pred_clean = "".join(c for c in pred if c.isdigit() or c == "-")
             else:
-                pred_clean = ''
-                stats['parse_errors'] += 1
+                pred_clean = ""
+                stats["parse_errors"] += 1
                 continue
 
             # Verify
             if pred_clean == expected:
-                text = f'{expr}={expected}'
+                text = f"{expr}={expected}"
                 ids = self.tokenizer.encode(text, add_special_tokens=True)
                 if len(ids) <= self.cfg.max_seq_len:
                     correct_samples.append(ids)
-                stats['correct'] += 1
+                stats["correct"] += 1
             else:
-                stats['wrong'] += 1
+                stats["wrong"] += 1
 
             if total_attempts % 500 == 0:
-                ratio = stats['correct'] / max(1, total_attempts) * 100
-                print(f'    Progress: {len(correct_samples)}/{num_problems} correct '
-                      f'({ratio:.0f}% hit rate)')
+                ratio = stats["correct"] / max(1, total_attempts) * 100
+                print(
+                    f"    Progress: {len(correct_samples)}/{num_problems} correct "
+                    f"({ratio:.0f}% hit rate)"
+                )
 
-        accuracy = stats['correct'] / max(1, total_attempts) * 100
-        print(f'  Generated {len(correct_samples)} correct solutions '
-              f'(hit rate: {accuracy:.1f}%)')
+        accuracy = stats["correct"] / max(1, total_attempts) * 100
+        print(
+            f"  Generated {len(correct_samples)} correct solutions " f"(hit rate: {accuracy:.1f}%)"
+        )
         return correct_samples, accuracy
 
     def train_on_solutions(self, samples: list[list[int]], num_epochs: int = 3):
         """Fine-tune model on self-generated correct solutions."""
         dataset = SelfTrainDataset(self.tokenizer, samples, self.cfg.max_seq_len)
-        loader = DataLoader(dataset, batch_size=self.cfg.batch_size,
-                            shuffle=True, num_workers=0)
+        loader = DataLoader(dataset, batch_size=self.cfg.batch_size, shuffle=True, num_workers=0)
 
-        optimizer = AdamW(self.model.parameters(),
-                          lr=self.cfg.learning_rate / 2,  # Lower LR for fine-tuning
-                          weight_decay=self.cfg.weight_decay)
+        optimizer = AdamW(
+            self.model.parameters(),
+            lr=self.cfg.learning_rate / 2,  # Lower LR for fine-tuning
+            weight_decay=self.cfg.weight_decay,
+        )
 
         self.model.train()
         total_steps = len(loader) * num_epochs
         step = 0
         total_loss = 0.0
 
-        print(f'  Fine-tuning on {len(samples)} samples for {num_epochs} epochs '
-              f'({total_steps} steps)...')
+        print(
+            f"  Fine-tuning on {len(samples)} samples for {num_epochs} epochs "
+            f"({total_steps} steps)..."
+        )
 
         for epoch in range(num_epochs):
             epoch_loss = 0.0
@@ -349,119 +366,142 @@ class SelfImprovementLoop:
 
             avg_epoch_loss = epoch_loss / max(1, n_batches)
             total_loss += epoch_loss
-            print(f'    Epoch {epoch + 1}: loss={avg_epoch_loss:.4f}')
+            print(f"    Epoch {epoch + 1}: loss={avg_epoch_loss:.4f}")
 
         avg_loss = total_loss / max(1, step)
-        print(f'  Fine-tuning complete (avg loss: {avg_loss:.4f})')
+        print(f"  Fine-tuning complete (avg loss: {avg_loss:.4f})")
 
     @torch.no_grad()
     def evaluate(self, num_problems: int = 200) -> float:
         """Evaluate current accuracy."""
         from tabula_rasa.eval import evaluate_accuracy
+
         return evaluate_accuracy(
-            self.model, self.tokenizer,
+            self.model,
+            self.tokenizer,
             num_problems=num_problems,
             max_digits=self.difficulty.max_digits,
             verbose=False,
         )
 
-    def run_cycle(self, cycle: int, num_new_problems: int = 5000,
-                  train_epochs: int = 3,
-                  use_hard_negative: bool = True):
+    def run_cycle(
+        self,
+        cycle: int,
+        num_new_problems: int = 5000,
+        train_epochs: int = 3,
+        use_hard_negative: bool = True,
+    ):
         """Run one self-improvement cycle."""
         print(f'\n{"="*60}')
-        print(f'  SELF-IMPROVEMENT CYCLE {cycle}')
-        print(f'  Difficulty: {self.difficulty.max_digits}-digit problems'
-              f'  |  Hard-negative: {"ON" if use_hard_negative else "OFF"}')
+        print(f"  SELF-IMPROVEMENT CYCLE {cycle}")
+        print(
+            f"  Difficulty: {self.difficulty.max_digits}-digit problems"
+            f'  |  Hard-negative: {"ON" if use_hard_negative else "OFF"}'
+        )
         print(f'{"="*60}')
 
         # Step 1: Generate and verify (with hard-negative bias)
         samples, accuracy = self.generate_solutions(
-            num_new_problems, use_hard_negative=use_hard_negative)
+            num_new_problems, use_hard_negative=use_hard_negative
+        )
 
         # Step 2: Fine-tune on correct solutions
         self.train_on_solutions(samples, train_epochs)
 
         # Step 3: Evaluate
         eval_acc = self.evaluate()
-        print(f'  Post-cycle accuracy: {eval_acc:.1f}%')
+        print(f"  Post-cycle accuracy: {eval_acc:.1f}%")
 
         # Step 4: Update difficulty
         self.difficulty.update(eval_acc)
 
         # Save checkpoint
-        checkpoint_path = self.checkpoint_dir / f'cycle_{cycle}.pt'
-        torch.save({
-            'cycle': cycle,
-            'model_state_dict': self.model.state_dict(),
-            'accuracy': eval_acc,
-            'difficulty': self.difficulty.max_digits,
-        }, checkpoint_path)
-        print(f'  Checkpoint saved to {checkpoint_path}')
+        checkpoint_path = self.checkpoint_dir / f"cycle_{cycle}.pt"
+        torch.save(
+            {
+                "cycle": cycle,
+                "model_state_dict": self.model.state_dict(),
+                "accuracy": eval_acc,
+                "difficulty": self.difficulty.max_digits,
+            },
+            checkpoint_path,
+        )
+        print(f"  Checkpoint saved to {checkpoint_path}")
 
         return eval_acc
 
-    def run(self, num_cycles: int = 5, problems_per_cycle: int = 5000,
-            train_epochs: int = 3, use_hard_negative: bool = True):
+    def run(
+        self,
+        num_cycles: int = 5,
+        problems_per_cycle: int = 5000,
+        train_epochs: int = 3,
+        use_hard_negative: bool = True,
+    ):
         """Run multiple self-improvement cycles."""
-        print(f'\nStarting self-improvement: {num_cycles} cycles')
-        print(f'{problems_per_cycle} problems per cycle')
-        print(f'{train_epochs} training epochs per cycle'
-              f'  |  Hard-negative: {"ON" if use_hard_negative else "OFF"}')
+        print(f"\nStarting self-improvement: {num_cycles} cycles")
+        print(f"{problems_per_cycle} problems per cycle")
+        print(
+            f"{train_epochs} training epochs per cycle"
+            f'  |  Hard-negative: {"ON" if use_hard_negative else "OFF"}'
+        )
         print()
 
         accuracies = []
         for cycle in range(1, num_cycles + 1):
             t0 = time.time()
-            acc = self.run_cycle(cycle, problems_per_cycle, train_epochs,
-                                 use_hard_negative=(cycle > 1 and use_hard_negative))
+            acc = self.run_cycle(
+                cycle,
+                problems_per_cycle,
+                train_epochs,
+                use_hard_negative=(cycle > 1 and use_hard_negative),
+            )
             elapsed = time.time() - t0
             accuracies.append(acc)
-            print(f'  Cycle {cycle}: {elapsed:.0f}s, accuracy={acc:.1f}%')
+            print(f"  Cycle {cycle}: {elapsed:.0f}s, accuracy={acc:.1f}%")
 
         print(f'\n{"="*60}')
-        print(f'  SELF-IMPROVEMENT COMPLETE')
-        print(f'  Starting accuracy: {accuracies[0]:.1f}%' if accuracies else '')
-        print(f'  Final accuracy: {accuracies[-1]:.1f}%' if accuracies else '')
-        print(f'  Best accuracy: {max(accuracies):.1f}%' if accuracies else '')
+        print(f"  SELF-IMPROVEMENT COMPLETE")
+        print(f"  Starting accuracy: {accuracies[0]:.1f}%" if accuracies else "")
+        print(f"  Final accuracy: {accuracies[-1]:.1f}%" if accuracies else "")
+        print(f"  Best accuracy: {max(accuracies):.1f}%" if accuracies else "")
         for i, acc in enumerate(accuracies):
-            print(f'    Cycle {i+1}: {acc:.1f}%')
+            print(f"    Cycle {i+1}: {acc:.1f}%")
         print(f'{"="*60}')
 
         return accuracies
 
 
-def load_model_for_self_train(checkpoint_path='checkpoints/best.pt'):
+def load_model_for_self_train(checkpoint_path="checkpoints/best.pt"):
     """Load trained model for self-improvement."""
     if not Path(checkpoint_path).exists():
-        checkpoint_path = 'checkpoints/final.pt'
+        checkpoint_path = "checkpoints/final.pt"
     if not Path(checkpoint_path).exists():
-        print(f'No checkpoint found at {checkpoint_path}')
+        print(f"No checkpoint found at {checkpoint_path}")
         return None, None
 
     cfg = Config()
-    tok = MathTokenizer.load(str(Path(checkpoint_path).parent / 'tokenizer.json'))
+    tok = MathTokenizer.load(str(Path(checkpoint_path).parent / "tokenizer.json"))
     cfg.vocab_size = tok.vocab_size  # type: ignore[misc]
     tok.max_seq_len = cfg.max_seq_len
 
     model = MathTransformer(cfg)
-    state = torch.load(checkpoint_path, map_location='cpu', weights_only=True)
-    model.load_state_dict(state['model_state_dict'])
+    state = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
+    model.load_state_dict(state["model_state_dict"])
     model.eval()
     return model, tok
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     import sys
 
-    print('Loading base model...')
-    ckpt = sys.argv[1] if len(sys.argv) > 1 else 'checkpoints/best.pt'
+    print("Loading base model...")
+    ckpt = sys.argv[1] if len(sys.argv) > 1 else "checkpoints/best.pt"
     model, tok = load_model_for_self_train(ckpt)
     if model is None:
         sys.exit(1)
 
-    print(f'Model loaded. Starting self-improvement...')
-    print(f'Device: {model.device}')
+    print(f"Model loaded. Starting self-improvement...")
+    print(f"Device: {model.device}")
 
     # Move model to device
     device = torch.device(model.device)

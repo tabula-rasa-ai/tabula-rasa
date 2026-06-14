@@ -4,6 +4,7 @@ Freezes base model weights and adds trainable rank-decomposition matrices
 to attention projections (q, k, v, o). Multiple LoRA adapters can be
 swapped at inference time for different tasks.
 """
+
 from __future__ import annotations
 
 from typing import Optional
@@ -24,11 +25,9 @@ class LoRALayer(nn.Module):
         super().__init__()
         # Validate
         if not isinstance(base_layer, nn.Linear):
-            raise TypeError(
-                f'LoRALayer expects nn.Linear base, got {type(base_layer).__name__}'
-            )
+            raise TypeError(f"LoRALayer expects nn.Linear base, got {type(base_layer).__name__}")
         if rank < 1:
-            raise ValueError(f'LoRA rank must be >= 1, got {rank}')
+            raise ValueError(f"LoRA rank must be >= 1, got {rank}")
 
         self.base = base_layer
         self.base.requires_grad_(False)  # freeze base weights
@@ -41,12 +40,8 @@ class LoRALayer(nn.Module):
 
         # LoRA matrices: A is random init (Gaussian), B is zero init
         # This ensures the update is zero at initialisation.
-        self.lora_A = nn.Parameter(
-            torch.randn(in_features, rank) * 0.02
-        )
-        self.lora_B = nn.Parameter(
-            torch.zeros(rank, out_features)
-        )
+        self.lora_A = nn.Parameter(torch.randn(in_features, rank) * 0.02)
+        self.lora_B = nn.Parameter(torch.zeros(rank, out_features))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass: base output + LoRA update.
@@ -63,8 +58,8 @@ class LoRALayer(nn.Module):
 
     def extra_repr(self) -> str:
         return (
-            f'in={self.base.in_features}, out={self.base.out_features}, '
-            f'rank={self.rank}, alpha={self.alpha}, scaling={self.scaling:.3f}'
+            f"in={self.base.in_features}, out={self.base.out_features}, "
+            f"rank={self.rank}, alpha={self.alpha}, scaling={self.scaling:.3f}"
         )
 
 
@@ -92,7 +87,7 @@ def apply_lora_to_model(
         should hold onto this list for subsequent save/load/switch calls.
     """
     if target_modules is None:
-        target_modules = ['wq', 'wk', 'wv', 'wo']
+        target_modules = ["wq", "wk", "wv", "wo"]
 
     lora_layers: list[LoRALayer] = []
 
@@ -107,7 +102,7 @@ def apply_lora_to_model(
         lora_layers.append(lora_layer)
 
         # Walk the module hierarchy to set the attribute at the right level
-        parts = name.split('.')
+        parts = name.split(".")
         parent = model
         for p in parts[:-1]:
             parent = getattr(parent, p)
@@ -132,12 +127,12 @@ def save_lora_adapters(
     """
     state: dict = {}
     for i, layer in enumerate(lora_layers):
-        state[f'lora_{i}_A'] = layer.lora_A.detach().cpu()
-        state[f'lora_{i}_B'] = layer.lora_B.detach().cpu()
-        state[f'lora_{i}_rank'] = layer.rank
-        state[f'lora_{i}_alpha'] = layer.alpha
-        state[f'lora_{i}_in_features'] = layer.base.in_features
-        state[f'lora_{i}_out_features'] = layer.base.out_features
+        state[f"lora_{i}_A"] = layer.lora_A.detach().cpu()
+        state[f"lora_{i}_B"] = layer.lora_B.detach().cpu()
+        state[f"lora_{i}_rank"] = layer.rank
+        state[f"lora_{i}_alpha"] = layer.alpha
+        state[f"lora_{i}_in_features"] = layer.base.in_features
+        state[f"lora_{i}_out_features"] = layer.base.out_features
     torch.save(state, path)
 
 
@@ -165,20 +160,19 @@ def load_lora_adapters(
     Returns:
         The list of ``LoRALayer`` instances (now populated).
     """
-    state = torch.load(path, map_location='cpu', weights_only=True)
+    state = torch.load(path, map_location="cpu", weights_only=True)
 
     # Determine rank/alpha from saved state if available
-    if f'lora_0_rank' in state:
-        rank = int(state['lora_0_rank'])
-    if f'lora_0_alpha' in state:
-        alpha = float(state['lora_0_alpha'])
+    if f"lora_0_rank" in state:
+        rank = int(state["lora_0_rank"])
+    if f"lora_0_alpha" in state:
+        alpha = float(state["lora_0_alpha"])
 
-    lora_layers = apply_lora_to_model(model, rank=rank, alpha=alpha,
-                                      target_modules=target_modules)
+    lora_layers = apply_lora_to_model(model, rank=rank, alpha=alpha, target_modules=target_modules)
 
     for i, layer in enumerate(lora_layers):
-        key_a = f'lora_{i}_A'
-        key_b = f'lora_{i}_B'
+        key_a = f"lora_{i}_A"
+        key_b = f"lora_{i}_B"
         if key_a in state:
             with torch.no_grad():
                 layer.lora_A.data.copy_(state[key_a].to(layer.lora_A.device))
@@ -202,7 +196,7 @@ def set_lora_trainable(model: nn.Module, trainable: bool = True):
         trainable: Whether LoRA parameters should be trainable.
     """
     for name, param in model.named_parameters():
-        if 'lora_' in name:
+        if "lora_" in name:
             param.requires_grad_(trainable)
         else:
             param.requires_grad_(not trainable)
@@ -226,7 +220,7 @@ def switch_lora_adapters(
     Returns:
         The list of ``LoRALayer`` instances (now pointing to the new adapter).
     """
-    state = torch.load(path, map_location='cpu', weights_only=True)
+    state = torch.load(path, map_location="cpu", weights_only=True)
 
     # Collect existing LoRALayers
     lora_layers: list[LoRALayer] = []
@@ -236,8 +230,8 @@ def switch_lora_adapters(
 
     # Overwrite A and B matrices
     for i, layer in enumerate(lora_layers):
-        key_a = f'lora_{i}_A'
-        key_b = f'lora_{i}_B'
+        key_a = f"lora_{i}_A"
+        key_b = f"lora_{i}_B"
         if key_a in state:
             with torch.no_grad():
                 layer.lora_A.data.copy_(state[key_a].to(layer.lora_A.device))

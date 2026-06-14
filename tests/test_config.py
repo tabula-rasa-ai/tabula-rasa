@@ -1,4 +1,5 @@
 """Tests for Config class — defaults, properties, edge cases."""
+
 import torch
 
 from tabula_rasa.config import Config
@@ -39,22 +40,22 @@ class TestConfigDefaults:
     def test_curriculum_defaults(self, cfg):
         """Curriculum learning defaults."""
         assert cfg.use_curriculum is True
-        assert len(cfg.curriculum_phases) == 4
-        assert cfg.curriculum_phases[0] == (5000, 1)
+        assert len(cfg.curriculum_phases) == 1
+        assert cfg.curriculum_phases[0] == (30000, 1)
 
     def test_optimizer_defaults(self, cfg):
         """Optimizer defaults."""
-        assert cfg.optimizer == 'adamw'
-        assert cfg.lr_schedule == 'cosine'
+        assert cfg.optimizer == "adamw"
+        assert cfg.lr_schedule == "cosine"
         assert cfg.adam_beta1 == 0.9
         assert cfg.adam_beta2 == 0.999
 
     def test_tokenizer_defaults(self, cfg):
         """Tokenizer-related defaults."""
-        assert cfg.pad_token == '<PAD>'
-        assert cfg.bos_token == '<BOS>'
-        assert cfg.eos_token == '<EOS>'
-        assert cfg.unk_token == '<UNK>'
+        assert cfg.pad_token == "<PAD>"
+        assert cfg.bos_token == "<BOS>"
+        assert cfg.eos_token == "<EOS>"
+        assert cfg.unk_token == "<UNK>"
 
     def test_vocab_size_none(self, cfg):
         """vocab_size starts as None, set externally."""
@@ -66,11 +67,11 @@ class TestConfigDevice:
         """device property returns a string."""
         device = cfg.device
         assert isinstance(device, str)
-        assert device in ('cpu', 'cuda')
+        assert device in ("cpu", "cuda")
 
     def test_device_matches_torch(self, cfg):
         """device property matches torch's device detection."""
-        expected = 'cuda' if torch.cuda.is_available() else 'cpu'
+        expected = "cuda" if torch.cuda.is_available() else "cpu"
         assert cfg.device == expected
 
 
@@ -97,5 +98,5 @@ class TestConfigCustomization:
 
     def test_paths_default(self, cfg):
         """Path defaults."""
-        assert cfg.save_dir == 'checkpoints'
-        assert cfg.data_dir == 'data'
+        assert cfg.save_dir == "checkpoints"
+        assert cfg.data_dir == "data"

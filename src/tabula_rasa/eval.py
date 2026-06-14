@@ -1,14 +1,16 @@
 """Evaluate trained model on arithmetic problems."""
+
 from __future__ import annotations
 
-import torch
 from pathlib import Path
 from typing import Any
 
+import torch
+
 from tabula_rasa.config import Config
-from tabula_rasa.tokenizer import MathTokenizer
-from tabula_rasa.model import MathTransformer, count_parameters
 from tabula_rasa.dataset import generate_problem
+from tabula_rasa.model import MathTransformer, count_parameters
+from tabula_rasa.tokenizer import MathTokenizer
 
 # Operations and their expected formats
 MULTI_STEP_PROBLEMS: list[tuple[str, str]] = [
@@ -44,21 +46,25 @@ def load_model(checkpoint_path: str | Path) -> tuple[MathTransformer, MathTokeni
         Tuple ``(model, tokenizer)`` with the model in evaluation mode.
     """
     cfg = Config()
-    tok = MathTokenizer.load(str(Path(checkpoint_path).parent / 'tokenizer.json'))
+    tok = MathTokenizer.load(str(Path(checkpoint_path).parent / "tokenizer.json"))
     cfg.vocab_size = tok.vocab_size  # type: ignore[misc]
     tok.max_seq_len = cfg.max_seq_len  # type: ignore[attr-defined]
 
     model = MathTransformer(cfg)
-    state = torch.load(checkpoint_path, map_location='cpu', weights_only=True)
-    model.load_state_dict(state['model_state_dict'])
+    state = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
+    model.load_state_dict(state["model_state_dict"])
     model.eval()
     return model, tok
 
 
 @torch.no_grad()
-def evaluate_accuracy(model: MathTransformer, tok: MathTokenizer,
-                      num_problems: int = 200, max_digits: int = 4,
-                      verbose: bool = True) -> float:
+def evaluate_accuracy(
+    model: MathTransformer,
+    tok: MathTokenizer,
+    num_problems: int = 200,
+    max_digits: int = 4,
+    verbose: bool = True,
+) -> float:
     """Evaluate raw accuracy on random arithmetic problems.
 
     Args:
@@ -77,25 +83,26 @@ def evaluate_accuracy(model: MathTransformer, tok: MathTokenizer,
 
     for i in range(num_problems):
         expr, ans = generate_problem(1, max_digits)
-        prompt = f'{expr}='
+        prompt = f"{expr}="
         generated = model.generate(tok, prompt, max_new_tokens=10, temperature=0.3, top_k=3)
 
-        if '=' in generated:
-            pred = generated.split('=')[-1].strip()
-            pred = ''.join(c for c in pred if c.isdigit() or c == '-')
+        if "=" in generated:
+            pred = generated.split("=")[-1].strip()
+            pred = "".join(c for c in pred if c.isdigit() or c == "-")
             if pred == ans:
                 correct += 1
             elif verbose and i < 10:
-                print(f'  FAIL: {expr}={ans} | pred: {pred} | raw: {repr(generated)}')
+                print(f"  FAIL: {expr}={ans} | pred: {pred} | raw: {repr(generated)}")
 
     acc = correct / total * 100
-    print(f'\nAccuracy on {total} problems: {acc:.1f}%')
+    print(f"\nAccuracy on {total} problems: {acc:.1f}%")
     return acc
 
 
 @torch.no_grad()
-def solve_problems(model: MathTransformer, tok: MathTokenizer,
-                   problems: list[tuple[str, str]] | None = None) -> None:
+def solve_problems(
+    model: MathTransformer, tok: MathTokenizer, problems: list[tuple[str, str]] | None = None
+) -> None:
     """Solve specific problems and display results in a table.
 
     Args:
@@ -108,37 +115,37 @@ def solve_problems(model: MathTransformer, tok: MathTokenizer,
         problems = MULTI_STEP_PROBLEMS
 
     print(f'\n{"Problem":<20} {"Expected":<12} {"Predicted":<12} {"Result":<8}')
-    print('-' * 52)
+    print("-" * 52)
 
     for expr, expected in problems:
         generated = model.generate(tok, expr, max_new_tokens=10, temperature=0.3, top_k=3)
-        if '=' in generated:
-            pred = generated.split('=')[-1].strip()
-            pred = ''.join(c for c in pred if c.isdigit() or c == '-')
+        if "=" in generated:
+            pred = generated.split("=")[-1].strip()
+            pred = "".join(c for c in pred if c.isdigit() or c == "-")
         else:
-            pred = ''
+            pred = ""
 
-        result = 'PASS' if pred == expected else 'FAIL'
-        print(f'{expr:<20} {expected:<12} {pred:<12} {result:<8}')
+        result = "PASS" if pred == expected else "FAIL"
+        print(f"{expr:<20} {expected:<12} {pred:<12} {result:<8}")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     import sys
 
     if len(sys.argv) < 2:
         # Try best or final checkpoint
-        ckpt = Path('checkpoints/best.pt')
+        ckpt = Path("checkpoints/best.pt")
         if not ckpt.exists():
-            ckpt = Path('checkpoints/final.pt')
+            ckpt = Path("checkpoints/final.pt")
         if not ckpt.exists():
-            print('No checkpoint found. Train first: python3 train.py')
+            print("No checkpoint found. Train first: python3 train.py")
             sys.exit(1)
     else:
         ckpt = Path(sys.argv[1])
 
-    print(f'Loading model from {ckpt}')
+    print(f"Loading model from {ckpt}")
     model, tok = load_model(ckpt)
-    print(f'Model params: {count_parameters(model):,}')
+    print(f"Model params: {count_parameters(model):,}")
 
     # Test on random problems
     evaluate_accuracy(model, tok, num_problems=200, max_digits=4)

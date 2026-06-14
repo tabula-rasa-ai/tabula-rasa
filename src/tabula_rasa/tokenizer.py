@@ -3,6 +3,7 @@
 Tokens: 0-9, +, -, *, /, =, (, ), ., %, space, special tokens,
 plus 20 combined carry-digit tokens: "00"-"09" (carry=0), "10"-"19" (carry=1).
 """
+
 from __future__ import annotations
 
 import json
@@ -29,9 +30,9 @@ class MathTokenizer:
             longest-match-first encoding.
     """
 
-    SPECIAL_TOKENS: ClassVar[list[str]] = ['<PAD>', '<BOS>', '<EOS>', '<UNK>']
+    SPECIAL_TOKENS: ClassVar[list[str]] = ["<PAD>", "<BOS>", "<EOS>", "<UNK>"]
 
-    MATH_CHARS: ClassVar[list[str]] = list('0123456789+-*/=().% ')
+    MATH_CHARS: ClassVar[list[str]] = list("0123456789+-*/=().% ")
 
     # 20 combined carry-digit tokens: carry(0-1) + digit(0-9)
     CARRY_TOKENS: ClassVar[list[str]] = [f"{c}{d}" for c in range(2) for d in range(10)]
@@ -47,10 +48,10 @@ class MathTokenizer:
         self.itos: dict[int, str] = {i: t for i, t in enumerate(all_tokens)}
         self.vocab_size: int = len(all_tokens)
 
-        self.pad_id: int = self.stoi['<PAD>']
-        self.bos_id: int = self.stoi['<BOS>']
-        self.eos_id: int = self.stoi['<EOS>']
-        self.unk_id: int = self.stoi['<UNK>']
+        self.pad_id: int = self.stoi["<PAD>"]
+        self.bos_id: int = self.stoi["<BOS>"]
+        self.eos_id: int = self.stoi["<EOS>"]
+        self.unk_id: int = self.stoi["<UNK>"]
 
         self._tokens_sorted: list[str] = sorted(all_tokens, key=len, reverse=True)
 
@@ -74,7 +75,7 @@ class MathTokenizer:
             for tok in self._tokens_sorted:
                 if tok in self.SPECIAL_TOKENS:
                     continue
-                if text[i:i + len(tok)] == tok:
+                if text[i : i + len(tok)] == tok:
                     ids.append(self.stoi[tok])
                     i += len(tok)
                     matched = True
@@ -103,7 +104,7 @@ class MathTokenizer:
             if skip_special and i in (self.pad_id, self.bos_id, self.eos_id, self.unk_id):
                 continue
             chars.append(self.itos[i])
-        return ''.join(chars)
+        return "".join(chars)
 
     def save(self, path: str | Path) -> None:
         """Save the tokenizer vocabulary to a JSON file.
@@ -114,10 +115,10 @@ class MathTokenizer:
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         data: dict[str, dict[str, str] | dict[str, str]] = {
-            'stoi': self.stoi,
-            'itos': {str(k): v for k, v in self.itos.items()},
+            "stoi": self.stoi,
+            "itos": {str(k): v for k, v in self.itos.items()},
         }
-        with open(path, 'w') as f:
+        with open(path, "w") as f:
             json.dump(data, f)
 
     @classmethod
@@ -173,21 +174,21 @@ class MathTokenizer:
         with open(path) as f:
             data: dict[str, dict[str, str]] = json.load(f)
         tok: MathTokenizer = cls.__new__(cls)
-        tok.stoi = data['stoi']  # type: ignore[assignment]
-        tok.itos = {int(k): v for k, v in data['itos'].items()}  # type: ignore[assignment]
+        tok.stoi = data["stoi"]  # type: ignore[assignment]
+        tok.itos = {int(k): v for k, v in data["itos"].items()}  # type: ignore[assignment]
         tok.vocab_size = len(tok.stoi)  # type: ignore[arg-type]
-        tok.pad_id = tok.stoi['<PAD>']  # type: ignore[index]
-        tok.bos_id = tok.stoi['<BOS>']  # type: ignore[index]
-        tok.eos_id = tok.stoi['<EOS>']  # type: ignore[index]
-        tok.unk_id = tok.stoi['<UNK>']  # type: ignore[index]
+        tok.pad_id = tok.stoi["<PAD>"]  # type: ignore[index]
+        tok.bos_id = tok.stoi["<BOS>"]  # type: ignore[index]
+        tok.eos_id = tok.stoi["<EOS>"]  # type: ignore[index]
+        tok.unk_id = tok.stoi["<UNK>"]  # type: ignore[index]
         tok._tokens_sorted = sorted(tok.stoi.keys(), key=len, reverse=True)  # type: ignore[arg-type]
         return tok
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     tok = MathTokenizer()
-    print(f'Vocab size: {tok.vocab_size}')
-    for test in ['04', '15', '10', '12+34=0406', '7+8=15']:
+    print(f"Vocab size: {tok.vocab_size}")
+    for test in ["04", "15", "10", "12+34=0406", "7+8=15"]:
         ids = tok.encode(test, add_special_tokens=True)
         decoded = tok.decode(ids, skip_special=True)
-        print(f'  {test:>15} -> {ids} -> {decoded}')
+        print(f"  {test:>15} -> {ids} -> {decoded}")

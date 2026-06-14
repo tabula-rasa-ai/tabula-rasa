@@ -1,17 +1,18 @@
 """Generate synthetic math problems for training."""
+
 from __future__ import annotations
 
-import random
 import json
+import random
 from pathlib import Path
 from typing import Optional
 
 import torch
 from torch.utils.data import Dataset
+
 from tabula_rasa.tokenizer import MathTokenizer
 
-
-OPERATIONS: list[str] = ['+', '-', '*', '/']
+OPERATIONS: list[str] = ["+", "-", "*", "/"]
 
 
 def generate_problem(min_digits: int = 1, max_digits: int = 4) -> tuple[str, str]:
@@ -37,16 +38,16 @@ def generate_problem(min_digits: int = 1, max_digits: int = 4) -> tuple[str, str
     a = random.randint(10 ** (a_digits - 1), 10**a_digits - 1)
     b = random.randint(10 ** (b_digits - 1), 10**b_digits - 1)
 
-    if op == '+':
+    if op == "+":
         ans = a + b
-    elif op == '-':
+    elif op == "-":
         # Ensure positive result for simplicity
         if a < b:
             a, b = b, a
         ans = a - b
-    elif op == '*':
+    elif op == "*":
         ans = a * b
-    elif op == '/':
+    elif op == "/":
         # Division must yield integer
         ans = random.randint(1, max(1, a // 2))
         b = random.randint(1, max(1, a // 2))
@@ -59,7 +60,7 @@ def generate_problem(min_digits: int = 1, max_digits: int = 4) -> tuple[str, str
         if b > 10000:
             b = random.randint(1, 100)
 
-    expr = f'{a}{op}{b}'
+    expr = f"{a}{op}{b}"
     answer = str(ans)
     return expr, answer
 
@@ -74,7 +75,7 @@ def format_math_sample(expr: str, answer: str) -> str:
     Returns:
         Formatted string ``'{expr}={answer}'`` (e.g. ``'12+34=46'``).
     """
-    return f'{expr}={answer}'
+    return f"{expr}={answer}"
 
 
 class MathDataset(Dataset[tuple[torch.Tensor, torch.Tensor]]):
@@ -86,9 +87,14 @@ class MathDataset(Dataset[tuple[torch.Tensor, torch.Tensor]]):
     by one position.
     """
 
-    def __init__(self, tokenizer: MathTokenizer, num_samples: int,
-                 min_digits: int = 1, max_digits: int = 4,
-                 seed: int = 42) -> None:
+    def __init__(
+        self,
+        tokenizer: MathTokenizer,
+        num_samples: int,
+        min_digits: int = 1,
+        max_digits: int = 4,
+        seed: int = 42,
+    ) -> None:
         """Initialise the dataset by generating *num_samples* problems.
 
         Args:
@@ -101,7 +107,7 @@ class MathDataset(Dataset[tuple[torch.Tensor, torch.Tensor]]):
         self.tokenizer = tokenizer
         self.min_digits = min_digits
         self.max_digits = max_digits
-        self.max_seq_len: int = tokenizer.max_seq_len if hasattr(tokenizer, 'max_seq_len') else 64
+        self.max_seq_len: int = tokenizer.max_seq_len if hasattr(tokenizer, "max_seq_len") else 64
 
         rng = random.Random(seed)
         self.samples: list[list[int]] = []
@@ -112,7 +118,7 @@ class MathDataset(Dataset[tuple[torch.Tensor, torch.Tensor]]):
             if len(ids) <= self.max_seq_len:
                 self.samples.append(ids)
 
-        print(f'Created {len(self.samples)} valid samples (filtered from {num_samples})')
+        print(f"Created {len(self.samples)} valid samples (filtered from {num_samples})")
 
     def __len__(self) -> int:
         """Return the number of samples in the dataset."""
@@ -163,7 +169,7 @@ def generate_test_set(num_samples: int = 100, seed: int = 123) -> list[tuple[str
     return problems
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     from tabula_rasa.config import Config
 
     cfg = Config()
@@ -171,12 +177,12 @@ if __name__ == '__main__':
     # Test dataset creation
     ds = MathDataset(tok, 1000)
     x, y = ds[0]
-    print(f'Input shape: {len(x)}, Target shape: {len(y)}')
-    print(f'Input: {tok.decode([i for i in x if i != tok.pad_id])}')
-    print(f'Target (non-pad): {tok.decode([i for i in y if i != tok.pad_id])}')
+    print(f"Input shape: {len(x)}, Target shape: {len(y)}")
+    print(f"Input: {tok.decode([i for i in x if i != tok.pad_id])}")
+    print(f"Target (non-pad): {tok.decode([i for i in y if i != tok.pad_id])}")
 
     # Test a few problems
-    print('\nSample problems:')
+    print("\nSample problems:")
     for _ in range(5):
         expr, ans = generate_problem(1, 3)
-        print(f'  {expr} = {ans}')
+        print(f"  {expr} = {ans}")

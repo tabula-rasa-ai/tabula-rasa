@@ -55,17 +55,17 @@ Add this function after `generate_problem`:
 ```python
 def generate_factorial_problem(min_digits=1, max_digits=2):
     """Generate a factorial problem.
-    
+
     Factorial grows fast: 5! = 120, 8! = 40320.
     We cap at 8 to keep results manageable (< 6 digits).
     """
     n = random.randint(1, min(8, 10**max_digits - 1))
-    
+
     # Compute factorial
     result = 1
     for i in range(2, n + 1):
         result *= i
-    
+
     expr = f'{n}!'
     answer = str(result)
     return expr, answer
@@ -79,11 +79,11 @@ Modify `generate_problem` to detect factorial:
 def generate_problem(min_digits=1, max_digits=4):
     """Generate an arithmetic problem and its answer."""
     op = random.choice(OPERATIONS)
-    
+
     # Handle factorial (unary operation)
     if op == '!':
         return generate_factorial_problem(min_digits, max_digits)
-    
+
     # ... rest of existing binary-op logic ...
 ```
 
@@ -127,7 +127,7 @@ OP_NAMES = {'add': 'Addition', 'sub': 'Subtraction', 'mul': 'Multiplication', 'd
 
 # After
 OPS = {'add': '+', 'sub': '-', 'mul': '*', 'div': '/', 'fac': '!'}
-OP_NAMES = {'add': 'Addition', 'sub': 'Subtraction', 'mul': 'Multiplication', 
+OP_NAMES = {'add': 'Addition', 'sub': 'Subtraction', 'mul': 'Multiplication',
             'div': 'Division', 'fac': 'Factorial'}
 ```
 

@@ -1,7 +1,8 @@
 """Tests for dataset — problem generation, dataset creation."""
+
 import torch
 
-from tabula_rasa.dataset import generate_problem, format_math_sample, MathDataset, generate_test_set
+from tabula_rasa.dataset import MathDataset, format_math_sample, generate_problem, generate_test_set
 
 
 class TestGenerateProblem:
@@ -16,16 +17,17 @@ class TestGenerateProblem:
     def test_includes_operator(self):
         """Expression includes one of + - * /."""
         expr, ans = generate_problem(min_digits=1, max_digits=2)
-        assert any(op in expr for op in ['+', '-', '*', '/'])
+        assert any(op in expr for op in ["+", "-", "*", "/"])
 
     def test_operand_bounds(self):
         """Operand lengths are generally within bounds (division may produce larger operands)."""
         import re
+
         within_bounds = 0
         total = 0
         for _ in range(50):
             expr, ans = generate_problem(min_digits=1, max_digits=2)
-            nums = re.findall(r'\d+', expr)
+            nums = re.findall(r"\d+", expr)
             for n in nums:
                 total += 1
                 if 1 <= len(n) <= 3:  # division can bump one operand
@@ -36,11 +38,12 @@ class TestGenerateProblem:
     def test_correct_addition(self):
         """Addition problems have correct answers."""
         import re
+
         for _ in range(20):
             expr, ans = generate_problem(min_digits=1, max_digits=2)
-            if '+' not in expr:
+            if "+" not in expr:
                 continue
-            nums = re.findall(r'\d+', expr)
+            nums = re.findall(r"\d+", expr)
             if len(nums) >= 2:
                 expected = str(int(nums[0]) + int(nums[1]))
                 assert ans == expected, f"{expr} expected {expected}, got {ans}"
@@ -48,11 +51,12 @@ class TestGenerateProblem:
     def test_correct_subtraction(self):
         """Subtraction problems have correct answers (positive result)."""
         import re
+
         for _ in range(20):
             expr, ans = generate_problem(min_digits=1, max_digits=2)
-            if '-' not in expr:
+            if "-" not in expr:
                 continue
-            nums = re.findall(r'\d+', expr)
+            nums = re.findall(r"\d+", expr)
             if len(nums) >= 2:
                 a, b = int(nums[0]), int(nums[1])
                 expected = str(abs(a - b))  # function ensures positive
@@ -122,10 +126,11 @@ class TestGenerateTestSet:
     def test_varied_difficulty(self, tok):
         """Test set includes varied digit lengths."""
         import re
+
         problems = generate_test_set(50, seed=42)
         lengths = set()
         for expr, _ in problems:
-            nums = re.findall(r'\d+', expr)
+            nums = re.findall(r"\d+", expr)
             for n in nums:
                 lengths.add(len(n))
         assert len(lengths) >= 2, f"Expected varied digit lengths, got {lengths}"

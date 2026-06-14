@@ -20,9 +20,11 @@ Usage:
     tok.save("specialists/math/general/tokenizer.json")
 """
 
-import json, re, os
+import json
+import os
+import re
+from collections import Counter, defaultdict
 from pathlib import Path
-from collections import defaultdict, Counter
 
 
 class BPETokenizer:
@@ -33,16 +35,18 @@ class BPETokenizer:
     vocabulary for more efficient encoding of frequent patterns.
     """
 
-    SPECIAL_TOKENS = ['<PAD>', '<BOS>', '<EOS>', '<UNK>']
+    SPECIAL_TOKENS = ["<PAD>", "<BOS>", "<EOS>", "<UNK>"]
 
     # Base characters always available
-    BASE_CHARS = list('0123456789+-*/=().% abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ\n\t!?,.:;\'"@#&|<>_')
+    BASE_CHARS = list(
+        "0123456789+-*/=().% abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ\n\t!?,.:;'\"@#&|<>_"
+    )
 
     def __init__(self, base_chars: str = None):
         """Initialize tokenizer. If base_chars is given, use those instead of defaults."""
-        self.merges = {}            # {(token_a, token_b): merged_token_id}
-        self.merge_rank = {}        # {(token_a, token_b): rank} — for encoding
-        self.bpe_vocab_size = 0     # additional tokens from BPE
+        self.merges = {}  # {(token_a, token_b): merged_token_id}
+        self.merge_rank = {}  # {(token_a, token_b): rank} — for encoding
+        self.bpe_vocab_size = 0  # additional tokens from BPE
         self._build_base_vocab(base_chars)
 
     def _build_base_vocab(self, extra_chars: str = None):
@@ -59,10 +63,10 @@ class BPETokenizer:
         self.vocab_size = len(all_tokens)
         self.base_vocab_size = self.vocab_size
 
-        self.pad_id = self.stoi['<PAD>']
-        self.bos_id = self.stoi['<BOS>']
-        self.eos_id = self.stoi['<EOS>']
-        self.unk_id = self.stoi['<UNK>']
+        self.pad_id = self.stoi["<PAD>"]
+        self.bos_id = self.stoi["<BOS>"]
+        self.eos_id = self.stoi["<EOS>"]
+        self.unk_id = self.stoi["<UNK>"]
 
         # Max sequence length (for padding)
         self.max_seq_len = 64
@@ -92,9 +96,9 @@ class BPETokenizer:
         for i in ids:
             if skip_special and i in (self.pad_id, self.bos_id, self.eos_id, self.unk_id):
                 continue
-            token = self.itos.get(i, '<UNK>')
+            token = self.itos.get(i, "<UNK>")
             chars.append(token)
-        text = ''.join(chars)
+        text = "".join(chars)
         return text
 
     # ─── BPE merge learning ───────────────────────────────────────
@@ -124,8 +128,9 @@ class BPETokenizer:
             new_ids_list.append(new_ids)
         return new_ids_list
 
-    def learn_bpe_from_texts(self, texts: list[str], num_merges: int = 50,
-                             min_frequency: int = 2, verbose: bool = True):
+    def learn_bpe_from_texts(
+        self, texts: list[str], num_merges: int = 50, min_frequency: int = 2, verbose: bool = True
+    ):
         """Learn BPE merge rules from a list of texts.
 
         Args:
@@ -176,8 +181,8 @@ class BPETokenizer:
             self.vocab_size += 1
 
             # Get token strings for the pair
-            token_a = id_to_str.get(pair_a, f'<tok{pair_a}>')
-            token_b = id_to_str.get(pair_b, f'<tok{pair_b}>')
+            token_a = id_to_str.get(pair_a, f"<tok{pair_a}>")
+            token_b = id_to_str.get(pair_b, f"<tok{pair_b}>")
             merged = token_a + token_b
 
             # Store merge
@@ -192,15 +197,17 @@ class BPETokenizer:
             token_ids = self._merge_pair(token_ids, (pair_a, pair_b), new_id)
 
             if verbose:
-                print(f'  [BPE] Merge #{merge_idx+1}: "{token_a}"+"{token_b}" → '
-                      f'"{merged}" (freq={freq}, id={new_id})')
+                print(
+                    f'  [BPE] Merge #{merge_idx+1}: "{token_a}"+"{token_b}" → '
+                    f'"{merged}" (freq={freq}, id={new_id})'
+                )
 
             learned += 1
 
         self.bpe_vocab_size = self.vocab_size - self.base_vocab_size
         if verbose:
-            print(f'  [BPE] Learned {learned} merges, vocab now {self.vocab_size} tokens')
-            print(f'  [BPE] New words: {sorted(self.merges.keys())[:10]}...')
+            print(f"  [BPE] Learned {learned} merges, vocab now {self.vocab_size} tokens")
+            print(f"  [BPE] New words: {sorted(self.merges.keys())[:10]}...")
         return learned
 
     # ─── BPE encoding ─────────────────────────────────────────────
@@ -215,11 +222,11 @@ class BPETokenizer:
         while len(ids) > 1:
             # Find the pair with the best (lowest) merge rank
             best_pair = None
-            best_rank = float('inf')
+            best_rank = float("inf")
             for i in range(len(ids) - 1):
                 # Convert IDs to strings for merge lookup
-                str_a = self.itos.get(ids[i], f'<{ids[i]}>')
-                str_b = self.itos.get(ids[i + 1], f'<{ids[i+1]}>')
+                str_a = self.itos.get(ids[i], f"<{ids[i]}>")
+                str_b = self.itos.get(ids[i + 1], f"<{ids[i+1]}>")
                 pair = (str_a, str_b)
                 if pair in self.merge_rank:
                     rank = self.merge_rank[pair]
@@ -232,7 +239,7 @@ class BPETokenizer:
 
             i, (str_a, str_b) = best_pair
             merged_id = self.merges[(str_a, str_b)]
-            ids = ids[:i] + [merged_id] + ids[i + 2:]
+            ids = ids[:i] + [merged_id] + ids[i + 2 :]
 
         return ids
 
@@ -261,50 +268,50 @@ class BPETokenizer:
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         data = {
-            'stoi': self.stoi,
-            'itos': {str(k): v for k, v in self.itos.items()},
-            'merges': {f'{a}|{b}': mid for (a, b), mid in self.merges.items()},
-            'merge_rank': {f'{a}|{b}': r for (a, b), r in self.merge_rank.items()},
-            'base_vocab_size': self.base_vocab_size,
-            'bpe_vocab_size': self.bpe_vocab_size,
-            'max_seq_len': self.max_seq_len,
+            "stoi": self.stoi,
+            "itos": {str(k): v for k, v in self.itos.items()},
+            "merges": {f"{a}|{b}": mid for (a, b), mid in self.merges.items()},
+            "merge_rank": {f"{a}|{b}": r for (a, b), r in self.merge_rank.items()},
+            "base_vocab_size": self.base_vocab_size,
+            "bpe_vocab_size": self.bpe_vocab_size,
+            "max_seq_len": self.max_seq_len,
         }
-        with open(path, 'w') as f:
+        with open(path, "w") as f:
             json.dump(data, f, indent=2)
 
     @classmethod
-    def load(cls, path: str | Path) -> 'BPETokenizer':
+    def load(cls, path: str | Path) -> "BPETokenizer":
         """Load tokenizer from JSON."""
         with open(path) as f:
             data = json.load(f)
 
         tok = cls.__new__(cls)
-        tok.stoi = data['stoi']
-        tok.itos = {int(k): v for k, v in data['itos'].items()}
+        tok.stoi = data["stoi"]
+        tok.itos = {int(k): v for k, v in data["itos"].items()}
         # Restore merges (serialized as "a|b" key format)
         tok.merges = {}
         tok.merge_rank = {}
-        for key, mid in data.get('merges', {}).items():
-            a, b = key.split('|', 1)
+        for key, mid in data.get("merges", {}).items():
+            a, b = key.split("|", 1)
             tok.merges[(a, b)] = mid
-        for key, rank in data.get('merge_rank', {}).items():
-            a, b = key.split('|', 1)
+        for key, rank in data.get("merge_rank", {}).items():
+            a, b = key.split("|", 1)
             tok.merge_rank[(a, b)] = rank
         tok.vocab_size = len(tok.stoi)
-        tok.base_vocab_size = data.get('base_vocab_size', tok.vocab_size)
-        tok.bpe_vocab_size = data.get('bpe_vocab_size', 0)
-        tok.max_seq_len = data.get('max_seq_len', 64)
+        tok.base_vocab_size = data.get("base_vocab_size", tok.vocab_size)
+        tok.bpe_vocab_size = data.get("bpe_vocab_size", 0)
+        tok.max_seq_len = data.get("max_seq_len", 64)
 
-        tok.pad_id = tok.stoi['<PAD>']
-        tok.bos_id = tok.stoi['<BOS>']
-        tok.eos_id = tok.stoi['<EOS>']
-        tok.unk_id = tok.stoi['<UNK>']
+        tok.pad_id = tok.stoi["<PAD>"]
+        tok.bos_id = tok.stoi["<BOS>"]
+        tok.eos_id = tok.stoi["<EOS>"]
+        tok.unk_id = tok.stoi["<UNK>"]
         return tok
 
 
 # ─── Self-Seeded BPE Pipeline ─────────────────────────────────────
 
-VERIFIED_LOG = Path('verified_monologue.txt')
+VERIFIED_LOG = Path("verified_monologue.txt")
 
 
 def log_verified_output(text: str):
@@ -315,13 +322,14 @@ def log_verified_output(text: str):
     - A correction is successfully trained
     - The Pythagorean Review validates a logical statement
     """
-    with open(VERIFIED_LOG, 'a', encoding='utf-8') as f:
-        f.write(text.strip() + '\n')
+    with open(VERIFIED_LOG, "a", encoding="utf-8") as f:
+        f.write(text.strip() + "\n")
     return True
 
 
-def learn_from_verified_log(max_merges: int = 30, min_frequency: int = 2,
-                            tokenizer: BPETokenizer = None) -> int:
+def learn_from_verified_log(
+    max_merges: int = 30, min_frequency: int = 2, tokenizer: BPETokenizer = None
+) -> int:
     """Run BPE merge learning on the verified monologue log.
 
     Reads the verified_monologue.txt file, learns BPE merges from it,
@@ -336,30 +344,31 @@ def learn_from_verified_log(max_merges: int = 30, min_frequency: int = 2,
         Tuple of (tokenizer, num_merges_learned).
     """
     if not VERIFIED_LOG.exists():
-        print('  [BPE] No verified monologue to learn from')
+        print("  [BPE] No verified monologue to learn from")
         return tokenizer, 0
 
-    with open(VERIFIED_LOG, 'r', encoding='utf-8') as f:
+    with open(VERIFIED_LOG, "r", encoding="utf-8") as f:
         texts = [line.strip() for line in f if line.strip()]
 
     if not texts:
-        print('  [BPE] Verified monologue is empty')
+        print("  [BPE] Verified monologue is empty")
         return tokenizer, 0
 
-    print(f'  [BPE] Learning from {len(texts)} lines of verified monologue...')
+    print(f"  [BPE] Learning from {len(texts)} lines of verified monologue...")
 
     if tokenizer is None:
         tokenizer = BPETokenizer()
 
-    learned = tokenizer.learn_bpe_from_texts(texts, num_merges=max_merges,
-                                              min_frequency=min_frequency)
+    learned = tokenizer.learn_bpe_from_texts(
+        texts, num_merges=max_merges, min_frequency=min_frequency
+    )
     return tokenizer, learned
 
 
 # Quick test
-if __name__ == '__main__':
+if __name__ == "__main__":
     tok = BPETokenizer()
-    print(f'Base vocab: {tok.vocab_size} tokens')
+    print(f"Base vocab: {tok.vocab_size} tokens")
 
     # Simulate verified monologue
     monologue = [
@@ -373,12 +382,12 @@ if __name__ == '__main__':
 
     encoded = tok.encode_bpe("therefore 12+34=46")
     decoded = tok.decode(encoded)
-    print(f'\nEncoded: {encoded}')
-    print(f'Decoded: {decoded}')
-    print(f'Vocab:   {tok.vocab_size} tokens ({tok.bpe_vocab_size} from BPE)')
+    print(f"\nEncoded: {encoded}")
+    print(f"Decoded: {decoded}")
+    print(f"Vocab:   {tok.vocab_size} tokens ({tok.bpe_vocab_size} from BPE)")
 
     # Save and reload test
-    tok.save('/tmp/test_bpe_tok.json')
-    tok2 = BPETokenizer.load('/tmp/test_bpe_tok.json')
-    print(f'\nReloaded vocab: {tok2.vocab_size} tokens')
-    print(f'Merges restored: {len(tok2.merges)}')
+    tok.save("/tmp/test_bpe_tok.json")
+    tok2 = BPETokenizer.load("/tmp/test_bpe_tok.json")
+    print(f"\nReloaded vocab: {tok2.vocab_size} tokens")
+    print(f"Merges restored: {len(tok2.merges)}")

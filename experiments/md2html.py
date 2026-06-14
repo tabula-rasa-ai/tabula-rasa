@@ -1,11 +1,13 @@
 """Convert paper_draft.md to publication-ready HTML with embedded CSS."""
-import markdown
+
 from pathlib import Path
 
-md_path = Path(r'C:\Users\Admin\tabula-rasa\paper_draft.md')
-html_path = Path(r'C:\Users\Admin\tabula-rasa\paper.html')
+import markdown
 
-md_content = md_path.read_text(encoding='utf-8')
+md_path = Path(r"C:\Users\Admin\tabula-rasa\paper_draft.md")
+html_path = Path(r"C:\Users\Admin\tabula-rasa\paper.html")
+
+md_content = md_path.read_text(encoding="utf-8")
 
 # Publication-quality CSS (self-contained, no CDN)
 css = """
@@ -59,11 +61,11 @@ hr { border: none; border-top: 1px solid #ccc; margin: 24pt 0; }
 strong { color: #000; }
 em { color: #333; }
 .author { text-align: center; font-size: 12pt; margin-bottom: 24pt; color: #555; }
-.abstract { 
-  margin: 18pt 0; padding: 12pt 18pt; 
-  border-left: 2px solid #2c7; 
-  font-size: 11pt; 
-  background: #f9fcf9; 
+.abstract {
+  margin: 18pt 0; padding: 12pt 18pt;
+  border-left: 2px solid #2c7;
+  font-size: 11pt;
+  background: #f9fcf9;
 }
 .abstract strong { font-style: normal; }
 @media print {
@@ -76,24 +78,17 @@ em { color: #333; }
 
 # Process abstract
 html_body = markdown.markdown(
-    md_content,
-    extensions=['extra', 'tables', 'fenced_code', 'footnotes', 'sane_lists']
+    md_content, extensions=["extra", "tables", "fenced_code", "footnotes", "sane_lists"]
 )
 
 # Wrap abstract if it exists
-if '## Abstract' in html_body:
-    html_body = html_body.replace(
-        '<h2>Abstract</h2>',
-        '<h2>Abstract</h2>\n<div class="abstract">'
-    )
+if "## Abstract" in html_body:
+    html_body = html_body.replace("<h2>Abstract</h2>", '<h2>Abstract</h2>\n<div class="abstract">')
     # Find the next h2 to close the div
-    parts = html_body.split('</h2>\n<p>', 1)
+    parts = html_body.split("</h2>\n<p>", 1)
     if len(parts) > 1:
         # Close abstract div before next section
-        html_body = html_body.replace(
-            '<h2>1.', '</div>\n\n<h2>1.',
-            1
-        )
+        html_body = html_body.replace("<h2>1.", "</div>\n\n<h2>1.", 1)
 
 html_full = f"""<!DOCTYPE html>
 <html lang="en">
@@ -111,12 +106,12 @@ html_full = f"""<!DOCTYPE html>
 </html>
 """
 
-html_path.write_text(html_full, encoding='utf-8')
-print(f'Publication-ready HTML generated: {html_path}')
-print(f'Size: {html_path.stat().st_size / 1024:.0f} KB')
+html_path.write_text(html_full, encoding="utf-8")
+print(f"Publication-ready HTML generated: {html_path}")
+print(f"Size: {html_path.stat().st_size / 1024:.0f} KB")
 print()
-print('Open in browser and use Ctrl+P → Save as PDF to get the paper.')
-print('Browser print settings:')
-print('  - Paper size: Letter')
-print('  - Margins: None (handled by CSS)')
-print('  - Background graphics: ✅')
+print("Open in browser and use Ctrl+P → Save as PDF to get the paper.")
+print("Browser print settings:")
+print("  - Paper size: Letter")
+print("  - Margins: None (handled by CSS)")
+print("  - Background graphics: ✅")

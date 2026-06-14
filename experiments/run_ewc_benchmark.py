@@ -27,23 +27,24 @@ Requires:
 Output:
     experiments/ewc_benchmark_results.json
 """
-import sys
+
 import json
-import time
 import random
+import sys
+import time
 from pathlib import Path
 
+import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from tabula_rasa.config import Config
-from tabula_rasa.tokenizer import MathTokenizer
-from tabula_rasa.model import MathTransformer
-from train_specialist import generate_problem, SpecialistDataset, _get_lr
 from egefalos.online_ewc import OnlineEWC
+from tabula_rasa.config import Config
+from tabula_rasa.model import MathTransformer
+from tabula_rasa.tokenizer import MathTokenizer
+from train_specialist import SpecialistDataset, _get_lr, generate_problem
 
 # ─── Tiny model config for fast benchmarking ────────────────────────────
 MODEL_D = 32
@@ -57,7 +58,7 @@ LAMBDA_EWC = 500
 GAMMA = 0.9
 EVAL_NUM = 100
 SEED = 42
-DEVICE = 'cpu'
+DEVICE = "cpu"
 
 
 def set_seed(seed: int = SEED):
@@ -100,10 +101,14 @@ def evaluate_model(model, tokenizer, cfg: Config, op: str, num: int = EVAL_NUM) 
     total = 0
     with torch.no_grad():
         for _ in range(num):
-            expr, ans = generate_problem(op, cfg.min_digits, cfg.max_digits,
-                                          reversed=cfg.use_reversed,
-                                          scratchpad=cfg.use_scratchpad)
-            full = f'{expr}={ans}'
+            expr, ans = generate_problem(
+                op,
+                cfg.min_digits,
+                cfg.max_digits,
+                reversed=cfg.use_reversed,
+                scratchpad=cfg.use_scratchpad,
+            )
+            full = f"{expr}={ans}"
             ids = tokenizer.encode(full, add_special_tokens=True)
             x = torch.tensor([ids[:-1]], dtype=torch.long)
             y_target = ids[1:]
@@ -121,10 +126,14 @@ def compute_fisher_on_model(model, tok, cfg, op: str, num_samples: int = 100):
 
     inputs, targets = [], []
     for _ in range(num_samples):
-        expr, ans = generate_problem(op, cfg.min_digits, cfg.max_digits,
-                                      reversed=cfg.use_reversed,
-                                      scratchpad=cfg.use_scratchpad)
-        full = f'{expr}={ans}'
+        expr, ans = generate_problem(
+            op,
+            cfg.min_digits,
+            cfg.max_digits,
+            reversed=cfg.use_reversed,
+            scratchpad=cfg.use_scratchpad,
+        )
+        full = f"{expr}={ans}"
         ids = tok.encode(full, add_special_tokens=True)
         x = ids[:-1]
         y = ids[1:]
@@ -132,9 +141,9 @@ def compute_fisher_on_model(model, tok, cfg, op: str, num_samples: int = 100):
         targets.append(y + [-100] * (cfg.max_seq_len - len(y)))
 
     loader = DataLoader(
-        list(zip(torch.tensor(inputs, dtype=torch.long),
-                 torch.tensor(targets, dtype=torch.long))),
-        batch_size=16, shuffle=True
+        list(zip(torch.tensor(inputs, dtype=torch.long), torch.tensor(targets, dtype=torch.long))),
+        batch_size=16,
+        shuffle=True,
     )
 
     fisher = ewc.compute_fisher(loader, num_samples=num_samples)
@@ -144,12 +153,14 @@ def compute_fisher_on_model(model, tok, cfg, op: str, num_samples: int = 100):
     return ewc
 
 
-def train_model(model, cfg, tok, op: str, steps: int,
-                ewc: OnlineEWC = None, lambda_ewc: float = 0.0):
+def train_model(
+    model, cfg, tok, op: str, steps: int, ewc: OnlineEWC = None, lambda_ewc: float = 0.0
+):
     """Train model on an operation, optionally with EWC penalty."""
     model.train()
-    optimizer = torch.optim.AdamW(model.parameters(), lr=0.001, weight_decay=0.01,
-                                   betas=(0.9, 0.999))
+    optimizer = torch.optim.AdamW(
+        model.parameters(), lr=0.001, weight_decay=0.01, betas=(0.9, 0.999)
+    )
     cfg.max_digits = 1
     cfg.min_digits = 1
     ds = SpecialistDataset(tok, op, cfg)
@@ -170,7 +181,7 @@ def train_model(model, cfg, tok, op: str, steps: int,
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
             for pg in optimizer.param_groups:
-                pg['lr'] = 0.001 * _get_lr(global_step, 200, steps, 'cosine')
+                pg["lr"] = 0.001 * _get_lr(global_step, 200, steps, "cosine")
             global_step += 1
     elapsed = time.time() - t0
     return global_step, elapsed
@@ -190,6 +201,7 @@ def measure_fisher_bytes(model) -> float:
 #  AVALANCHE EWC WRAPPER
 # ─────────────────────────────────────────────────────────────────────────
 
+
 def try_run_avalanche_benchmark(model, cfg, tok):
     """
     Train addition → subtraction using avalanche-lib's EwcPlugin.
@@ -198,13 +210,13 @@ def try_run_avalanche_benchmark(model, cfg, tok):
     """
     try:
         import avalanche
-        from avalanche.training.plugins import EwcPlugin
-        from avalanche.training.strategies import Naive, BaseStrategy
-        from avalanche.benchmarks.utils import make_avalanche_dataset
         from avalanche.benchmarks.generators import benchmark_from_datasets
+        from avalanche.benchmarks.utils import make_avalanche_dataset
         from avalanche.training import Ewc as EwcStrategy
+        from avalanche.training.plugins import EwcPlugin
+        from avalanche.training.strategies import BaseStrategy, Naive
     except ImportError as e:
-        return {'error': f'avalanche-lib not installed: {e}'}
+        return {"error": f"avalanche-lib not installed: {e}"}
 
     set_seed(SEED)
 
@@ -216,8 +228,8 @@ def try_run_avalanche_benchmark(model, cfg, tok):
     cfg.max_digits = 1
     cfg.min_digits = 1
 
-    add_ds_raw = SpecialistDataset(tok, 'add', cfg)
-    sub_ds_raw = SpecialistDataset(tok, 'sub', cfg)
+    add_ds_raw = SpecialistDataset(tok, "add", cfg)
+    sub_ds_raw = SpecialistDataset(tok, "sub", cfg)
 
     # Convert to tensors
     add_x_all, add_y_all = [], []
@@ -225,16 +237,16 @@ def try_run_avalanche_benchmark(model, cfg, tok):
         x, y = add_ds_raw[i % len(add_ds_raw)]
         add_x_all.append(x.unsqueeze(0))
         add_y_all.append(y.unsqueeze(0))
-    add_x = torch.cat(add_x_all[:ADD_STEPS * BATCH_SIZE])
-    add_y = torch.cat(add_y_all[:ADD_STEPS * BATCH_SIZE])
+    add_x = torch.cat(add_x_all[: ADD_STEPS * BATCH_SIZE])
+    add_y = torch.cat(add_y_all[: ADD_STEPS * BATCH_SIZE])
 
     sub_x_all, sub_y_all = [], []
     for i in range(min(len(sub_ds_raw), SUB_STEPS * BATCH_SIZE)):
         x, y = sub_ds_raw[i % len(sub_ds_raw)]
         sub_x_all.append(x.unsqueeze(0))
         sub_y_all.append(y.unsqueeze(0))
-    sub_x = torch.cat(sub_x_all[:SUB_STEPS * BATCH_SIZE])
-    sub_y = torch.cat(sub_y_all[:SUB_STEPS * BATCH_SIZE])
+    sub_x = torch.cat(sub_x_all[: SUB_STEPS * BATCH_SIZE])
+    sub_y = torch.cat(sub_y_all[: SUB_STEPS * BATCH_SIZE])
 
     # Create avalanche datasets
     add_dataset = make_avalanche_dataset(add_x, add_y, task_labels=0)
@@ -242,8 +254,7 @@ def try_run_avalanche_benchmark(model, cfg, tok):
 
     # Create benchmark from datasets
     benchmark = benchmark_from_datasets(
-        train=[add_dataset, sub_dataset],
-        test=[add_dataset, sub_dataset]
+        train=[add_dataset, sub_dataset], test=[add_dataset, sub_dataset]
     )
 
     # Create fresh model for avalanche
@@ -253,11 +264,12 @@ def try_run_avalanche_benchmark(model, cfg, tok):
     model_av = make_model(cfg)
 
     # Avalanche EWC strategy
-    ewc_plugin = EwcPlugin(ewc_lambda=LAMBDA_EWC, mode='separate')
+    ewc_plugin = EwcPlugin(ewc_lambda=LAMBDA_EWC, mode="separate")
     ewc_strategy = EwcStrategy(
         model=model_av,
-        optimizer=torch.optim.AdamW(model_av.parameters(), lr=0.001, weight_decay=0.01,
-                                     betas=(0.9, 0.999)),
+        optimizer=torch.optim.AdamW(
+            model_av.parameters(), lr=0.001, weight_decay=0.01, betas=(0.9, 0.999)
+        ),
         criterion=nn.CrossEntropyLoss(ignore_index=-100),
         train_mb_size=BATCH_SIZE,
         train_epochs=1,
@@ -266,7 +278,7 @@ def try_run_avalanche_benchmark(model, cfg, tok):
     )
 
     # Measure pre-training accuracy
-    add_before_av = evaluate_model(model_av, tok, cfg, 'add', num=EVAL_NUM)
+    add_before_av = evaluate_model(model_av, tok, cfg, "add", num=EVAL_NUM)
 
     t0 = time.time()
 
@@ -274,7 +286,7 @@ def try_run_avalanche_benchmark(model, cfg, tok):
     ewc_strategy.train(benchmark.train_stream[0])
 
     time_task1 = time.time() - t0
-    add_after_task1_av = evaluate_model(model_av, tok, cfg, 'add', num=EVAL_NUM)
+    add_after_task1_av = evaluate_model(model_av, tok, cfg, "add", num=EVAL_NUM)
 
     t1 = time.time()
 
@@ -284,21 +296,21 @@ def try_run_avalanche_benchmark(model, cfg, tok):
     time_task2 = time.time() - t1
     total_time_av = time.time() - t0
 
-    add_final_av = evaluate_model(model_av, tok, cfg, 'add', num=EVAL_NUM)
-    sub_final_av = evaluate_model(model_av, tok, cfg, 'sub', num=EVAL_NUM)
+    add_final_av = evaluate_model(model_av, tok, cfg, "add", num=EVAL_NUM)
+    sub_final_av = evaluate_model(model_av, tok, cfg, "sub", num=EVAL_NUM)
 
     # Estimate Fisher memory for avalanche (it stores per-task fisher)
     fisher_memory_av = measure_fisher_bytes(model_av) * 2  # avalanche stores separate per-task
 
     return {
-        'add_before': add_before_av,
-        'add_after_task1': add_after_task1_av,
-        'add_retention': add_final_av,
-        'sub_accuracy': sub_final_av,
-        'training_time_task1': time_task1,
-        'training_time_task2': time_task2,
-        'total_training_time': total_time_av,
-        'fisher_memory_mb': fisher_memory_av,
+        "add_before": add_before_av,
+        "add_after_task1": add_after_task1_av,
+        "add_retention": add_final_av,
+        "sub_accuracy": sub_final_av,
+        "training_time_task1": time_task1,
+        "training_time_task2": time_task2,
+        "total_training_time": total_time_av,
+        "fisher_memory_mb": fisher_memory_av,
     }
 
 
@@ -306,47 +318,51 @@ def try_run_avalanche_benchmark(model, cfg, tok):
 #  CUSTOM ONLINE EWC BENCHMARK
 # ─────────────────────────────────────────────────────────────────────────
 
+
 def run_custom_ewc_benchmark(model, cfg, tok):
     """Train addition → subtraction using project's OnlineEWC. Returns dict."""
     set_seed(SEED)
 
     # Baseline addition accuracy (untrained model)
-    add_before = evaluate_model(model, tok, cfg, 'add', num=EVAL_NUM)
+    add_before = evaluate_model(model, tok, cfg, "add", num=EVAL_NUM)
 
     # ─── Phase 1: Train addition (3000 steps) ───
     print("  [Custom EWC] Training addition...")
-    steps_done, time_task1 = train_model(model, cfg, tok, 'add', ADD_STEPS, ewc=None)
-    add_after_train = evaluate_model(model, tok, cfg, 'add', num=EVAL_NUM)
+    steps_done, time_task1 = train_model(model, cfg, tok, "add", ADD_STEPS, ewc=None)
+    add_after_train = evaluate_model(model, tok, cfg, "add", num=EVAL_NUM)
     print(f"    add acc after training: {add_after_train:.1f}%  [{time_task1:.1f}s]")
 
     # ─── Phase 2: Compute Fisher + save anchor ───
     print("  [Custom EWC] Computing Fisher on addition...")
     t_fisher_start = time.time()
-    ewc = compute_fisher_on_model(model, tok, cfg, 'add', num_samples=100)
+    ewc = compute_fisher_on_model(model, tok, cfg, "add", num_samples=100)
     fisher_time = time.time() - t_fisher_start
     fisher_mem = measure_fisher_bytes(model)
     print(f"    Fisher computed: {fisher_time:.2f}s, ~{fisher_mem:.2f}MB")
 
     # ─── Phase 3: Train subtraction with EWC ───
     print("  [Custom EWC] Training subtraction with EWC penalty...")
-    steps_done2, time_task2 = train_model(model, cfg, tok, 'sub', SUB_STEPS,
-                                           ewc=ewc, lambda_ewc=LAMBDA_EWC)
+    steps_done2, time_task2 = train_model(
+        model, cfg, tok, "sub", SUB_STEPS, ewc=ewc, lambda_ewc=LAMBDA_EWC
+    )
     total_time = time_task1 + fisher_time + time_task2
 
-    add_final = evaluate_model(model, tok, cfg, 'add', num=EVAL_NUM)
-    sub_final = evaluate_model(model, tok, cfg, 'sub', num=EVAL_NUM)
-    print(f"    add retention: {add_final:.1f}%, sub accuracy: {sub_final:.1f}%  [{time_task2:.1f}s]")
+    add_final = evaluate_model(model, tok, cfg, "add", num=EVAL_NUM)
+    sub_final = evaluate_model(model, tok, cfg, "sub", num=EVAL_NUM)
+    print(
+        f"    add retention: {add_final:.1f}%, sub accuracy: {sub_final:.1f}%  [{time_task2:.1f}s]"
+    )
 
     return {
-        'add_before': add_before,
-        'add_after_training': add_after_train,
-        'add_retention': add_final,
-        'sub_accuracy': sub_final,
-        'training_time_task1': time_task1,
-        'fisher_compute_time': fisher_time,
-        'training_time_task2': time_task2,
-        'total_training_time': total_time,
-        'fisher_memory_mb': fisher_mem,
+        "add_before": add_before,
+        "add_after_training": add_after_train,
+        "add_retention": add_final,
+        "sub_accuracy": sub_final,
+        "training_time_task1": time_task1,
+        "fisher_compute_time": fisher_time,
+        "training_time_task2": time_task2,
+        "total_training_time": total_time,
+        "fisher_memory_mb": fisher_mem,
     }
 
 
@@ -354,12 +370,15 @@ def run_custom_ewc_benchmark(model, cfg, tok):
 #  MAIN
 # ─────────────────────────────────────────────────────────────────────────
 
+
 def main():
     print("=" * 65)
     print("  EWC BENCHMARK: Custom OnlineEWC vs Avalanche-lib EwcPlugin")
-    print("  Tiny model: d=32, L=1, h=2, ff=64  (~{:.0f}K params)".format(
-        (MODEL_D * 4 * MODEL_D + MODEL_D * MODEL_FF * 2) / 1000
-    ))
+    print(
+        "  Tiny model: d=32, L=1, h=2, ff=64  (~{:.0f}K params)".format(
+            (MODEL_D * 4 * MODEL_D + MODEL_D * MODEL_FF * 2) / 1000
+        )
+    )
     print("  Addition: {} steps → Subtraction: {} steps".format(ADD_STEPS, SUB_STEPS))
     print("  λ={}, γ={}, seed={}".format(LAMBDA_EWC, GAMMA, SEED))
     print("=" * 65)
@@ -383,19 +402,19 @@ def main():
 
     # ─── Compile results ───────────────────────────────────────────
     output = {
-        'config': {
-            'd_model': MODEL_D,
-            'n_layers': MODEL_L,
-            'n_heads': MODEL_H,
-            'd_ff': MODEL_FF,
-            'add_steps': ADD_STEPS,
-            'sub_steps': SUB_STEPS,
-            'lambda_ewc': LAMBDA_EWC,
-            'gamma': GAMMA,
-            'seed': SEED,
+        "config": {
+            "d_model": MODEL_D,
+            "n_layers": MODEL_L,
+            "n_heads": MODEL_H,
+            "d_ff": MODEL_FF,
+            "add_steps": ADD_STEPS,
+            "sub_steps": SUB_STEPS,
+            "lambda_ewc": LAMBDA_EWC,
+            "gamma": GAMMA,
+            "seed": SEED,
         },
-        'custom_online_ewc': custom_results,
-        'avalanche_ewc': avalanche_results,
+        "custom_online_ewc": custom_results,
+        "avalanche_ewc": avalanche_results,
     }
 
     # ─── Print comparison table ────────────────────────────────────
@@ -403,22 +422,22 @@ def main():
     print("  === EWC Implementation Comparison ===")
     print("=" * 65)
 
-    c_add_ret = custom_results.get('add_retention', 0.0)
-    c_sub_acc = custom_results.get('sub_accuracy', 0.0)
-    c_time = custom_results.get('total_training_time', 0.0)
-    c_fisher_mem = custom_results.get('fisher_memory_mb', 0.0)
+    c_add_ret = custom_results.get("add_retention", 0.0)
+    c_sub_acc = custom_results.get("sub_accuracy", 0.0)
+    c_time = custom_results.get("total_training_time", 0.0)
+    c_fisher_mem = custom_results.get("fisher_memory_mb", 0.0)
 
-    av_error = avalanche_results.get('error')
+    av_error = avalanche_results.get("error")
     if av_error:
         a_add_ret = 0.0
         a_sub_acc = 0.0
         a_time = 0.0
         a_fisher_mem = 0.0
     else:
-        a_add_ret = avalanche_results.get('add_retention', 0.0)
-        a_sub_acc = avalanche_results.get('sub_accuracy', 0.0)
-        a_time = avalanche_results.get('total_training_time', 0.0)
-        a_fisher_mem = avalanche_results.get('fisher_memory_mb', 0.0)
+        a_add_ret = avalanche_results.get("add_retention", 0.0)
+        a_sub_acc = avalanche_results.get("sub_accuracy", 0.0)
+        a_time = avalanche_results.get("total_training_time", 0.0)
+        a_fisher_mem = avalanche_results.get("fisher_memory_mb", 0.0)
 
     print(f"  {'':>25} {'Custom Online EWC':>18} {'Avalanche EWC':>18}")
     print(f"  {'-'*25}-+-{'-'*18}-+-{'-'*18}")
@@ -439,18 +458,20 @@ def main():
         if abs(add_delta) < 5 and abs(sub_delta) < 5:
             print(f"\n  ✅ Comparable performance (|Δ| < 5pp)")
         else:
-            print(f"\n  📊 Performance difference: add Δ={add_delta:+.1f}pp, sub Δ={sub_delta:+.1f}pp")
+            print(
+                f"\n  📊 Performance difference: add Δ={add_delta:+.1f}pp, sub Δ={sub_delta:+.1f}pp"
+            )
         faster_text = "Custom OnlineEWC" if c_time < a_time else "Avalanche EWC"
         print(f"  ⏱  Faster: {faster_text} ({abs(c_time - a_time):.1f}s difference)")
 
     # ─── Save results ──────────────────────────────────────────────
-    out_path = Path('experiments/ewc_benchmark_results.json')
+    out_path = Path("experiments/ewc_benchmark_results.json")
     out_path.parent.mkdir(exist_ok=True)
-    with open(out_path, 'w') as f:
+    with open(out_path, "w") as f:
         json.dump(output, f, indent=2, default=str)
     print(f"\n  Results saved to: {out_path}")
     print()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

@@ -932,7 +932,7 @@ def question_1_transgressions(text: str, verifier) -> Optional[str]:
                   'since', 'hence', 'thus', 'consequently', 'proof']
     if not any(ind in text.lower() for ind in indicators):
         return None  # No logical claim to verify
-    
+
     score = verifier.score_debate_argument(text)
     if score and score.get('fallacies'):
         return str(score['fallacies'][0])
@@ -955,8 +955,8 @@ def question_2_synthesis(experiences: list) -> list:
             clusters[best_cluster].append(exp)
         else:
             clusters[new_key(exp)] = [exp]
-    
-    return [max(c, key=lambda e: e['prediction_error']) 
+
+    return [max(c, key=lambda e: e['prediction_error'])
             for c in clusters.values()]
 ```
 

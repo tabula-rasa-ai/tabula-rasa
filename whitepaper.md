@@ -323,15 +323,15 @@ def forward(self, x, mask=None, use_cache=True):
     if use_cache:
         if self.cache is None:
             self.cache = {'k': torch.zeros(...), 'v': torch.zeros(...)}
-        
+
         # Only compute new tokens
         k_new = self.wk(x[:, -1:, :])
         v_new = self.wv(x[:, -1:, :])
-        
+
         # Append to cache
         self.cache['k'] = torch.cat([self.cache['k'], k_new], dim=1)
         self.cache['v'] = torch.cat([self.cache['v'], v_new], dim=1)
-        
+
         # Use full cached context for attention
         k = self.cache['k']
         v = self.cache['v']
@@ -591,7 +591,7 @@ Future work will extend these methods to multi-operation composition and scale t
   Device: CPU | Params: 1,060,992
   Steps: 0 -> 2000 | Batch: 32 | LR: 0.001
   Reversed: True | Loss masking: True | Scratchpad: True
-  
+
 
 Training from step 0 to 2000...
 Curriculum: phase 1/4 (max_digits=1)
@@ -624,7 +624,7 @@ Done! 263s (4.4 min) | Best: 6.0% | Steps: 2000
 if use_curriculum and curriculum_phase < len(cfg.curriculum_phases):
     phase_steps, phase_digits = cfg.curriculum_phases[curriculum_phase]
     steps_in_phase = global_step - curriculum_step_offset
-    
+
     # Transition criteria
     if steps_in_phase >= phase_steps:
         # Verify accuracy before advancing
@@ -646,7 +646,7 @@ def evaluate_per_digit(model, tok, cfg, op, per_digit_samples=20):
         correct = 0
         for _ in range(per_digit_samples):
             # Generate problem with exact digit length
-            expr, ans = generate_problem(op, digits, digits, 
+            expr, ans = generate_problem(op, digits, digits,
                                         reversed=cfg.use_reversed,
                                         scratchpad=cfg.use_scratchpad)
             # Model prediction
@@ -663,22 +663,22 @@ def evaluate_per_digit(model, tok, cfg, op, per_digit_samples=20):
 def auto_train(ops, target, budget, rounds, deep=False, test_hard=False):
     """Autonomous training: test all operations, train the weakest."""
     tok = MathTokenizer()
-    
+
     for round_num in range(1, rounds + 1):
         # Evaluate all operations
         accuracies = quick_eval_all(ops, tok)
-        
+
         # Find weakest operation below target
         weak_ops = {op: acc for op, acc in accuracies.items() if acc < target}
         if not weak_ops:
             break  # All operations reached target
-        
+
         weakest_op = min(weak_ops, key=weak_ops.get)
-        
+
         # Check checkpoint compatibility
         has_checkpoint = checkpoint_exists(weakest_op)
         resume = has_checkpoint and _checkpoint_matches_config(weakest_op, cfg)
-        
+
         # Train this operation
         train_specialist(weakest_op, steps=budget//len(ops),
                         resume=resume, deep=deep, test_hard=test_hard)

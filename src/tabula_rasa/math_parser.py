@@ -196,9 +196,7 @@ def _pad_digits(a: int, b: int) -> tuple[str, str, int]:
     return a_str.zfill(n), b_str.zfill(n), n
 
 
-def _column_add(
-    a_digit: int, b_digit: int, carry_in: int
-) -> tuple[int, int]:
+def _column_add(a_digit: int, b_digit: int, carry_in: int) -> tuple[int, int]:
     """Compute (carry_out, result_digit) for one column of addition."""
     total = a_digit + b_digit + carry_in
     return total // 10, total % 10
@@ -286,9 +284,7 @@ def verify_scratchpad(text: str) -> dict[str, Any]:
     return _verify_div_scratchpad(a, b, scratch_str)
 
 
-def _verify_add_scratchpad(
-    a: int, b: int, scratch: str, num_pairs: int
-) -> dict[str, Any]:
+def _verify_add_scratchpad(a: int, b: int, scratch: str, num_pairs: int) -> dict[str, Any]:
     """Verify scratchpad for addition (column-by-column)."""
     if len(scratch) % 2 != 0:
         return {
@@ -345,9 +341,7 @@ def _verify_add_scratchpad(
             # Extra column not covered by scratchpad — this is a final carry
             if carry != 0:
                 all_valid = False
-                errors.append(
-                    f"Missing final carry column: expected carry={carry}"
-                )
+                errors.append(f"Missing final carry column: expected carry={carry}")
 
         carry = carry_out
 
@@ -356,8 +350,7 @@ def _verify_add_scratchpad(
         # Model is missing the final carry column
         all_valid = False
         errors.append(
-            f"Missing column {num_digits}: expected carry={carry} "
-            f"(final carry-out not shown)"
+            f"Missing column {num_digits}: expected carry={carry} " f"(final carry-out not shown)"
         )
     elif carry != 0 and num_pairs > num_digits:
         # Final carry column exists — check it
@@ -385,9 +378,7 @@ def _verify_add_scratchpad(
     return {"valid": all_valid, "columns": columns, "errors": errors}
 
 
-def _verify_sub_scratchpad(
-    a: int, b: int, scratch: str, num_pairs: int
-) -> dict[str, Any]:
+def _verify_sub_scratchpad(a: int, b: int, scratch: str, num_pairs: int) -> dict[str, Any]:
     """Verify scratchpad for subtraction (column-by-column)."""
     if len(scratch) % 2 != 0:
         return {
@@ -438,9 +429,7 @@ def _verify_sub_scratchpad(
 
     if borrow != 0 and num_pairs == num_digits:
         all_valid = False
-        errors.append(
-            f"Missing final borrow column: expected borrow={borrow}"
-        )
+        errors.append(f"Missing final borrow column: expected borrow={borrow}")
 
     columns = [c for c in col_results if c is not None]
 
@@ -470,10 +459,7 @@ def _verify_mul_scratchpad(a: int, b: int, scratch: str) -> dict[str, Any]:
     return {
         "valid": False,
         "columns": [],
-        "errors": [
-            f"Multiplication: expected {expected_str}, "
-            f"got scratchpad '{scratch}'"
-        ],
+        "errors": [f"Multiplication: expected {expected_str}, " f"got scratchpad '{scratch}'"],
     }
 
 
@@ -502,10 +488,7 @@ def _verify_div_scratchpad(a: int, b: int, scratch: str) -> dict[str, Any]:
     return {
         "valid": False,
         "columns": [],
-        "errors": [
-            f"Division: expected {expected_str}, "
-            f"got scratchpad '{scratch}'"
-        ],
+        "errors": [f"Division: expected {expected_str}, " f"got scratchpad '{scratch}'"],
     }
 
 
@@ -547,11 +530,7 @@ def critique_output(model_output: str, problem: str) -> str:
         # Heuristic: if the part after '=' looks like a multi-pair scratchpad
         # (even length >= 4, all digits), try scratchpad verification first.
         # Otherwise fall through to standard equation verification.
-        is_likely_scratchpad = (
-            len(after_eq) >= 4
-            and len(after_eq) % 2 == 0
-            and after_eq.isdigit()
-        )
+        is_likely_scratchpad = len(after_eq) >= 4 and len(after_eq) % 2 == 0 and after_eq.isdigit()
 
         if is_likely_scratchpad:
             sp_result = verify_scratchpad(model_output)
@@ -602,9 +581,7 @@ def critique_output(model_output: str, problem: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def generate_curriculum_problems(
-    op: str, count: int, max_digits: int = 4
-) -> list[tuple[str, str]]:
+def generate_curriculum_problems(op: str, count: int, max_digits: int = 4) -> list[tuple[str, str]]:
     """Generate deterministic curriculum problems with known answers.
 
     This is a purely deterministic alternative to dataset-based problem
@@ -653,8 +630,16 @@ def generate_curriculum_problems(
         elif op == "*":
             digits_a = rng.randint(1, max_digits)
             digits_b = rng.randint(1, max(1, max_digits - 1))
-            a = rng.randint(10 ** (digits_a - 1), 10**digits_a - 1) if digits_a > 1 else rng.randint(1, 9)
-            b = rng.randint(10 ** (digits_b - 1), 10**digits_b - 1) if digits_b > 1 else rng.randint(1, 9)
+            a = (
+                rng.randint(10 ** (digits_a - 1), 10**digits_a - 1)
+                if digits_a > 1
+                else rng.randint(1, 9)
+            )
+            b = (
+                rng.randint(10 ** (digits_b - 1), 10**digits_b - 1)
+                if digits_b > 1
+                else rng.randint(1, 9)
+            )
             ans = a * b
         elif op == "/":
             b = rng.randint(1, 9)  # single-digit divisor for clean division

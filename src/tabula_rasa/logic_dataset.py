@@ -21,19 +21,18 @@ from typing import Optional
 import torch
 from torch.utils.data import Dataset
 
-
 # ── Problem Generation ───────────────────────────────────────────
 
 RELATIONS = {
-    '>': ('greater_than', lambda a, b: a > b),
-    '<': ('less_than', lambda a, b: a < b),
-    '>=': ('geq', lambda a, b: a >= b),
-    '<=': ('leq', lambda a, b: a <= b),
-    '==': ('equals', lambda a, b: a == b),
-    '!=': ('not_equal', lambda a, b: a != b),
+    ">": ("greater_than", lambda a, b: a > b),
+    "<": ("less_than", lambda a, b: a < b),
+    ">=": ("geq", lambda a, b: a >= b),
+    "<=": ("leq", lambda a, b: a <= b),
+    "==": ("equals", lambda a, b: a == b),
+    "!=": ("not_equal", lambda a, b: a != b),
 }
 
-VARIABLES = [chr(ord('A') + i) for i in range(10)]  # A through J
+VARIABLES = [chr(ord("A") + i) for i in range(10)]  # A through J
 VALUES = list(range(10))  # 0-9
 
 
@@ -44,27 +43,27 @@ def _assign_values(chain_length: int, relation: str) -> dict[str, int]:
     E.g., for A > B > C, assign A=5, B=3, C=1 so A>B and B>C both hold.
     """
     vals = {}
-    op = RELATIONS.get(relation, RELATIONS['>'])
+    op = RELATIONS.get(relation, RELATIONS[">"])
 
     remaining = list(VALUES)
     random.shuffle(remaining)
 
-    if relation in ('>', '>='):
+    if relation in (">", ">="):
         for i in range(chain_length + 1):
             var = VARIABLES[i]
             idx = len(remaining) - 1 - i  # Decreasing values
             if idx < 0:
                 idx = 0
             vals[var] = remaining[idx % len(remaining)]
-    elif relation in ('<', '<='):
+    elif relation in ("<", "<="):
         for i in range(chain_length + 1):
             var = VARIABLES[i]
             vals[var] = remaining[i % len(remaining)]
-    elif relation == '==':
+    elif relation == "==":
         same_val = remaining[0]
         for i in range(chain_length + 1):
             vals[VARIABLES[i]] = same_val
-    elif relation == '!=':
+    elif relation == "!=":
         for i in range(chain_length + 1):
             vals[VARIABLES[i]] = remaining[i % len(remaining)]
 
@@ -73,7 +72,7 @@ def _assign_values(chain_length: int, relation: str) -> dict[str, int]:
 
 def generate_logic_problem(
     chain_length: int = 2,
-    relation: str = '>',
+    relation: str = ">",
     p_false: float = 0.3,
     seed: Optional[int] = None,
 ) -> tuple[str, str]:
@@ -114,8 +113,7 @@ def generate_logic_problem(
         correct_answer = relation
     else:
         # Inverse relation
-        inverse_map = {'>': '<', '<': '>', '>=': '<=', '<=': '>=',
-                       '==': '!=', '!=': '=='}
+        inverse_map = {">": "<", "<": ">", ">=": "<=", "<=": ">=", "==": "!=", "!=": "=="}
         correct_answer = inverse_map.get(relation, relation)
 
     # Optionally generate a FALSE conclusion
@@ -139,10 +137,10 @@ def _build_logic_vocab() -> dict[str, int]:
 
     Tokens: A-J, 0-9, > < >= <= == != , ? and operator names.
     """
-    tokens = ['<PAD>', '<BOS>', '<EOS>', '<UNK>']
+    tokens = ["<PAD>", "<BOS>", "<EOS>", "<UNK>"]
     tokens += VARIABLES
-    tokens += list('0123456789')
-    tokens += ['>', '<', '>=', '<=', '==', '!=', ',', '?']
+    tokens += list("0123456789")
+    tokens += [">", "<", ">=", "<=", "==", "!=", ",", "?"]
     return {t: i for i, t in enumerate(tokens)}
 
 
@@ -154,21 +152,21 @@ def encode_logic(text: str, add_special: bool = True) -> list[int]:
     """Encode a logic expression to token IDs."""
     ids = []
     if add_special:
-        ids.append(_LOGIC_STOI['<BOS>'])
+        ids.append(_LOGIC_STOI["<BOS>"])
     i = 0
     while i < len(text):
         # Check multi-char tokens first
-        if i + 2 <= len(text) and text[i:i+2] in _LOGIC_STOI:
-            ids.append(_LOGIC_STOI[text[i:i+2]])
+        if i + 2 <= len(text) and text[i : i + 2] in _LOGIC_STOI:
+            ids.append(_LOGIC_STOI[text[i : i + 2]])
             i += 2
         elif text[i] in _LOGIC_STOI:
             ids.append(_LOGIC_STOI[text[i]])
             i += 1
         else:
-            ids.append(_LOGIC_STOI['<UNK>'])
+            ids.append(_LOGIC_STOI["<UNK>"])
             i += 1
     if add_special:
-        ids.append(_LOGIC_STOI['<EOS>'])
+        ids.append(_LOGIC_STOI["<EOS>"])
     return ids
 
 
@@ -176,11 +174,15 @@ def decode_logic(ids: list[int], skip_special: bool = True) -> str:
     """Decode token IDs back to text."""
     chars = []
     for i in ids:
-        if skip_special and i in (_LOGIC_STOI['<PAD>'], _LOGIC_STOI['<BOS>'],
-                                   _LOGIC_STOI['<EOS>'], _LOGIC_STOI['<UNK>']):
+        if skip_special and i in (
+            _LOGIC_STOI["<PAD>"],
+            _LOGIC_STOI["<BOS>"],
+            _LOGIC_STOI["<EOS>"],
+            _LOGIC_STOI["<UNK>"],
+        ):
             continue
-        chars.append(_LOGIC_ITOS.get(i, '?'))
-    return ''.join(chars)
+        chars.append(_LOGIC_ITOS.get(i, "?"))
+    return "".join(chars)
 
 
 # ── Dataset ──────────────────────────────────────────────────────
@@ -206,7 +208,7 @@ class LogicDataset(Dataset):
         self,
         num_samples: int = 1000,
         chain_length: int = 2,
-        relation: str = '>',
+        relation: str = ">",
         p_false: float = 0.3,
         max_seq_len: int = 32,
         seed: Optional[int] = None,
@@ -216,7 +218,7 @@ class LogicDataset(Dataset):
         self.relation = relation
         self.p_false = p_false
         self.max_seq_len = max_seq_len
-        self.pad_id = _LOGIC_STOI['<PAD>']
+        self.pad_id = _LOGIC_STOI["<PAD>"]
 
         self.samples: list[tuple[list[int], list[int]]] = []
         for i in range(num_samples):
@@ -253,7 +255,7 @@ def main():
     print("=" * 50)
 
     for chain_len in [2, 3]:
-        for rel in ['>', '<', '>=', '==']:
+        for rel in [">", "<", ">=", "=="]:
             print(f"\nChain length={chain_len}, relation={rel}:")
             for i in range(5):
                 prompt, answer = generate_logic_problem(chain_len, rel, p_false=0.2, seed=i + 100)

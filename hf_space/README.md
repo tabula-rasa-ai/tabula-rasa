@@ -13,7 +13,7 @@ short_description: A transformer that learned arithmetic from scratch
 
 # Tabula Rasa — Interactive Math Demo
 
-A transformer trained from a **blank slate** to solve arithmetic. 
+A transformer trained from a **blank slate** to solve arithmetic.
 No pretraining. No transfer learning. No symbolic algebra. Just pure gradient descent.
 
 ## How to Deploy

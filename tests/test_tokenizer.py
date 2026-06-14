@@ -1,8 +1,10 @@
 """Tests for MathTokenizer — encode, decode, carry-digit tokens."""
-import pytest
-import tempfile
+
 import json
+import tempfile
 from pathlib import Path
+
+import pytest
 
 from tabula_rasa.tokenizer import MathTokenizer
 
@@ -31,8 +33,8 @@ class TestTokenizerEncode:
         ids = tok.encode("12+34=", add_special_tokens=False)
         assert len(ids) > 0
         # "12" is a 2-char token (longest-match), then "+", then "34", then "="
-        assert tok.itos[ids[0]] == '12'
-        assert tok.itos[ids[-1]] == '='
+        assert tok.itos[ids[0]] == "12"
+        assert tok.itos[ids[-1]] == "="
 
     def test_encode_with_special(self, tok):
         """Encoding with special tokens adds BOS and EOS."""
@@ -55,7 +57,7 @@ class TestTokenizerEncode:
     def test_encode_full_expression(self, tok):
         """Full expression encodes correctly."""
         ids = tok.encode("12+34=0406", add_special_tokens=False)
-        decoded = ''.join(tok.itos[i] for i in ids)
+        decoded = "".join(tok.itos[i] for i in ids)
         assert decoded == "12+34=0406"
 
     def test_encode_unknown_char(self, tok):
@@ -86,13 +88,13 @@ class TestTokenizerDecode:
 
     def test_decode_skips_special(self, tok):
         """decode with skip_special=True removes special tokens."""
-        ids = [tok.bos_id, tok.stoi['5'], tok.stoi['+'], tok.stoi['3'], tok.eos_id]
+        ids = [tok.bos_id, tok.stoi["5"], tok.stoi["+"], tok.stoi["3"], tok.eos_id]
         decoded = tok.decode(ids, skip_special=True)
         assert decoded == "5+3"
 
     def test_decode_with_special(self, tok):
         """decode with skip_special=False retains special tokens."""
-        ids = [tok.bos_id, tok.stoi['5'], tok.stoi['+'], tok.stoi['3']]
+        ids = [tok.bos_id, tok.stoi["5"], tok.stoi["+"], tok.stoi["3"]]
         decoded = tok.decode(ids, skip_special=False)
         assert tok.itos[tok.bos_id] in decoded
 
@@ -113,7 +115,7 @@ class TestTokenizerDecode:
 class TestTokenizerSaveLoad:
     def test_save_load_roundtrip(self, tok):
         """Save then load produces an equivalent tokenizer."""
-        with tempfile.NamedTemporaryFile(suffix='.json', delete=False, mode='w') as f:
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=False, mode="w") as f:
             path = f.name
         try:
             tok.save(path)
@@ -138,72 +140,72 @@ class TestTokenizerEdgeCases:
         """Spaces in expressions are preserved."""
         text = "12 + 34 = 46"
         ids = tok.encode(text, add_special_tokens=False)
-        decoded = ''.join(tok.itos[i] for i in ids)
+        decoded = "".join(tok.itos[i] for i in ids)
         assert decoded == text
 
     def test_leading_spaces(self, tok):
         """Leading spaces are handled."""
         ids = tok.encode("  5+3=8", add_special_tokens=False)
-        decoded = ''.join(tok.itos[i] for i in ids)
+        decoded = "".join(tok.itos[i] for i in ids)
         assert decoded == "  5+3=8"
 
     def test_trailing_spaces(self, tok):
         """Trailing spaces are handled."""
         ids = tok.encode("5+3=8  ", add_special_tokens=False)
-        decoded = ''.join(tok.itos[i] for i in ids)
+        decoded = "".join(tok.itos[i] for i in ids)
         assert decoded == "5+3=8  "
 
     def test_no_space_around_op(self, tok):
         """No-space formatting works."""
         text = "10-4=6"
         ids = tok.encode(text, add_special_tokens=False)
-        decoded = ''.join(tok.itos[i] for i in ids)
+        decoded = "".join(tok.itos[i] for i in ids)
         assert decoded == text
 
     def test_multiple_operators(self, tok):
         """Chained operations tokenize correctly."""
         text = "2+3+4=9"
         ids = tok.encode(text, add_special_tokens=False)
-        decoded = ''.join(tok.itos[i] for i in ids)
+        decoded = "".join(tok.itos[i] for i in ids)
         assert decoded == text
 
     def test_negative_result(self, tok):
         """Expressions with negative results work (minus sign handled)."""
         text = "3-5=-2"
         ids = tok.encode(text, add_special_tokens=False)
-        decoded = ''.join(tok.itos[i] for i in ids)
+        decoded = "".join(tok.itos[i] for i in ids)
         assert decoded == text
 
     def test_decimal_numbers(self, tok):
         """Decimal point is a valid token."""
         text = "3.5+2.5=6.0"
         ids = tok.encode(text, add_special_tokens=False)
-        decoded = ''.join(tok.itos[i] for i in ids)
+        decoded = "".join(tok.itos[i] for i in ids)
         assert decoded == text
 
     def test_percent(self, tok):
         """Percent sign is a valid token."""
         text = "10%5=0"
-        assert '%' in tok.stoi
+        assert "%" in tok.stoi
         ids = tok.encode(text, add_special_tokens=False)
-        decoded = ''.join(tok.itos[i] for i in ids)
+        decoded = "".join(tok.itos[i] for i in ids)
         assert decoded == text
 
     def test_all_operations(self, tok):
         """All math operations tokenize correctly."""
-        for op, text in [('+', "5+3=8"), ('-', "10-4=6"), ('*', "3*4=12"), ('/', "8/2=4")]:
+        for op, text in [("+", "5+3=8"), ("-", "10-4=6"), ("*", "3*4=12"), ("/", "8/2=4")]:
             ids = tok.encode(text, add_special_tokens=False)
-            decoded = ''.join(tok.itos[i] for i in ids)
+            decoded = "".join(tok.itos[i] for i in ids)
             assert decoded == text, f"Failed for {op}: got '{decoded}'"
 
     def test_parentheses(self, tok):
         """Parentheses are valid tokens."""
         text = "(1+2)*3=9"
         ids = tok.encode(text, add_special_tokens=False)
-        decoded = ''.join(tok.itos[i] for i in ids)
+        decoded = "".join(tok.itos[i] for i in ids)
         assert decoded == text
 
     def test_multiline_equal(self, tok):
         """'=' token is always present."""
-        assert '=' in tok.stoi
-        assert tok.stoi['='] > 0
+        assert "=" in tok.stoi
+        assert tok.stoi["="] > 0

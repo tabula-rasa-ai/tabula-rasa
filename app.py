@@ -24,15 +24,15 @@ if SRC_DIR not in sys.path:
 import torch
 
 from tabula_rasa.config import Config
-from tabula_rasa.tokenizer import MathTokenizer
-from tabula_rasa.model import MathTransformer, count_parameters
 from tabula_rasa.math_parser import (
-    parse_expression,
+    OPS,
     evaluate,
+    parse_expression,
     verify_equation,
     verify_scratchpad,
-    OPS,
 )
+from tabula_rasa.model import MathTransformer, count_parameters
+from tabula_rasa.tokenizer import MathTokenizer
 
 # ── Global model (loaded once) ─────────────────────────────────────
 
@@ -61,20 +61,14 @@ def load_model() -> tuple[MathTransformer, MathTokenizer]:
 
             # Try safetensors first, fall back to .bin
             try:
-                ckpt_path = hf_hub_download(
-                    repo_id=model_repo, filename="model.safetensors"
-                )
+                ckpt_path = hf_hub_download(repo_id=model_repo, filename="model.safetensors")
                 state_dict = st_load(ckpt_path)
             except Exception:
-                ckpt_path = hf_hub_download(
-                    repo_id=model_repo, filename="pytorch_model.bin"
-                )
+                ckpt_path = hf_hub_download(repo_id=model_repo, filename="pytorch_model.bin")
                 state_dict = torch.load(ckpt_path, map_location="cpu", weights_only=True)
 
             # Load config from hub
-            config_path = hf_hub_download(
-                repo_id=model_repo, filename="config.json"
-            )
+            config_path = hf_hub_download(repo_id=model_repo, filename="config.json")
             with open(config_path) as f:
                 hub_config = json.load(f)
 
@@ -225,13 +219,17 @@ def solve_expression(expression: str, temperature: float = 0.0) -> dict:
 
     t0 = torch.cuda.Event(enable_timing=True) if torch.cuda.is_available() else None
     import time
+
     start = time.time()
 
     try:
         with torch.no_grad():
             raw = model.generate(
-                tok, expr, max_new_tokens=15,
-                temperature=temperature, top_k=0 if temperature == 0 else 5,
+                tok,
+                expr,
+                max_new_tokens=15,
+                temperature=temperature,
+                top_k=0 if temperature == 0 else 5,
             )
     except Exception as e:
         return {"expression": expr, "error": f"Generation failed: {e}"}
@@ -274,9 +272,7 @@ def solve_expression(expression: str, temperature: float = 0.0) -> dict:
 OP_SYMBOLS = {"add": "+", "sub": "-", "mul": "*", "div": "/"}
 
 
-def generate_random_problem(
-    operation: str = "add", max_digits: int = 4
-) -> str:
+def generate_random_problem(operation: str = "add", max_digits: int = 4) -> str:
     """Generate a random math problem string.
 
     Args:
@@ -295,7 +291,7 @@ def generate_random_problem(
         b = random.randint(0, 10**d2 - 1) if d2 > 1 else random.randint(0, 9)
     elif op == "sub":
         b = random.randint(0, 10**d2 - 1)
-        a = b + random.randint(1, 10**max(d1, d2) - 1)  # ensure non-negative
+        a = b + random.randint(1, 10 ** max(d1, d2) - 1)  # ensure non-negative
     elif op == "mul":
         a = random.randint(0, 10**d1 - 1)
         b = random.randint(0, 10**d2 - 1)
@@ -312,6 +308,7 @@ def generate_random_problem(
 # ═══════════════════════════════════════════════════════════════════
 # Gradio Interface
 # ═══════════════════════════════════════════════════════════════════
+
 
 def build_gradio_interface():
     """Build and return the Gradio Blocks interface."""
@@ -389,9 +386,7 @@ def build_gradio_interface():
             with gr.Column(scale=1):
                 time_display = gr.Textbox(label="Time", interactive=False)
             with gr.Column(scale=1):
-                accuracy_display = gr.Textbox(
-                    label="Model Checkpoint", interactive=False
-                )
+                accuracy_display = gr.Textbox(label="Model Checkpoint", interactive=False)
 
         scratchpad_display = gr.Textbox(
             label="Raw Scratchpad Trace",
@@ -409,8 +404,10 @@ def build_gradio_interface():
 
         def _digits_to_int(d: str) -> int:
             mapping = {
-                "1 digit": 1, "2 digits": 2,
-                "3 digits": 3, "4 digits": 4,
+                "1 digit": 1,
+                "2 digits": 2,
+                "3 digits": 3,
+                "4 digits": 4,
             }
             return mapping.get(d, 2)
 
@@ -422,11 +419,7 @@ def build_gradio_interface():
             result = solve_expression(expression)
 
             if "error" in result:
-                html = (
-                    f'<div class="result-box incorrect">'
-                    f'  Error: {result["error"]}'
-                    f'</div>'
-                )
+                html = f'<div class="result-box incorrect">' f'  Error: {result["error"]}' f"</div>"
                 return html, "", "", "", ""
 
             # Build result HTML
@@ -452,9 +445,9 @@ def build_gradio_interface():
                 f'<div class="result-box {css_class}">'
                 f'  <div style="font-size: 1.8em; font-weight: 600;">'
                 f'    {result["expression"]} = {display_val} {scratchpad_badge}'
-                f'  </div>'
+                f"  </div>"
                 f'  <div style="margin-top: 0.5em;">{status}{expected_str}</div>'
-                f'</div>'
+                f"</div>"
             )
 
             time_str = f"{result['time_ms']}ms"
@@ -490,29 +483,25 @@ def build_gradio_interface():
         expr_input.submit(
             fn=do_solve,
             inputs=[expr_input],
-            outputs=[result_html, time_display, accuracy_display,
-                     scratchpad_display],
+            outputs=[result_html, time_display, accuracy_display, scratchpad_display],
         )
 
         solve_btn.click(
             fn=do_solve,
             inputs=[expr_input],
-            outputs=[result_html, time_display, accuracy_display,
-                     scratchpad_display],
+            outputs=[result_html, time_display, accuracy_display, scratchpad_display],
         )
 
         random_btn.click(
             fn=do_random,
             inputs=[operation, difficulty],
-            outputs=[expr_input, result_html, time_display,
-                     accuracy_display, scratchpad_display],
+            outputs=[expr_input, result_html, time_display, accuracy_display, scratchpad_display],
         )
 
         clear_btn.click(
             fn=do_clear,
             inputs=[],
-            outputs=[expr_input, result_html, time_display,
-                     accuracy_display, scratchpad_display],
+            outputs=[expr_input, result_html, time_display, accuracy_display, scratchpad_display],
         )
 
         # Toggle scratchpad visibility

@@ -13,20 +13,30 @@ Protocol:
 7. Train multiplication with merged Fisher
 8. Measure all three tasks
 """
-import sys, json, time
+
+import json
+import sys
+import time
 from pathlib import Path
+
 import torch
 from torch.utils.data import DataLoader
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from tabula_rasa.config import Config
-from tabula_rasa.tokenizer import MathTokenizer
-from tabula_rasa.model import MathTransformer
-from train_specialist import evaluate, evaluate_per_digit, generate_problem, SpecialistDataset, _get_lr
 from egefalos.online_ewc import OnlineEWC
+from tabula_rasa.config import Config
+from tabula_rasa.model import MathTransformer
+from tabula_rasa.tokenizer import MathTokenizer
+from train_specialist import (
+    SpecialistDataset,
+    _get_lr,
+    evaluate,
+    evaluate_per_digit,
+    generate_problem,
+)
 
-DEVICE = 'cpu'
-ADD_DIR = Path('specialists/math/add')
+DEVICE = "cpu"
+ADD_DIR = Path("specialists/math/add")
 LAMBDA_EWC = 500
 BASE_GAMMA = 0.9
 MIN_GAMMA = 0.3
@@ -34,11 +44,13 @@ STEPS = 2000
 
 
 def load_clean_model(tok):
-    checkpoint = torch.load(ADD_DIR / 'best_original.pt', map_location='cpu', weights_only=True)
-    sd = checkpoint.get('model_state_dict', checkpoint)
-    d_model = sd['token_embedding.weight'].shape[1]
-    n_layers = len([k for k in sd if k.startswith('layers.') and k.endswith('.attention.wq.weight')])
-    d_ff = sd['layers.0.feed_forward.w1.weight'].shape[0] if n_layers > 0 else 256
+    checkpoint = torch.load(ADD_DIR / "best_original.pt", map_location="cpu", weights_only=True)
+    sd = checkpoint.get("model_state_dict", checkpoint)
+    d_model = sd["token_embedding.weight"].shape[1]
+    n_layers = len(
+        [k for k in sd if k.startswith("layers.") and k.endswith(".attention.wq.weight")]
+    )
+    d_ff = sd["layers.0.feed_forward.w1.weight"].shape[0] if n_layers > 0 else 256
     n_heads = {128: 4, 64: 2, 96: 4, 256: 8}.get(d_model, max(1, d_model // 32))
     cfg = Config()
     cfg.vocab_size = tok.vocab_size
@@ -66,8 +78,8 @@ def compute_fresh_fisher(model, tok, cfg, num_samples=100):
             fisher[name] = torch.zeros_like(param)
     samples = 0
     for _ in range(num_samples):
-        expr, ans = generate_problem('add', 1, 1, reversed=True, scratchpad=True)
-        full = f'{expr}={ans}'
+        expr, ans = generate_problem("add", 1, 1, reversed=True, scratchpad=True)
+        full = f"{expr}={ans}"
         ids = tok.encode(full, add_special_tokens=True)
         ids_t = torch.tensor([ids])
         model.zero_grad()
@@ -84,7 +96,9 @@ def compute_fresh_fisher(model, tok, cfg, num_samples=100):
 
 
 def train_task(model, cfg, tok, operation, ewc, lambda_val, steps=STEPS):
-    optimizer = torch.optim.AdamW(model.parameters(), lr=0.001, weight_decay=0.01, betas=(0.9, 0.999))
+    optimizer = torch.optim.AdamW(
+        model.parameters(), lr=0.001, weight_decay=0.01, betas=(0.9, 0.999)
+    )
     cfg.max_digits = 1
     cfg.min_digits = 1
     ds = SpecialistDataset(tok, operation, cfg)
@@ -102,14 +116,14 @@ def train_task(model, cfg, tok, operation, ewc, lambda_val, steps=STEPS):
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
             for pg in optimizer.param_groups:
-                pg['lr'] = 0.001 * _get_lr(global_step, 200, steps, 'cosine')
+                pg["lr"] = 0.001 * _get_lr(global_step, 200, steps, "cosine")
             global_step += 1
     return global_step
 
 
 def measure_all(model, tok, cfg):
     model.eval()
-    return {op: evaluate(model, tok, cfg, op, num=100) for op in ['add', 'sub', 'mul']}
+    return {op: evaluate(model, tok, cfg, op, num=100) for op in ["add", "sub", "mul"]}
 
 
 def main():
@@ -137,7 +151,7 @@ def main():
 
     # ─── Step 2: Train Subtraction ───
     print("\n--- Step 2: Train Subtraction (task 2) ---")
-    train_task(model, cfg, tok, 'sub', ewc, LAMBDA_EWC)
+    train_task(model, cfg, tok, "sub", ewc, LAMBDA_EWC)
     after_sub = measure_all(model, tok, cfg)
     print(f"  After sub: add={after_sub['add']:.0f}%, sub={after_sub['sub']:.0f}%")
 
@@ -152,7 +166,9 @@ def main():
     print(f"  Fisher (sub) norm: {sub_norm:.4f}")
     print(f"  Overlap (cosine sim): {overlap:.4f}")
     print(f"  Gamma adaptive: {gamma_adaptive:.4f} (from base {BASE_GAMMA})")
-    print(f"  Interpretation: {'High overlap — similar tasks' if overlap > 0.5 else 'Low overlap — divergent tasks'}")
+    print(
+        f"  Interpretation: {'High overlap — similar tasks' if overlap > 0.5 else 'Low overlap — divergent tasks'}"
+    )
 
     # ─── Step 4: Merge with ADAPTIVE gamma ───
     print("\n--- Step 4: Merge Fisher with Adaptive Gamma ---")
@@ -160,14 +176,18 @@ def main():
     ewc.merge_fisher(fisher_sub, gamma=gamma_adaptive)
     ewc.save_anchor_weights()
     new_norm = sum(v.norm().item() for v in ewc.fisher_dict.values())
-    print(f"  Fisher norm: {old_norm:.4f} → {new_norm:.4f} (change: {((new_norm/old_norm)-1)*100:+.1f}%)")
+    print(
+        f"  Fisher norm: {old_norm:.4f} → {new_norm:.4f} (change: {((new_norm/old_norm)-1)*100:+.1f}%)"
+    )
     print(f"  Task count: {ewc.task_count}")
 
     # ─── Step 5: Train Multiplication ───
     print("\n--- Step 5: Train Multiplication (task 3) ---")
-    train_task(model, cfg, tok, 'mul', ewc, LAMBDA_EWC)
+    train_task(model, cfg, tok, "mul", ewc, LAMBDA_EWC)
     after_mul = measure_all(model, tok, cfg)
-    print(f"  After mul: add={after_mul['add']:.0f}%, sub={after_mul['sub']:.0f}%, mul={after_mul['mul']:.0f}%")
+    print(
+        f"  After mul: add={after_mul['add']:.0f}%, sub={after_mul['sub']:.0f}%, mul={after_mul['mul']:.0f}%"
+    )
 
     # ─── Summary ───
     print(f"\n{'=' * 60}")
@@ -175,11 +195,17 @@ def main():
     print(f"{'=' * 60}")
     print(f"  {'Step':<20} | {'Add':>6} | {'Sub':>6} | {'Mul':>6} | {'Fisher':>8} | {'γ':>6}")
     print(f"  {'-'*20}-+-{'-'*6}-+-{'-'*6}-+-{'-'*6}-+-{'-'*8}-+-{'-'*6}")
-    print(f"  {'After Addition':<20} | {before['add']:>5.0f}% | {'-':>6} | {'-':>6} | {add_norm:>8.2f} | {'-':>6}")
-    print(f"  {'After Subtraction':<20} | {after_sub['add']:>5.0f}% | {after_sub['sub']:>5.0f}% | {'-':>6} | {sub_norm:>8.2f} | {BASE_GAMMA:>6}")
-    print(f"  {'After Mul (adaptive γ)':<20} | {after_mul['add']:>5.0f}% | {after_mul['sub']:>5.0f}% | {after_mul['mul']:>5.0f}% | {new_norm:>8.2f} | {gamma_adaptive:>6.3f}")
+    print(
+        f"  {'After Addition':<20} | {before['add']:>5.0f}% | {'-':>6} | {'-':>6} | {add_norm:>8.2f} | {'-':>6}"
+    )
+    print(
+        f"  {'After Subtraction':<20} | {after_sub['add']:>5.0f}% | {after_sub['sub']:>5.0f}% | {'-':>6} | {sub_norm:>8.2f} | {BASE_GAMMA:>6}"
+    )
+    print(
+        f"  {'After Mul (adaptive γ)':<20} | {after_mul['add']:>5.0f}% | {after_mul['sub']:>5.0f}% | {after_mul['mul']:>5.0f}% | {new_norm:>8.2f} | {gamma_adaptive:>6.3f}"
+    )
 
-    all_ok = all(after_mul[op] > 85 for op in ['add', 'sub'])
+    all_ok = all(after_mul[op] > 85 for op in ["add", "sub"])
     print(f"\n  {'=' * 50}")
     if all_ok:
         print(f"  ✅ ADAPTIVE GAMMA WORKS: All tasks >85%")
@@ -192,31 +218,33 @@ def main():
     # ─── Compare with fixed gamma ───
     print(f"\n  Comparison with fixed γ={BASE_GAMMA}:")
     print(f"    Fixed γ:   add=3%,  sub=0%,  mul=34% (from three-task experiment)")
-    print(f"    Adaptive γ: add={after_mul['add']:.0f}%, sub={after_mul['sub']:.0f}%, mul={after_mul['mul']:.0f}%")
-    improvement = after_mul['add'] - 3
+    print(
+        f"    Adaptive γ: add={after_mul['add']:.0f}%, sub={after_mul['sub']:.0f}%, mul={after_mul['mul']:.0f}%"
+    )
+    improvement = after_mul["add"] - 3
     print(f"    Improvement in add: +{improvement:.0f}pp")
 
     # ─── Save ───
     results = {
-        'add_before': before['add'],
-        'add_after_sub': after_sub['add'],
-        'sub_after_sub': after_sub['sub'],
-        'add_after_mul': after_mul['add'],
-        'sub_after_mul': after_mul['sub'],
-        'mul_after_mul': after_mul['mul'],
-        'fisher_add_norm': add_norm,
-        'fisher_sub_norm': sub_norm,
-        'fisher_merged_norm': new_norm,
-        'overlap': overlap,
-        'gamma_adaptive': gamma_adaptive,
-        'gamma_base': BASE_GAMMA,
-        'all_tasks_above_85': all_ok,
+        "add_before": before["add"],
+        "add_after_sub": after_sub["add"],
+        "sub_after_sub": after_sub["sub"],
+        "add_after_mul": after_mul["add"],
+        "sub_after_mul": after_mul["sub"],
+        "mul_after_mul": after_mul["mul"],
+        "fisher_add_norm": add_norm,
+        "fisher_sub_norm": sub_norm,
+        "fisher_merged_norm": new_norm,
+        "overlap": overlap,
+        "gamma_adaptive": gamma_adaptive,
+        "gamma_base": BASE_GAMMA,
+        "all_tasks_above_85": all_ok,
     }
-    output_path = Path('experiments/adaptive_gamma_results.json')
-    with open(output_path, 'w') as f:
+    output_path = Path("experiments/adaptive_gamma_results.json")
+    with open(output_path, "w") as f:
         json.dump(results, f, indent=2)
     print(f"\n  Results: {output_path}")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

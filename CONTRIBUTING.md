@@ -260,7 +260,58 @@ Each column's carry and digit are encoded as a single token (e.g., "04" = carry=
 Online EWC merges Fisher matrices with exponential decay (γ=0.9), so the penalty term stays O(1) regardless of task count. Standard EWC stores one Fisher per task and sums them — O(N) memory. Online EWC is optimal within model capacity.
 
 ### Why CPU-first?
-Accessibility. Tabula Rasa should be runnable by anyone with a laptop. GPU support exists (`train_gpu.py`, `--device cuda`) but all core claims are validated on CPU.
+Accessibility. Tabula Rasa should be runnable by anyone with a laptop. GPU support exists (`--device cuda`) but all core claims are validated on CPU.
+
+## Adding a New Tool to the Tool-Use System
+
+Specialists can call external tools via `[[tool_name(args)]]` syntax. This is a great first contribution.
+
+### Step 1: Write the tool function
+
+In `egefalos/tool_use.py`, add a function:
+
+```python
+def get_weather(city: str) -> str:
+    \"\"\"Get current weather for a city. Usage: [[get_weather(London)]]\"\"\"
+    # Your implementation here
+    return f"Sunny, 22°C in {city}"
+```
+
+### Step 2: Register it
+
+Add your function to the `TOOL_REGISTRY` dict in the same file:
+
+```python
+TOOL_REGISTRY = {
+    'calculator': calculator,
+    'python': execute_python,
+    'today': get_today,
+    'random': get_random,
+    'help': tool_help,
+    'weather': get_weather,     # <-- your tool
+}
+```
+
+### Step 3: Test it
+
+```python
+from egefalos.tool_use import ToolUse
+tools = ToolUse()
+result = tools.execute("What's the weather in [[weather(Tokyo)]]?")
+print(result)  # "What's the weather in Sunny, 22°C in Tokyo?"
+```
+
+### Rules for tools
+1. **Pure functions** — no side effects, same input = same output
+2. **Short execution** — under 1 second (tools run during generation)
+3. **Safe defaults** — never call destructive APIs without confirmation
+4. **String in, string out** — tools receive and return strings (parsed from the `[[tool(args)]]` syntax)
+5. **Nested parentheses** — automatically handled by the balanced-paren parser. `[[python(print(sum(range(10))))]]` works correctly
+
+### Reference
+- Tool parser: `egefalos/tool_use.py` — `_find_tool_calls()` uses balanced-paren parsing
+- Tool example: `calculator` evaluates math expressions via `math_parser`
+- Tool example: `python` runs code in a sandboxed subprocess
 
 ---
 

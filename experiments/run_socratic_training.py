@@ -11,39 +11,46 @@ Usage:
 (3000-step baseline takes ~15 min on CPU. For faster testing,
 set N_BASELINE_STEPS=500 but expect low baseline accuracy.)
 """
-import sys, os, json, time, random, math
+
+import json
+import math
+import os
+import random
+import sys
+import time
 from pathlib import Path
 
 # Path hack: this script lives in experiments/, src/ is one level up
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim import AdamW
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader, Dataset
 
 from tabula_rasa.config import Config
-from tabula_rasa.tokenizer import MathTokenizer
-from tabula_rasa.model import MathTransformer, count_parameters
 from tabula_rasa.dataset import generate_problem
+from tabula_rasa.model import MathTransformer, count_parameters
+from tabula_rasa.tokenizer import MathTokenizer
 
 # ─── Constants ───────────────────────────────────────────────────────
-DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 SEED = 42
-N_BASELINE_STEPS = 3000         # Steps for baseline training (3000 = ~100% 1-digit)
-N_PROBLEMS = 100              # Problems for evaluation
-N_SOCRATIC_ROUNDS = 5         # Dialogue rounds per problem
-N_SOCRATIC_PROBLEMS = 100     # Problems to run Socratic dialogue on
-N_FINETUNE_EPOCHS = 3         # Fine-tuning epochs on Socratic data
-BASELINE_DIR = Path('specialists') / 'socratic_baseline'
-OUTPUT_PATH = Path('experiments') / 'socratic_training_results.json'
+N_BASELINE_STEPS = 3000  # Steps for baseline training (3000 = ~100% 1-digit)
+N_PROBLEMS = 100  # Problems for evaluation
+N_SOCRATIC_ROUNDS = 5  # Dialogue rounds per problem
+N_SOCRATIC_PROBLEMS = 100  # Problems to run Socratic dialogue on
+N_FINETUNE_EPOCHS = 3  # Fine-tuning epochs on Socratic data
+BASELINE_DIR = Path("specialists") / "socratic_baseline"
+OUTPUT_PATH = Path("experiments") / "socratic_training_results.json"
 
 torch.manual_seed(SEED)
 random.seed(SEED)
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────
+
 
 def make_model(tok, cfg_overrides=None):
     """Create a fresh model with standard config."""
@@ -61,82 +68,86 @@ def save_checkpoint(model, tok, path):
     """Save model and tokenizer to a directory."""
     path = Path(path)
     path.mkdir(parents=True, exist_ok=True)
-    torch.save({'model_state_dict': model.state_dict()}, path / 'final.pt')
-    tok.save(str(path / 'tokenizer.json'))
+    torch.save({"model_state_dict": model.state_dict()}, path / "final.pt")
+    tok.save(str(path / "tokenizer.json"))
     print(f'  [*] Model saved to {path / "final.pt"}')
 
 
 def load_checkpoint(tok, path):
     """Load model from a checkpoint directory."""
     path = Path(path)
-    ckpt = path / 'final.pt'
+    ckpt = path / "final.pt"
     if not ckpt.exists():
-        ckpt = path / 'best.pt'
+        ckpt = path / "best.pt"
     if not ckpt.exists():
         return None
     model, cfg = make_model(tok)
     state = torch.load(ckpt, map_location=DEVICE, weights_only=True)
-    model.load_state_dict(state['model_state_dict'])
+    model.load_state_dict(state["model_state_dict"])
     model.eval()
-    print(f'  [*] Model loaded from {ckpt}')
+    print(f"  [*] Model loaded from {ckpt}")
     return model
 
 
 @torch.no_grad()
-def evaluate_accuracy(model, tok, num_problems=N_PROBLEMS, max_digits=4,
-                      temperature=0.3, top_k=3, verbose=False):
+def evaluate_accuracy(
+    model, tok, num_problems=N_PROBLEMS, max_digits=4, temperature=0.3, top_k=3, verbose=False
+):
     """Evaluate accuracy on random addition problems."""
     model.eval()
     correct = 0
     total = num_problems
     for i in range(total):
         expr, ans = generate_problem(1, max_digits)
-        prompt = f'{expr}='
-        out = model.generate(tok, prompt, max_new_tokens=10,
-                             temperature=temperature, top_k=top_k)
-        if '=' in out:
-            pred = out.split('=')[-1].strip()
-            pred = ''.join(c for c in pred if c.isdigit() or c == '-')
+        prompt = f"{expr}="
+        out = model.generate(tok, prompt, max_new_tokens=10, temperature=temperature, top_k=top_k)
+        if "=" in out:
+            pred = out.split("=")[-1].strip()
+            pred = "".join(c for c in pred if c.isdigit() or c == "-")
             if pred == ans:
                 correct += 1
             elif verbose and i < 5:
-                print(f'    FAIL: {expr}={ans} | pred={pred} | raw={repr(out)}')
+                print(f"    FAIL: {expr}={ans} | pred={pred} | raw={repr(out)}")
     acc = correct / total * 100
-    print(f'  Accuracy: {acc:.1f}% ({correct}/{total})')
+    print(f"  Accuracy: {acc:.1f}% ({correct}/{total})")
     return acc
 
 
 # ─── Step 1: Train baseline model ────────────────────────────────────
 
+
 def train_baseline(tok, steps=N_BASELINE_STEPS):
     """Train a baseline addition model from scratch."""
-    print(f'  Step 1: Training Baseline Model (addition, {steps} steps)')
-    print('=' * 60)
+    print(f"  Step 1: Training Baseline Model (addition, {steps} steps)")
+    print("=" * 60)
 
-    model, cfg = make_model(tok, {
-        'max_steps': steps,
-        'batch_size': 32,
-        'learning_rate': 0.001,
-        'eval_every': 500,
-        'train_samples': 5000,
-        'eval_samples': 100,
-        'max_digits': 4,
-        'min_digits': 1,
-        'use_reversed': True,
-        'use_scratchpad': True,
-        'use_loss_masking': True,
-        'max_seq_len': 32,
-    })
-    print(f'  Model params: {count_parameters(model):,}')
+    model, cfg = make_model(
+        tok,
+        {
+            "max_steps": steps,
+            "batch_size": 32,
+            "learning_rate": 0.001,
+            "eval_every": 500,
+            "train_samples": 5000,
+            "eval_samples": 100,
+            "max_digits": 4,
+            "min_digits": 1,
+            "use_reversed": True,
+            "use_scratchpad": True,
+            "use_loss_masking": True,
+            "max_seq_len": 32,
+        },
+    )
+    print(f"  Model params: {count_parameters(model):,}")
 
-    optimizer = AdamW(model.parameters(), lr=cfg.learning_rate,
-                      weight_decay=cfg.weight_decay)
+    optimizer = AdamW(model.parameters(), lr=cfg.learning_rate, weight_decay=cfg.weight_decay)
 
     # Simple linear LR schedule
     def lr_lambda(s):
         if s < 100:
             return s / 100.0
         return max(0.05, 1.0 - (s - 100) / (steps - 100))
+
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
 
     model.train()
@@ -147,21 +158,21 @@ def train_baseline(tok, steps=N_BASELINE_STEPS):
         optimizer.zero_grad()
         for _ in range(cfg.batch_size):
             expr, ans = generate_problem(1, 4)
-            text = f'{expr}={ans}'
+            text = f"{expr}={ans}"
             ids = tok.encode(text, add_special_tokens=True)
             if len(ids) > cfg.max_seq_len:
-                ids = ids[:cfg.max_seq_len]
+                ids = ids[: cfg.max_seq_len]
             padded = ids + [tok.pad_id] * (cfg.max_seq_len - len(ids))
             x = torch.tensor(padded[:-1], dtype=torch.long).unsqueeze(0).to(DEVICE)
             y_target = torch.tensor(padded[1:], dtype=torch.long).unsqueeze(0).to(DEVICE)
 
             # Loss masking: only compute loss on answer portion (after '=')
             if cfg.use_loss_masking:
-                eq_id = tok.stoi['=']
+                eq_id = tok.stoi["="]
                 eq_positions = (y_target == eq_id).nonzero(as_tuple=True)[1]
                 if len(eq_positions) > 0:
                     eq_pos = eq_positions[0].item()
-                    y_target[0, :eq_pos + 1] = -100
+                    y_target[0, : eq_pos + 1] = -100
 
             _, loss, _ = model(x, y_target)
             loss.backward()
@@ -175,10 +186,12 @@ def train_baseline(tok, steps=N_BASELINE_STEPS):
         if (step + 1) % max(1, steps // 10) == 0:
             lr_now = scheduler.get_last_lr()[0]
             elapsed = time.time() - t0
-            print(f'    Step {step + 1}/{steps} | loss={total_loss / max(1, n_batch):.4f} | lr={lr_now:.6f} | {elapsed:.0f}s')
+            print(
+                f"    Step {step + 1}/{steps} | loss={total_loss / max(1, n_batch):.4f} | lr={lr_now:.6f} | {elapsed:.0f}s"
+            )
 
     elapsed = time.time() - t0
-    print(f'  Training complete in {elapsed:.0f}s')
+    print(f"  Training complete in {elapsed:.0f}s")
 
     # Save baseline
     save_checkpoint(model, tok, BASELINE_DIR)
@@ -187,28 +200,29 @@ def train_baseline(tok, steps=N_BASELINE_STEPS):
 
 # ─── Step 2: Evaluate baseline ───────────────────────────────────────
 
+
 def evaluate_baseline(model, tok):
     """Evaluate baseline model accuracy."""
-    print('\n' + '=' * 60)
-    print('  Step 2: Evaluating Baseline Accuracy')
-    print('=' * 60)
+    print("\n" + "=" * 60)
+    print("  Step 2: Evaluating Baseline Accuracy")
+    print("=" * 60)
     acc = evaluate_accuracy(model, tok, num_problems=N_PROBLEMS, verbose=True)
     return acc
 
 
 # ─── Step 3: Socratic Dialogue ───────────────────────────────────────
 
+
 @torch.no_grad()
 def solve_problem(model, tok, expr):
     """Solve a single problem and return the predicted answer."""
-    prompt = f'{expr}='
-    out = model.generate(tok, prompt, max_new_tokens=10,
-                         temperature=0.3, top_k=3)
-    if '=' in out:
-        pred = out.split('=')[-1].strip()
-        pred = ''.join(c for c in pred if c.isdigit() or c == '-')
+    prompt = f"{expr}="
+    out = model.generate(tok, prompt, max_new_tokens=10, temperature=0.3, top_k=3)
+    if "=" in out:
+        pred = out.split("=")[-1].strip()
+        pred = "".join(c for c in pred if c.isdigit() or c == "-")
         return pred
-    return ''
+    return ""
 
 
 @torch.no_grad()
@@ -226,14 +240,13 @@ def critique_answer(model, tok, expr, answer):
         f"If correct, repeat the answer.\n"
         f"Correct answer:"
     )
-    out = model.generate(tok, prompt, max_new_tokens=10,
-                         temperature=0.2, top_k=3)
+    out = model.generate(tok, prompt, max_new_tokens=10, temperature=0.2, top_k=3)
     # Extract answer text
-    if '=' in out:
-        pred = out.split('=')[-1].strip()
+    if "=" in out:
+        pred = out.split("=")[-1].strip()
     else:
         pred = out.strip()
-    pred = ''.join(c for c in pred if c.isdigit() or c == '-')
+    pred = "".join(c for c in pred if c.isdigit() or c == "-")
     if pred:
         return pred
     return answer  # fallback
@@ -262,9 +275,9 @@ def socratic_dialogue(model_a, model_b, tok, expr, true_answer, rounds=N_SOCRATI
     ans_b = solve_problem(model_b, tok, expr)
 
     if not ans_a:
-        ans_a = ans_b if ans_b else ''
+        ans_a = ans_b if ans_b else ""
     if not ans_b:
-        ans_b = ans_a if ans_a else ''
+        ans_b = ans_a if ans_a else ""
 
     answers_a, answers_b = [ans_a], [ans_b]
 
@@ -281,11 +294,13 @@ def socratic_dialogue(model_a, model_b, tok, expr, true_answer, rounds=N_SOCRATI
         answers_b.append(new_b if new_b else answers_b[-1])
 
         # Telemetry: track accuracy at this round
-        round_correct_a = (answers_a[-1] == true_answer)
-        round_correct_b = (answers_b[-1] == true_answer)
+        round_correct_a = answers_a[-1] == true_answer
+        round_correct_b = answers_b[-1] == true_answer
         # Use whichever answer we'd converge to (both if they agree)
-        best_round_answer = answers_a[-1] if answers_a[-1] == answers_b[-1] else (
-            answers_a[-1] if round_correct_a else answers_b[-1]
+        best_round_answer = (
+            answers_a[-1]
+            if answers_a[-1] == answers_b[-1]
+            else (answers_a[-1] if round_correct_a else answers_b[-1])
         )
         round_accuracies.append(best_round_answer == true_answer)
 
@@ -295,25 +310,29 @@ def socratic_dialogue(model_a, model_b, tok, expr, true_answer, rounds=N_SOCRATI
         converged = True
     else:
         # Use answer from the model whose critiques converged more
-        socratic_answer = answers_b[-1] if answers_a.count(answers_a[-1]) < answers_b.count(answers_b[-1]) else answers_a[-1]
+        socratic_answer = (
+            answers_b[-1]
+            if answers_a.count(answers_a[-1]) < answers_b.count(answers_b[-1])
+            else answers_a[-1]
+        )
         converged = False
 
-    baseline_correct = (ans_a == true_answer)
-    socratic_correct = (socratic_answer == true_answer)
+    baseline_correct = ans_a == true_answer
+    socratic_correct = socratic_answer == true_answer
     improved = (not baseline_correct) and socratic_correct
 
     return {
-        'expr': expr,
-        'true_answer': true_answer,
-        'model_a_answer': ans_a,
-        'model_b_answer': ans_b,
-        'socratic_answer': socratic_answer,
-        'converged': converged,
-        'baseline_correct': baseline_correct,
-        'socratic_correct': socratic_correct,
-        'improved': improved,
-        'round_accuracies': round_accuracies,  # per-round correctness
-        'rounds_used': len(round_accuracies) + 1,  # initial + rounds
+        "expr": expr,
+        "true_answer": true_answer,
+        "model_a_answer": ans_a,
+        "model_b_answer": ans_b,
+        "socratic_answer": socratic_answer,
+        "converged": converged,
+        "baseline_correct": baseline_correct,
+        "socratic_correct": socratic_correct,
+        "improved": improved,
+        "round_accuracies": round_accuracies,  # per-round correctness
+        "rounds_used": len(round_accuracies) + 1,  # initial + rounds
     }
 
 
@@ -327,9 +346,9 @@ def run_socratic_dialogue(model, tok):
         results: list of dialogue result dicts
         training_data: list of (expr, true_answer) pairs where Socratic improved
     """
-    print('\n' + '=' * 60)
-    print('  Step 3: Running Socratic Dialogue')
-    print('=' * 60)
+    print("\n" + "=" * 60)
+    print("  Step 3: Running Socratic Dialogue")
+    print("=" * 60)
 
     # Use the same model — create a second instance with same weights
     model_a = model
@@ -351,74 +370,78 @@ def run_socratic_dialogue(model, tok):
 
     t0 = time.time()
     for i, (expr, ans) in enumerate(problems):
-        result = socratic_dialogue(model_a, model_b, tok, expr, ans,
-                                    rounds=N_SOCRATIC_ROUNDS)
+        result = socratic_dialogue(model_a, model_b, tok, expr, ans, rounds=N_SOCRATIC_ROUNDS)
         results.append(result)
 
-        if result['baseline_correct']:
+        if result["baseline_correct"]:
             n_correct_baseline += 1
-        if result['socratic_correct']:
+        if result["socratic_correct"]:
             n_correct_socratic += 1
-        if result['improved']:
+        if result["improved"]:
             n_improved += 1
-        if result['converged']:
+        if result["converged"]:
             n_converged += 1
 
         if (i + 1) % 20 == 0:
             elapsed = time.time() - t0
-            print(f'    [{i + 1}/{N_SOCRATIC_PROBLEMS}] baseline_acc={(n_correct_baseline / (i+1)) * 100:.1f}% '
-                  f'socratic_acc={(n_correct_socratic / (i+1)) * 100:.1f}% '
-                  f'improved={n_improved} converged={n_converged} | {elapsed:.0f}s')
+            print(
+                f"    [{i + 1}/{N_SOCRATIC_PROBLEMS}] baseline_acc={(n_correct_baseline / (i+1)) * 100:.1f}% "
+                f"socratic_acc={(n_correct_socratic / (i+1)) * 100:.1f}% "
+                f"improved={n_improved} converged={n_converged} | {elapsed:.0f}s"
+            )
 
     elapsed = time.time() - t0
     baseline_acc = n_correct_baseline / N_SOCRATIC_PROBLEMS * 100
     socratic_acc = n_correct_socratic / N_SOCRATIC_PROBLEMS * 100
-    print(f'\n  Socratic dialogue complete ({elapsed:.0f}s):')
-    print(f'    Baseline accuracy on dialogue set: {baseline_acc:.1f}%')
-    print(f'    Socratic accuracy on dialogue set: {socratic_acc:.1f}%')
-    print(f'    Problems improved by Socratic: {n_improved}/{N_SOCRATIC_PROBLEMS}')
-    print(f'    Dialogues converged: {n_converged}/{N_SOCRATIC_PROBLEMS}')
+    print(f"\n  Socratic dialogue complete ({elapsed:.0f}s):")
+    print(f"    Baseline accuracy on dialogue set: {baseline_acc:.1f}%")
+    print(f"    Socratic accuracy on dialogue set: {socratic_acc:.1f}%")
+    print(f"    Problems improved by Socratic: {n_improved}/{N_SOCRATIC_PROBLEMS}")
+    print(f"    Dialogues converged: {n_converged}/{N_SOCRATIC_PROBLEMS}")
 
     # Per-round accuracy telemetry
-    max_rounds = max(len(r.get('round_accuracies', [])) for r in results) if results else 0
+    max_rounds = max(len(r.get("round_accuracies", [])) for r in results) if results else 0
     if max_rounds > 0:
-        print(f'\n  Per-round accuracy (across all dialogues):')
+        print(f"\n  Per-round accuracy (across all dialogues):")
         for r in range(max_rounds):
-            accurate = sum(1 for res in results
-                          if r < len(res.get('round_accuracies', []))
-                          and res['round_accuracies'][r])
-            total = sum(1 for res in results if r < len(res.get('round_accuracies', [])))
+            accurate = sum(
+                1
+                for res in results
+                if r < len(res.get("round_accuracies", [])) and res["round_accuracies"][r]
+            )
+            total = sum(1 for res in results if r < len(res.get("round_accuracies", [])))
             pct = accurate / total * 100 if total > 0 else 0
-            print(f'    Round {r + 1}: {accurate}/{total} = {pct:.1f}%')
+            print(f"    Round {r + 1}: {accurate}/{total} = {pct:.1f}%")
 
     # Build training data: problems where Socratic improved the answer
     training_data = []
     for r in results:
-        if r['improved']:
-            training_data.append((r['expr'], r['socratic_answer']))
+        if r["improved"]:
+            training_data.append((r["expr"], r["socratic_answer"]))
 
-    print(f'    Training examples from Socratic: {len(training_data)}')
+    print(f"    Training examples from Socratic: {len(training_data)}")
     return results, training_data
 
 
 # ─── Step 4: Fine-tune on Socratic data ──────────────────────────────
 
+
 def finetune_socratic(model, tok, training_data):
     """Fine-tune the baseline model on Socratic-refined predictions."""
-    print('\n' + '=' * 60)
-    print('  Step 4: Fine-tuning on Socratic-Refined Predictions')
-    print('=' * 60)
+    print("\n" + "=" * 60)
+    print("  Step 4: Fine-tuning on Socratic-Refined Predictions")
+    print("=" * 60)
 
     if not training_data:
-        print('  No training data generated. Skipping fine-tuning.')
+        print("  No training data generated. Skipping fine-tuning.")
         return model
 
-    print(f'  Training examples: {len(training_data)}')
-    print(f'  Epochs: {N_FINETUNE_EPOCHS}')
+    print(f"  Training examples: {len(training_data)}")
+    print(f"  Epochs: {N_FINETUNE_EPOCHS}")
 
     optimizer = AdamW(model.parameters(), lr=5e-5, weight_decay=0.01)
     cfg = Config()
-    cfg.max_seq_len = tok.max_seq_len if hasattr(tok, 'max_seq_len') else 32
+    cfg.max_seq_len = tok.max_seq_len if hasattr(tok, "max_seq_len") else 32
 
     model.train()
     t0 = time.time()
@@ -428,20 +451,20 @@ def finetune_socratic(model, tok, training_data):
         epoch_loss = 0.0
         n = 0
         for expr, ans in training_data:
-            text = f'{expr}={ans}'
+            text = f"{expr}={ans}"
             ids = tok.encode(text, add_special_tokens=True)
             if len(ids) > cfg.max_seq_len:
-                ids = ids[:cfg.max_seq_len]
+                ids = ids[: cfg.max_seq_len]
             padded = ids + [tok.pad_id] * (cfg.max_seq_len - len(ids))
             x = torch.tensor(padded[:-1], dtype=torch.long).unsqueeze(0).to(DEVICE)
             y_target = torch.tensor(padded[1:], dtype=torch.long).unsqueeze(0).to(DEVICE)
 
             # Loss masking: only compute loss on answer portion
-            eq_id = tok.stoi['=']
+            eq_id = tok.stoi["="]
             eq_positions = (y_target == eq_id).nonzero(as_tuple=True)[1]
             if len(eq_positions) > 0:
                 eq_pos = eq_positions[0].item()
-                y_target[0, :eq_pos + 1] = -100
+                y_target[0, : eq_pos + 1] = -100
 
             optimizer.zero_grad()
             _, loss, _ = model(x, y_target)
@@ -452,38 +475,40 @@ def finetune_socratic(model, tok, training_data):
             n += 1
             total_pairs += 1
 
-        print(f'    Epoch {epoch + 1}: loss={epoch_loss / max(1, n):.4f}')
+        print(f"    Epoch {epoch + 1}: loss={epoch_loss / max(1, n):.4f}")
 
     elapsed = time.time() - t0
-    print(f'  Fine-tuning complete in {elapsed:.0f}s ({total_pairs} pairs)')
+    print(f"  Fine-tuning complete in {elapsed:.0f}s ({total_pairs} pairs)")
     return model
 
 
 # ─── Step 5: Evaluate Socratic-tuned model ───────────────────────────
 
+
 def evaluate_socratic(model, tok):
     """Evaluate the Socratic-tuned model accuracy."""
-    print('\n' + '=' * 60)
-    print('  Step 5: Evaluating Socratic-Tuned Model Accuracy')
-    print('=' * 60)
+    print("\n" + "=" * 60)
+    print("  Step 5: Evaluating Socratic-Tuned Model Accuracy")
+    print("=" * 60)
     acc = evaluate_accuracy(model, tok, num_problems=N_PROBLEMS, verbose=True)
     return acc
 
 
 # ─── Main Experiment ─────────────────────────────────────────────────
 
-def main():
-    print('=' * 60)
-    print('  Socratic Training Experiment')
-    print('  Validating whether Socratic dialogue improves accuracy')
-    print(f'  Device: {DEVICE}')
-    print('=' * 60)
 
-    timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
+def main():
+    print("=" * 60)
+    print("  Socratic Training Experiment")
+    print("  Validating whether Socratic dialogue improves accuracy")
+    print(f"  Device: {DEVICE}")
+    print("=" * 60)
+
+    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
 
     # Build tokenizer
     tok = MathTokenizer()
-    print(f'\n  Tokenizer vocab: {tok.vocab_size} tokens')
+    print(f"\n  Tokenizer vocab: {tok.vocab_size} tokens")
 
     # Step 1: Train baseline
     model = train_baseline(tok)
@@ -495,57 +520,61 @@ def main():
     results, training_data = run_socratic_dialogue(model, tok)
 
     # Save dialogue results
-    dialogue_log_path = Path('experiments') / 'socratic_dialogue_log.json'
-    with open(dialogue_log_path, 'w') as f:
-        json.dump({
-            'timestamp': timestamp,
-            'n_problems': N_SOCRATIC_PROBLEMS,
-            'n_rounds': N_SOCRATIC_ROUNDS,
-            'results': results,
-        }, f, indent=2)
-    print(f'  Dialogue log saved to {dialogue_log_path}')
+    dialogue_log_path = Path("experiments") / "socratic_dialogue_log.json"
+    with open(dialogue_log_path, "w") as f:
+        json.dump(
+            {
+                "timestamp": timestamp,
+                "n_problems": N_SOCRATIC_PROBLEMS,
+                "n_rounds": N_SOCRATIC_ROUNDS,
+                "results": results,
+            },
+            f,
+            indent=2,
+        )
+    print(f"  Dialogue log saved to {dialogue_log_path}")
 
     # Step 4: Fine-tune on Socratic data
     model = finetune_socratic(model, tok, training_data)
 
     # Save Socratic-tuned model
-    save_checkpoint(model, tok, BASELINE_DIR / 'socratic_tuned')
+    save_checkpoint(model, tok, BASELINE_DIR / "socratic_tuned")
 
     # Step 5: Evaluate Socratic-tuned model
     socratic_acc = evaluate_socratic(model, tok)
 
     # Step 6: Compare and save results
     improvement = socratic_acc - baseline_acc
-    print('\n' + '=' * 60)
-    print('  RESULTS COMPARISON')
-    print('=' * 60)
-    print(f'  Baseline accuracy:  {baseline_acc:.1f}%')
-    print(f'  Socratic accuracy:  {socratic_acc:.1f}%')
-    print(f'  Improvement:        {improvement:+.1f}%')
-    print(f'  Problems evaluated: {N_PROBLEMS}')
-    print(f'  Socratic problems:  {N_SOCRATIC_PROBLEMS}')
-    print(f'  Socratic rounds:    {N_SOCRATIC_ROUNDS}')
-    print(f'  Training examples:  {len(training_data)}')
-    print('=' * 60)
+    print("\n" + "=" * 60)
+    print("  RESULTS COMPARISON")
+    print("=" * 60)
+    print(f"  Baseline accuracy:  {baseline_acc:.1f}%")
+    print(f"  Socratic accuracy:  {socratic_acc:.1f}%")
+    print(f"  Improvement:        {improvement:+.1f}%")
+    print(f"  Problems evaluated: {N_PROBLEMS}")
+    print(f"  Socratic problems:  {N_SOCRATIC_PROBLEMS}")
+    print(f"  Socratic rounds:    {N_SOCRATIC_ROUNDS}")
+    print(f"  Training examples:  {len(training_data)}")
+    print("=" * 60)
 
     # Save results
     results_data = {
-        'baseline_accuracy': round(baseline_acc, 2),
-        'socratic_accuracy': round(socratic_acc, 2),
-        'improvement': round(improvement, 2),
-        'n_problems': N_PROBLEMS,
-        'n_socratic_rounds': N_SOCRATIC_ROUNDS,
-        'n_socratic_problems': N_SOCRATIC_PROBLEMS,
-        'n_training_examples': len(training_data),
-        'timestamp': timestamp,
-        'device': DEVICE,
+        "baseline_accuracy": round(baseline_acc, 2),
+        "socratic_accuracy": round(socratic_acc, 2),
+        "improvement": round(improvement, 2),
+        "n_problems": N_PROBLEMS,
+        "n_socratic_rounds": N_SOCRATIC_ROUNDS,
+        "n_socratic_problems": N_SOCRATIC_PROBLEMS,
+        "n_training_examples": len(training_data),
+        "timestamp": timestamp,
+        "device": DEVICE,
     }
-    with open(OUTPUT_PATH, 'w') as f:
+    with open(OUTPUT_PATH, "w") as f:
         json.dump(results_data, f, indent=2)
-    print(f'\n  Results saved to {OUTPUT_PATH}')
+    print(f"\n  Results saved to {OUTPUT_PATH}")
 
     return results_data
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

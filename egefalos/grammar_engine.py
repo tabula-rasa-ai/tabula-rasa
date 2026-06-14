@@ -38,7 +38,7 @@ POS_TAGS = {
     'these': 'DET', 'those': 'DET', 'some': 'DET', 'any': 'DET', 'every': 'DET',
     'all': 'DET', 'no': 'DET', 'each': 'DET', 'my': 'DET', 'his': 'DET',
     'her': 'DET', 'its': 'DET', 'our': 'DET', 'their': 'DET',
-    
+
     # Prepositions
     'on': 'PREP', 'in': 'PREP', 'under': 'PREP', 'above': 'PREP', 'below': 'PREP',
     'beside': 'PREP', 'between': 'PREP', 'behind': 'PREP', 'in front of': 'PREP',
@@ -47,19 +47,19 @@ POS_TAGS = {
     'inside': 'PREP', 'outside': 'PREP', 'across': 'PREP', 'along': 'PREP',
     'around': 'PREP', 'at': 'PREP', 'by': 'PREP', 'from': 'PREP', 'into': 'PREP',
     'of': 'PREP', 'to': 'PREP', 'during': 'PREP', 'before': 'PREP', 'after': 'PREP',
-    
+
     # Conjunctions
     'and': 'CONJ', 'or': 'CONJ', 'but': 'CONJ', 'so': 'CONJ', 'because': 'CONJ',
     'although': 'CONJ', 'while': 'CONJ', 'if': 'CONJ', 'when': 'CONJ', 'unless': 'CONJ',
     'since': 'CONJ', 'therefore': 'CONJ', 'however': 'CONJ', 'moreover': 'CONJ',
-    
+
     # Auxiliary verbs
     'is': 'AUX', 'are': 'AUX', 'was': 'AUX', 'were': 'AUX', 'be': 'AUX',
     'been': 'AUX', 'being': 'AUX', 'has': 'AUX', 'have': 'AUX', 'had': 'AUX',
     'do': 'AUX', 'does': 'AUX', 'did': 'AUX', 'will': 'AUX', 'would': 'AUX',
     'can': 'AUX', 'could': 'AUX', 'shall': 'AUX', 'should': 'AUX', 'may': 'AUX',
     'might': 'AUX', 'must': 'AUX',
-    
+
     # Common nouns (basic)
     'apple': 'NOUN', 'apples': 'NOUN', 'ball': 'NOUN', 'balls': 'NOUN',
     'sun': 'NOUN', 'water': 'NOUN', 'moon': 'NOUN', 'tree': 'NOUN', 'trees': 'NOUN',
@@ -73,7 +73,7 @@ POS_TAGS = {
     'woman': 'NOUN', 'women': 'NOUN', 'person': 'NOUN', 'people': 'NOUN',
     'Socrates': 'NOUN', 'human': 'NOUN', 'humanity': 'NOUN', 'truth': 'NOUN',
     'virtue': 'NOUN', 'knowledge': 'NOUN', 'wisdom': 'NOUN',
-    
+
     # Common adjectives
     'red': 'ADJ', 'round': 'ADJ', 'hot': 'ADJ', 'liquid': 'ADJ', 'bright': 'ADJ',
     'tall': 'ADJ', 'small': 'ADJ', 'slimy': 'ADJ', 'colorful': 'ADJ', 'strong': 'ADJ',
@@ -82,7 +82,7 @@ POS_TAGS = {
     'heavy': 'ADJ', 'light': 'ADJ', 'fast': 'ADJ', 'cold': 'ADJ', 'warm': 'ADJ',
     'deep': 'ADJ', 'big': 'ADJ', 'small': 'ADJ', 'large': 'ADJ', 'tiny': 'ADJ',
     'beautiful': 'ADJ', 'ugly': 'ADJ', 'happy': 'ADJ', 'sad': 'ADJ',
-    
+
     # Common verbs
     'fall': 'VERB', 'falls': 'VERB', 'fell': 'VERB', 'fallen': 'VERB',
     'roll': 'VERB', 'rolls': 'VERB', 'rolled': 'VERB',
@@ -160,50 +160,50 @@ def pos_tag(token: str) -> str:
 
 def check_subject_verb_agreement(sentence: str) -> float:
     """Check if the subject and verb agree in number.
-    
+
     Returns:
         -1.0 (violation) to +1.0 (perfect agreement)
     """
     tokens = tokenize_sentence(sentence)
     if len(tokens) < 3:
         return 0.0  # Too short to judge
-    
+
     # Find the first noun + verb pair after DET
     found_subject = None
     found_verb = None
-    
+
     i = 0
     while i < len(tokens):
         t = tokens[i].lower().strip('.,;!?')
         tag = POS_TAGS.get(t, 'UNKNOWN')
-        
+
         if tag == 'DET' and found_subject is None:
             i += 1
             continue
-        
+
         if tag == 'NOUN' and found_subject is None:
             found_subject = t
             i += 1
             continue
-        
+
         if tag in ('VERB', 'AUX') and found_subject is not None and found_verb is None:
             found_verb = t
             break
-        
+
         i += 1
-    
+
     if found_subject is None or found_verb is None:
         return 0.0  # Can't determine
-    
+
     # Check agreement
     subj_plural = found_subject in PLURAL_NOUNS
     verb_singular = found_verb in SINGULAR_VERBS
     verb_plural = found_verb in PLURAL_VERBS
-    
+
     # "Socrates is" — treat proper nouns as singular
     if found_subject[0].isupper() and found_subject not in PLURAL_NOUNS:
         subj_plural = False
-    
+
     if subj_plural and verb_plural:
         return 1.0  # "The apples fall" ✓
     elif not subj_plural and verb_singular:
@@ -215,7 +215,7 @@ def check_subject_verb_agreement(sentence: str) -> float:
         if found_verb not in ('be',):
             return -0.5
         return 0.0
-    
+
     return 0.0
 
 
@@ -225,34 +225,34 @@ def check_subject_verb_agreement(sentence: str) -> float:
 
 def check_det_noun_agreement(sentence: str) -> float:
     """Check determiners agree with noun number.
-    
+
     'a/an' → singular nouns only
     'these/those' → plural nouns only
-    
+
     Returns:
         -1.0 (violation) to +1.0 (perfect)
     """
     tokens = tokenize_sentence(sentence)
     if len(tokens) < 2:
         return 0.0
-    
+
     score = 1.0
     for i in range(len(tokens) - 1):
         t = tokens[i].lower()
         next_t = tokens[i + 1].lower().strip('.,;!?')
-        
+
         # 'a'/'an' must be followed by singular noun
         if t in ('a', 'an') and next_t in PLURAL_NOUNS:
             score = min(score, -1.0)
-        
+
         # 'these'/'those' must be followed by plural noun
         if t in ('these', 'those') and next_t not in PLURAL_NOUNS and next_t in POS_TAGS and POS_TAGS[next_t] == 'NOUN':
             score = min(score, -1.0)
-        
+
         # 'every'/'each' must be followed by singular noun
         if t in ('each', 'every') and next_t in PLURAL_NOUNS:
             score = min(score, -1.0)
-    
+
     return score
 
 
@@ -262,17 +262,17 @@ def check_det_noun_agreement(sentence: str) -> float:
 
 def check_sentence_structure(sentence: str) -> float:
     """Check that the sentence has a basic NP VP structure.
-    
+
     Returns:
         -1.0 (structureless) to +1.0 (well-formed)
     """
     tokens = tokenize_sentence(sentence)
     if len(tokens) < 2:
         return -1.0  # Too short
-    
+
     has_noun = any(POS_TAGS.get(t.lower().strip('.,;!?'), 'UNKNOWN') == 'NOUN' for t in tokens)
     has_verb = any(POS_TAGS.get(t.lower().strip('.,;!?'), 'UNKNOWN') in ('VERB', 'AUX') for t in tokens)
-    
+
     if has_noun and has_verb:
         return 1.0
     elif has_noun or has_verb:
@@ -287,22 +287,22 @@ def check_sentence_structure(sentence: str) -> float:
 
 def check_punctuation(sentence: str) -> float:
     """Check basic punctuation rules.
-    
+
     Returns:
         -1.0 to +1.0
     """
     stripped = sentence.strip()
     if not stripped:
         return -1.0
-    
+
     score = 0.0
-    
+
     # Must end with . ! or ?
     if any(stripped.endswith(p) for p in ['.', '!', '?']):
         score += 0.5
     else:
         score -= 0.3
-    
+
     # Check for comma before coordinating conjunction joining sentences
     tokens = tokenize_sentence(stripped)
     for i, t in enumerate(tokens):
@@ -312,7 +312,7 @@ def check_punctuation(sentence: str) -> float:
                 score += 0.3
             elif len(tokens) > 3:
                 score -= 0.1  # Missing comma in compound sentence
-    
+
     return max(-1.0, min(1.0, score))
 
 
@@ -334,48 +334,48 @@ def check_capitalization(sentence: str) -> float:
 # RULE 6: Long-Distance Dependency Score (Value Head Intuition Target)
 # ═════════════════════════════════════════════════════════════════════
 # This is what the Value Head should learn to predict.
-# A sentence starting with "Although..." commits to a comma and 
+# A sentence starting with "Although..." commits to a comma and
 # contrastive clause within ~10 tokens.
 
 def score_long_distance_structure(sentence: str) -> float:
     """Score the structural commitment of long-distance dependencies.
-    
-    High score = the sentence has opened and properly closed 
+
+    High score = the sentence has opened and properly closed
     structural commitments (subordinate clauses, conjunctions, etc.)
-    
+
     Returns:
         -1.0 to +1.0
     """
     tokens = tokenize_sentence(sentence)
     if len(tokens) < 4:
         return 0.0
-    
+
     score = 0.0
     open_commitments = 0
     closed_commitments = 0
-    
+
     # Track subordinating conjunctions that open dependencies
     opens_subordinate = {'although', 'though', 'while', 'whereas',
                          'because', 'since', 'when', 'if', 'unless'}
-    
+
     # Track coordinating conjunctions that close dependencies
     closes_coordinate = {'and', 'but', 'or', 'so', 'yet', 'for', 'nor'}
-    
+
     for i, t in enumerate(tokens):
         t_lower = t.lower().strip(',')
-        
+
         if t_lower in opens_subordinate:
             open_commitments += 1
             # Check if there's a comma within 10 tokens
             future_tokens = tokens[i+1:i+11]
             if any(',' in ft or ft == ',' for ft in future_tokens):
                 closed_commitments += 1
-        
+
         if t_lower in closes_coordinate and i > 0:
             # A coordinating conjunction after a comma closes a commitment
             if tokens[i-1].endswith(',') or tokens[i-1] == ',':
                 closed_commitments += 1
-    
+
     if open_commitments == 0:
         score = 0.5  # Simple sentences are fine
     elif closed_commitments >= open_commitments:
@@ -384,7 +384,7 @@ def score_long_distance_structure(sentence: str) -> float:
         score = 0.3  # Partially closed
     else:
         score = -0.5  # Opened commitment never closed
-    
+
     return score
 
 
@@ -394,13 +394,13 @@ def score_long_distance_structure(sentence: str) -> float:
 
 def grammar_score(sentence: str, weights: dict = None) -> float:
     """Compute the overall grammaticality score for a sentence.
-    
+
     Combines all grammar rules with configurable weights.
-    
+
     Args:
         sentence: The sentence to evaluate
         weights: Dict of rule_name->weight (default: equal weights)
-    
+
     Returns:
         float: -1 (completely ungrammatical) to +1 (perfect)
     """
@@ -413,7 +413,7 @@ def grammar_score(sentence: str, weights: dict = None) -> float:
             'capitalization': 0.10,
             'long_distance': 0.05,
         }
-    
+
     scores = {
         'subject_verb': check_subject_verb_agreement(sentence),
         'det_noun': check_det_noun_agreement(sentence),
@@ -422,7 +422,7 @@ def grammar_score(sentence: str, weights: dict = None) -> float:
         'capitalization': check_capitalization(sentence),
         'long_distance': score_long_distance_structure(sentence),
     }
-    
+
     total = sum(scores[k] * weights.get(k, 0) for k in scores)
     return max(-1.0, min(1.0, total))
 
@@ -435,29 +435,29 @@ def grammar_score(sentence: str, weights: dict = None) -> float:
 
 def check_z3_consistency(sentence: str, concept_text: str) -> float:
     """Check if a sentence is logically consistent with its source concept.
-    
+
     Uses the Z3-based logic verifier to detect contradictions.
     For example, if the concept says [ENT:apple][PROP:red] but the
     sentence says "The blue apple", Z3 detects the contradiction.
-    
+
     Args:
         sentence: Generated sentence
         concept_text: The source concept in [TAG:value] format
-    
+
     Returns:
         float: -1.0 (contradiction) to +1.0 (consistent)
     """
     try:
         from egefalos.logic_verifier import LogicVerifier
         verifier = LogicVerifier()
-        
+
         # Build TRLD format: concept as premise, sentence as conclusion
         # Check if sentence follows from the concept
         premises = concept_text
         result = verifier.verify_trld(
             f"[PREMISE:{premises}] [CONCLUSION:{sentence}]"
         )
-        
+
         if result and result.get('valid') is True:
             return 1.0
         elif result and result.get('valid') is False:
@@ -475,13 +475,13 @@ def check_z3_consistency(sentence: str, concept_text: str) -> float:
 
 def make_grammar_rule_checker(mode: str = 'score'):
     """Create a grammar rule function compatible with the MCTS module.
-    
+
     The MCTS module expects functions with signature:
         rule_fn(text: str, check: str = 'score') -> float
-    
+
     Args:
-        mode: 'score' or 'validity' 
-    
+        mode: 'score' or 'validity'
+
     Returns:
         Function that computes grammar score
     """
@@ -518,7 +518,7 @@ if __name__ == '__main__':
         ("The children learn quickly.", "Correct plural"),
         ("Socrates is a human who thinks.", "Correct complex"),
     ]
-    
+
     print('Grammar Engine Tests:\n')
     for sentence, desc in tests:
         score = grammar_score(sentence)
@@ -527,13 +527,13 @@ if __name__ == '__main__':
         punct = check_punctuation(sentence)
         cap = check_capitalization(sentence)
         ld = score_long_distance_structure(sentence)
-        
+
         print(f'  {desc}:')
         print(f'    "{sentence}"')
         print(f'    Overall: {score:+.2f} | SV:{subj_v:+.1f} Struct:{struct:+.1f} '
               f'Punct:{punct:+.1f} Cap:{cap:+.1f} LD:{ld:+.1f}')
         print()
-    
+
     # Z3 test
     print('Z3 Consistency Test:')
     concept = "[CONCEPT:[ENT:apple][PROP:red][ACT:fall]]"
