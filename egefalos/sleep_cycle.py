@@ -23,7 +23,7 @@ from tabula_rasa.model import MathTransformer
 from tabula_rasa.config import Config
 from tabula_rasa.tokenizer import MathTokenizer
 from egefalos.online_ewc import OnlineEWC
-from egefalos.hippocampus import get_unconsolidated, get_stats, mark_consolidated, decay_memories
+from egefalos.hippocampus import get_unconsolidated, get_stats, mark_consolidated, decay_memories, get_old_memories
 
 
 def consolidate_sleep_cycle(
@@ -97,13 +97,22 @@ def consolidate_sleep_cycle(
         ewc.load(ewc_path)
         print(f"  [Sleep] Loaded EWC from {ewc_path} ({ewc.task_count} prior tasks)")
 
-    # Get unconsolidated experiences
+    # Get unconsolidated experiences (sorted by surprise DESC)
     experiences = get_unconsolidated(limit=num_samples)
     if not experiences:
         print("  [Sleep] No unconsolidated experiences. Nothing to do.")
         return
 
     print(f"  [Sleep] Loaded {len(experiences)} high-surprise experiences")
+
+    # Also sample consolidated long-term memories with PER weighting
+    try:
+        legacy_replay = get_old_memories(limit=num_samples // 2, tier='longterm', use_per=True)
+        if legacy_replay:
+            print(f"  [Sleep] PER replay: {len(legacy_replay)} long-term memories (error-weighted)")
+            experiences.extend(legacy_replay)
+    except Exception as e:
+        print(f"  [Sleep] PER replay skipped: {e}")
 
     # Tokenize experiences into training batches
     input_ids_list = []
