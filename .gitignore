@@ -62,3 +62,7 @@ upload_assets.py
 # Experiment checkpoints
 experiments/ewc_*.pt
 experiments/ewc_test/
+
+# Experiment results
+experiments/*.json
+.pytest_cache/
