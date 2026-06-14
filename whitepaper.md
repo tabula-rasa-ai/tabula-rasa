@@ -7,9 +7,18 @@ Version 2.0 | June 13, 2026
 
 ## Executive Summary
 
-Tabula Rasa is a cognitive architecture that learns arithmetic operations from scratch through curriculum-based training, per-digit accuracy monitoring, and autonomous optimization. Unlike traditional approaches that train on mixed-difficulty datasets from the start, Tabula Rasa implements progressive difficulty scaling with real-time diagnostics. This methodology enabled breakthrough performance on 4-digit arithmetic within constrained compute budgets (5K training samples, ~2M parameters).
+Tabula Rasa is a general cognitive architecture designed to learn any structured task from scratch — without pre-trained weights, transfer learning, or human-curated curricula. The system trains small transformer models through curriculum-based progression, real-time per-token accuracy monitoring, and autonomous optimization. Unlike traditional approaches that train on static, mixed-difficulty datasets, Tabula Rasa implements progressive difficulty scaling that adapts to the model's current competence, with the specialist network routing tasks to dedicated models that master one domain at a time.
 
-This paper documents the development of autonomous training systems, curriculum learning strategies, and the transition from manual specialization to self-directed learning loops.
+The architecture is domain-agnostic: any task that can be tokenized into sequences — arithmetic, code, language, logical reasoning, symbolic manipulation — can be learned through the same curriculum-driven pipeline. Arithmetic was chosen as the initial proof-of-concept because it provides a clean, verifiable ground truth for rigorous validation. Within that domain, the system achieved breakthrough performance on 4-digit arithmetic within constrained compute budgets (5K training samples, ~2M parameters), demonstrating that directed curriculum learning dramatically outperforms random sampling at the same sample count.
+
+Beyond arithmetic, Tabula Rasa has been extended through:
+- **Continual learning** via Online Elastic Weight Consolidation (EWC), enabling sequential skill acquisition without catastrophic forgetting — validated across addition, subtraction, and multiplication with zero retention loss.
+- **A Socratic engine** for dialectical self-play, where model instances critique and refine each other's outputs across multiple rounds of dialogue.
+- **AlphaZero frameworks** for language and code acquisition, combining Monte Carlo Tree Search (MCTS) with policy and value heads for self-directed learning.
+- **A tiered memory architecture** (Active → Working → Long-term) with surprise-based prioritization, mirroring hippocampal consolidation.
+- **A sleep cycle daemon** for periodic consolidation, Fisher matrix computation, and prioritized experience replay.
+
+This paper documents the system's architecture, the curriculum learning strategies that enable rapid skill acquisition from a blank slate, and the transition from manual specialization to self-directed, continually learning agents. Tabula Rasa demonstrates that small transformers, guided by the right learning dynamics, can achieve specialist-level mastery — and that the same architecture can be extended toward general intelligence through self-play, reasoning, and lifelong learning.
 
 ---
 
