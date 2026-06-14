@@ -1,19 +1,21 @@
-"""Hippocampus — Tiered 3-layer memory architecture (Active → Working → Long-term).
+"""Hippocampus — Tiered 3-layer memory architecture with Gradient Replay.
 
-When the model encounters surprising data (high prediction error),
-it's instantly saved in Active tier. Promoted to Working on repeated access,
-then to Long-term for permanent storage with decay.
+Extends the base hippocampus with gradient storage: when storing experiences,
+optionally include the parameter gradients so the sleep cycle can apply them
+directly (gradient matching) rather than re-training from scratch.
 
-Tiers:
-    active   — Short-term / current session. High surprise threshold. Auto-pruned after consolidation.
-    working  — Task-relevant / multi-session. Tracked by access count + last access time.
-    longterm — Cross-session knowledge. Decayed and demoted if unused.
+New features:
+- gradient_data column stores serialized gradient tensors
+- store_experience now accepts optional gradient_bytes
+- get_with_gradients() returns experiences with gradient blobs
+- gradient_replay() in sleep cycle applies stored gradients
 """
 
 import sqlite3
 import json
 import time
 import math
+import io
 from pathlib import Path
 from typing import Optional
 import torch
@@ -26,25 +28,17 @@ _schema_initialized: bool = False
 
 
 def get_db() -> sqlite3.Connection:
-    """Get the persistent hippocampus database connection (module-level singleton).
-
-    Creates the connection once on first call with WAL mode enabled.
-    Schema setup (CREATE TABLE, ALTER TABLE, indexes) also runs once.
-    Subsequent calls return the cached connection — no reconnect overhead.
-    """
+    """Get the persistent hippocampus database connection (module-level singleton)."""
     global _connection, _schema_initialized
-
     if _connection is None:
         DB_PATH.parent.mkdir(parents=True, exist_ok=True)
         _connection = sqlite3.connect(str(DB_PATH))
         _connection.row_factory = sqlite3.Row
         _connection.execute("PRAGMA journal_mode=WAL")
         _connection.execute("PRAGMA synchronous=NORMAL")
-
     if not _schema_initialized:
         _init_schema(_connection)
         _schema_initialized = True
-
     return _connection
 
 
@@ -66,14 +60,22 @@ def _init_schema(conn: sqlite3.Connection):
         )
     """)
 
-    # Add missing columns for databases created with old schema
-    for col, col_type in [('tier', "TEXT DEFAULT 'active'"),
-                          ('access_count', 'INTEGER DEFAULT 0'),
-                          ('last_access', 'REAL DEFAULT 0')]:
+    # Add missing columns for old databases
+    for col, col_type in [
+        ('tier', "TEXT DEFAULT 'active'"),
+        ('access_count', 'INTEGER DEFAULT 0'),
+        ('last_access', 'REAL DEFAULT 0'),
+    ]:
         try:
             conn.execute(f"ALTER TABLE experiences ADD COLUMN {col} {col_type}")
         except sqlite3.OperationalError:
-            pass  # Column already exists
+            pass
+
+    # Add gradient_data BLOB column (new for gradient replay)
+    try:
+        conn.execute("ALTER TABLE experiences ADD COLUMN gradient_data BLOB")
+    except sqlite3.OperationalError:
+        pass  # Already exists
 
     # Indexes
     conn.execute("""
@@ -88,98 +90,160 @@ def _init_schema(conn: sqlite3.Connection):
         CREATE INDEX IF NOT EXISTS idx_tier_access
         ON experiences(tier, last_access)
     """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_has_gradients
+        ON experiences(tier, consolidated)
+        WHERE gradient_data IS NOT NULL
+    """)
     conn.commit()
 
 
-# ─── CRUD ────────────────────────────────────────────────────────────
+# ─── Gradient Serialization ────────────────────────────────────────
 
-def store_experience(input_text: str, prediction_error: float,
-                     output_text: str = None, skill: str = 'general',
-                     is_correction: bool = False, tier: str = 'active'):
-    """Store a surprising experience in the specified tier (default: active)."""
+
+def serialize_gradients(grad_dict: dict[str, torch.Tensor]) -> bytes:
+    """Serialize a dict of gradient tensors to bytes.
+
+    Each tensor is moved to CPU and saved into a single bytes buffer.
+    """
+    buffer = io.BytesIO()
+    cpu_dict = {k: v.detach().cpu() for k, v in grad_dict.items() if v is not None}
+    torch.save(cpu_dict, buffer)
+    return buffer.getvalue()
+
+
+def deserialize_gradients(data: bytes) -> dict[str, torch.Tensor]:
+    """Deserialize gradient bytes back to tensor dict. Returns empty dict on fail."""
+    if not data:
+        return {}
+    try:
+        buffer = io.BytesIO(data)
+        return torch.load(buffer, weights_only=True)
+    except Exception:
+        return {}
+
+
+# ─── CRUD ──────────────────────────────────────────────────────────
+
+
+def store_experience(
+    input_text: str,
+    prediction_error: float,
+    output_text: str = None,
+    skill: str = 'general',
+    is_correction: bool = False,
+    tier: str = 'active',
+    gradient_data: Optional[dict[str, torch.Tensor]] = None,
+):
+    """Store an experience with optional gradient information.
+
+    Args:
+        input_text: The input/prompt text.
+        prediction_error: Surprise or loss value.
+        output_text: Expected output or trace.
+        skill: Domain/task identifier.
+        is_correction: Whether this is a Socratic correction trace.
+        tier: Memory tier ('active', 'working', 'longterm').
+        gradient_data: Optional dict of parameter_name -> gradient tensor.
+                       Serialized to BLOB for gradient replay.
+    """
     conn = get_db()
     ts = time.time()
+    grad_bytes = serialize_gradients(gradient_data) if gradient_data else None
+
     conn.execute("""
         INSERT INTO experiences (timestamp, input_text, output_text,
-                                 prediction_error, skill, is_correction, tier)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+                                 prediction_error, skill, is_correction,
+                                 tier, gradient_data)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     """, (ts, input_text, output_text,
-          prediction_error, skill, 1 if is_correction else 0, tier))
+          prediction_error, skill, 1 if is_correction else 0,
+          tier, grad_bytes))
     conn.commit()
-    # Connection is persistent (module-level) — do not close
 
 
-def get_unconsolidated(limit: int = 100, tier: str = 'active') -> list[dict]:
-    """Get experiences that haven't been consolidated yet, optionally filtered by tier."""
+def get_unconsolidated(
+    limit: int = 100,
+    tier: str = 'active',
+    include_gradients: bool = False,
+) -> list[dict]:
+    """Get unconsolidated experiences, optionally with gradient data."""
     conn = get_db()
-    rows = conn.execute("""
-        SELECT id, input_text, output_text, prediction_error,
-               skill, is_correction, tier, access_count, last_access
+    cols = ("id, input_text, output_text, prediction_error,"
+            "skill, is_correction, tier, access_count, last_access")
+    if include_gradients:
+        cols = "id, " + ", ".join(
+            c for c in cols.split(", ") if c.strip() != "id"
+        ) + ", gradient_data"
+
+    rows = conn.execute(f"""
+        SELECT {cols}
         FROM experiences WHERE consolidated = 0 AND tier = ?
         ORDER BY prediction_error DESC
         LIMIT ?
     """, (tier, limit)).fetchall()
-    # Connection is persistent (module-level) — do not close
-    return [dict(r) for r in rows]
+    result = [dict(r) for r in rows]
+    # Deserialize gradients for entries that have them
+    if include_gradients:
+        for r in result:
+            if r.get('gradient_data'):
+                r['gradients'] = deserialize_gradients(r['gradient_data'])
+            del r['gradient_data']
+    return result
 
 
-def get_old_memories(limit: int = 50, tier: str = 'longterm',
-                     use_per: bool = True) -> list[dict]:
-    """Get consolidated memories from a tier, optionally using Prioritized Experience Replay.
-
-    When use_per=True (default), samples are weighted by prediction_error (surprise),
-    so higher-error experiences are more likely to be replayed.
-    When use_per=False, uses uniform random sampling (ORDER BY RANDOM()).
-
-    Args:
-        limit: Maximum number of memories to return.
-        tier: Memory tier to sample from ('active', 'working', 'longterm').
-        use_per: If True, use prediction_error-weighted sampling. If False, uniform random.
-
-    Returns:
-        List of experience dicts.
-    """
+def get_old_memories(
+    limit: int = 50,
+    tier: str = 'longterm',
+    use_per: bool = True,
+    only_with_gradients: bool = False,
+) -> list[dict]:
+    """Get consolidated memories, optionally filtered to those with gradients."""
     conn = get_db()
+    grad_filter = "AND gradient_data IS NOT NULL" if only_with_gradients else ""
+
     total = conn.execute(
-        "SELECT COUNT(*) FROM experiences WHERE consolidated = 1 AND tier = ?",
+        "SELECT COUNT(*) FROM experiences WHERE consolidated = 1 AND tier = ? "
+        + grad_filter,
         (tier,)
     ).fetchone()[0]
     if total == 0:
-        # Connection is persistent (module-level) — do not close
         return []
 
-    # ── Uniform random sampling (legacy) ──────────────────────────
     if not use_per:
-        rows = conn.execute("""
+        rows = conn.execute(f"""
             SELECT id, input_text, output_text, prediction_error,
-                   skill, is_correction, tier, access_count, last_access
-            FROM experiences WHERE consolidated = 1 AND tier = ?
+                   skill, is_correction, tier, access_count, last_access,
+                   gradient_data
+            FROM experiences WHERE consolidated = 1 AND tier = ? {grad_filter}
             ORDER BY RANDOM() LIMIT ?
         """, (tier, limit)).fetchall()
-        # Connection is persistent (module-level) — do not close
-        return [dict(r) for r in rows]
+        result = [dict(r) for r in rows]
+        for r in result:
+            r['gradients'] = deserialize_gradients(r.get('gradient_data', b''))
+            del r['gradient_data']
+        return result
 
-    # ── Prioritized Experience Replay (PER) ───────────────────────
-    rows = conn.execute("""
+    # PER sampling
+    rows = conn.execute(f"""
         SELECT id, input_text, output_text, prediction_error,
-               skill, is_correction, tier, access_count, last_access
-        FROM experiences WHERE consolidated = 1 AND tier = ?
+               skill, is_correction, tier, access_count, last_access,
+               gradient_data
+        FROM experiences WHERE consolidated = 1 AND tier = ? {grad_filter}
     """, (tier,)).fetchall()
-    # Connection is persistent (module-level) — do not close
-
     if not rows:
         return []
 
     records = [dict(r) for r in rows]
-    actual_limit = min(limit, len(records))
+    for r in records:
+        r['gradients'] = deserialize_gradients(r.get('gradient_data', b''))
+        del r['gradient_data']
 
-    # Build weights: clamp negative/zero errors to a small epsilon
-    # so every experience has a non-zero chance of being sampled.
+    actual_limit = min(limit, len(records))
     errors = torch.tensor(
         [max(r['prediction_error'], 1e-8) for r in records]
     )
     weights = torch.softmax(errors, dim=0)
-
     indices = torch.multinomial(weights, actual_limit, replacement=False)
     return [records[i] for i in indices.tolist()]
 
@@ -195,13 +259,13 @@ def mark_consolidated(ids: list[int]):
         WHERE id IN ({placeholders})
     """, ids)
     conn.commit()
-    # Connection is persistent (module-level) — do not close
 
 
 # ─── Tier Promotion / Demotion ───────────────────────────────────────
 
+
 def promote_to_working(ids: list[int]):
-    """Move experiences from active → working tier."""
+    """Move experiences from active -> working tier."""
     if not ids:
         return
     conn = get_db()
@@ -213,11 +277,10 @@ def promote_to_working(ids: list[int]):
         WHERE id IN ({placeholders}) AND tier = 'active'
     """, [ts] + ids)
     conn.commit()
-    # Connection is persistent (module-level) — do not close
 
 
 def promote_to_longterm(ids: list[int]):
-    """Move experiences from working → longterm tier."""
+    """Move experiences from working -> longterm tier."""
     if not ids:
         return
     conn = get_db()
@@ -229,7 +292,6 @@ def promote_to_longterm(ids: list[int]):
         WHERE id IN ({placeholders}) AND tier = 'working'
     """, [ts] + ids)
     conn.commit()
-    # Connection is persistent (module-level) — do not close
 
 
 def decay_memories(min_access: int = 3, max_age_days: int = 30,
@@ -238,30 +300,14 @@ def decay_memories(min_access: int = 3, max_age_days: int = 30,
                    cleanup_active: bool = False):
     """Full synaptic decay across all 3 memory tiers.
 
-    Always applies:
-      - Longterm → Working demotion (if access_count < min_access and old)
-      - Unconsolidated longterm deletion (if very old and never consolidated)
-      - Synaptic decay: gradual access_count reduction across all tiers
-
-    When enabled (opt-in):
-      - demote_working=True: Working → Active demotion
-      - cleanup_active=True:  Active cleanup (consolidated→Working,
-                               unconsolidated→deleted)
-
-    Args:
-        min_access: Minimum access count for retention.
-        max_age_days: Age in days beyond which a memory may be demoted/deleted.
-        decay_rate: Synaptic decay factor applied each cycle (default 0.5).
-                    Reduces access_count by int(decay_rate * max_age_days)
-                    across all tiers each cycle to simulate gradual forgetting.
-        demote_working: If True, demote unused Working memories back to Active.
-        cleanup_active: If True, promote consolidated old Active→Working,
-                        delete unconsolidated old Active entries.
+    Gradient-enhanced entries (gradient_data IS NOT NULL) are protected
+    from deletion in the longterm tier — their gradients may still be
+    useful for replay even if access_count is low.
     """
     conn = get_db()
     cutoff = time.time() - (max_age_days * 86400)
 
-    # ── Synaptic decay: gradually reduce access_count across all tiers ──
+    # Synaptic decay
     decay_amount = int(decay_rate * max_age_days)
     if decay_amount > 0:
         conn.execute("""
@@ -271,24 +317,26 @@ def decay_memories(min_access: int = 3, max_age_days: int = 30,
         """, (decay_amount,))
         conn.commit()
 
-    # ── Demote longterm → working (existing behavior) ────────────────
+    # Demote longterm -> working (skip gradient-enhanced entries)
     demoted_longterm = conn.execute("""
         UPDATE experiences
         SET tier = 'working'
         WHERE tier = 'longterm'
           AND access_count < ?
           AND timestamp < ?
+          AND gradient_data IS NULL
     """, (min_access, cutoff)).rowcount
 
-    # ── Delete very old unconsolidated longterm (existing behavior) ──
+    # Delete very old unconsolidated longterm (skip gradient-enhanced)
     deleted_longterm = conn.execute("""
         DELETE FROM experiences
         WHERE tier = 'longterm'
           AND consolidated = 0
           AND timestamp < ?
+          AND gradient_data IS NULL
     """, (cutoff,)).rowcount
 
-    # ── Working → Active demotion (opt-in) ────────────────────────────
+    # Working -> Active demotion
     demoted_working = 0
     if demote_working:
         demoted_working = conn.execute("""
@@ -299,11 +347,10 @@ def decay_memories(min_access: int = 3, max_age_days: int = 30,
               AND timestamp < ?
         """, (min_access, cutoff)).rowcount
 
-    # ── Active tier cleanup (opt-in) ──────────────────────────────────
+    # Active tier cleanup
     promoted = 0
     deleted_active = 0
     if cleanup_active:
-        # Promote consolidated old Active → Working
         promoted = conn.execute("""
             UPDATE experiences
             SET tier = 'working'
@@ -311,8 +358,6 @@ def decay_memories(min_access: int = 3, max_age_days: int = 30,
               AND consolidated = 1
               AND timestamp < ?
         """, (cutoff,)).rowcount
-
-        # Delete unconsolidated old Active (never worth saving)
         deleted_active = conn.execute("""
             DELETE FROM experiences
             WHERE tier = 'active'
@@ -321,7 +366,6 @@ def decay_memories(min_access: int = 3, max_age_days: int = 30,
         """, (cutoff,)).rowcount
 
     conn.commit()
-    # Connection is persistent (module-level) — do not close
 
     return {
         'demoted_longterm': demoted_longterm,
@@ -331,7 +375,64 @@ def decay_memories(min_access: int = 3, max_age_days: int = 30,
     }
 
 
-# ─── Query / Search ──────────────────────────────────────────────────
+# ─── Gradient Replay ────────────────────────────────────────────────
+
+
+@torch.no_grad()
+def gradient_replay(
+    model: torch.nn.Module,
+    lr: float = 0.001,
+    limit: int = 50,
+    tier: str = 'longterm',
+) -> int:
+    """Apply stored gradients directly to model parameters (gradient matching).
+
+    Loads gradient-enhanced experiences from the specified tier and applies
+    their stored gradients as a direct parameter update, weighted by the
+    prediction_error (higher error = stronger update).
+
+    This is more efficient than full re-training because:
+    1. No forward pass needed — stored gradients are applied directly
+    2. Multiple experiences can be applied in a single update
+    3. No batch processing overhead
+
+    Args:
+        model: The model to update.
+        lr: Learning rate scalar for gradient application.
+        limit: Max experiences to replay.
+        tier: Memory tier to sample from.
+
+    Returns:
+        Number of experiences replayed.
+    """
+    memories = get_old_memories(
+        limit=limit, tier=tier, use_per=True, only_with_gradients=True
+    )
+    if not memories:
+        return 0
+
+    device = next(model.parameters()).device
+    param_dict = dict(model.named_parameters())
+    replay_count = 0
+
+    for mem in memories:
+        grads = mem.get('gradients', {})
+        if not grads:
+            continue
+        error_weight = max(mem['prediction_error'], 0.1)
+
+        for name, grad_tensor in grads.items():
+            if name in param_dict and param_dict[name].requires_grad:
+                param_dict[name].add_(
+                    grad_tensor.to(device) * lr * error_weight
+                )
+        replay_count += 1
+
+    return replay_count
+
+
+# ─── Query / Stats ──────────────────────────────────────────────────
+
 
 def get_tiered_stats() -> dict:
     """Return count and avg_error per tier."""
@@ -339,7 +440,8 @@ def get_tiered_stats() -> dict:
     rows = conn.execute("""
         SELECT tier,
                COUNT(*) AS count,
-               AVG(prediction_error) AS avg_error
+               AVG(prediction_error) AS avg_error,
+               SUM(CASE WHEN gradient_data IS NOT NULL THEN 1 ELSE 0 END) AS with_gradients
         FROM experiences
         GROUP BY tier
         ORDER BY
@@ -349,26 +451,18 @@ def get_tiered_stats() -> dict:
                 WHEN 'longterm' THEN 3
             END
     """).fetchall()
-    # Connection is persistent (module-level) — do not close
-
     stats = {}
     for r in rows:
         stats[r['tier']] = {
             'count': r['count'],
             'avg_error': round(r['avg_error'], 3) if r['avg_error'] else 0.0,
+            'with_gradients': r['with_gradients'] or 0,
         }
     return stats
 
 
 def get_priority_stats() -> dict:
-    """Return min/mean/max prediction_error across all tiers.
-
-    Useful for monitoring the distribution of surprise values
-    and tuning PER sampling parameters.
-
-    Returns:
-        Dict with 'min_error', 'mean_error', 'max_error' keys.
-    """
+    """Return min/mean/max prediction_error across all tiers."""
     conn = get_db()
     row = conn.execute("""
         SELECT MIN(prediction_error) AS min_error,
@@ -376,8 +470,6 @@ def get_priority_stats() -> dict:
                MAX(prediction_error) AS max_error
         FROM experiences
     """).fetchone()
-    # Connection is persistent (module-level) — do not close
-
     return {
         'min_error': round(row['min_error'], 4) if row['min_error'] is not None else 0.0,
         'mean_error': round(row['mean_error'], 4) if row['mean_error'] is not None else 0.0,
@@ -386,22 +478,15 @@ def get_priority_stats() -> dict:
 
 
 def search_memories(query: str, tier: str = None, limit: int = 10) -> list[dict]:
-    """Text-based search across tiers using LIKE.
-
-    Args:
-        query: Search term (case-insensitive substring match).
-        tier: Optional tier filter (None = search all tiers).
-        limit: Max results.
-
-    Returns:
-        List of matching experience dicts.
-    """
+    """Text-based search across tiers using LIKE."""
     conn = get_db()
     pattern = f'%{query}%'
     if tier:
         rows = conn.execute("""
             SELECT id, timestamp, input_text, output_text, prediction_error,
-                   skill, is_correction, tier, access_count, last_access, consolidated
+                   skill, is_correction, tier, access_count, last_access,
+                   consolidated,
+                   CASE WHEN gradient_data IS NOT NULL THEN 1 ELSE 0 END AS has_gradients
             FROM experiences
             WHERE (input_text LIKE ? OR output_text LIKE ?)
               AND tier = ?
@@ -411,13 +496,14 @@ def search_memories(query: str, tier: str = None, limit: int = 10) -> list[dict]
     else:
         rows = conn.execute("""
             SELECT id, timestamp, input_text, output_text, prediction_error,
-                   skill, is_correction, tier, access_count, last_access, consolidated
+                   skill, is_correction, tier, access_count, last_access,
+                   consolidated,
+                   CASE WHEN gradient_data IS NOT NULL THEN 1 ELSE 0 END AS has_gradients
             FROM experiences
             WHERE input_text LIKE ? OR output_text LIKE ?
             ORDER BY prediction_error DESC
             LIMIT ?
         """, (pattern, pattern, limit)).fetchall()
-    # Connection is persistent (module-level) — do not close
     return [dict(r) for r in rows]
 
 
@@ -426,17 +512,19 @@ def get_recent(limit: int = 20, tier: str = 'active') -> list[dict]:
     conn = get_db()
     rows = conn.execute("""
         SELECT id, timestamp, input_text, output_text, prediction_error,
-               skill, is_correction, tier, access_count, last_access, consolidated
+               skill, is_correction, tier, access_count, last_access,
+               consolidated,
+               CASE WHEN gradient_data IS NOT NULL THEN 1 ELSE 0 END AS has_gradients
         FROM experiences
         WHERE tier = ?
         ORDER BY timestamp DESC
         LIMIT ?
     """, (tier, limit)).fetchall()
-    # Connection is persistent (module-level) — do not close
     return [dict(r) for r in rows]
 
 
-# ─── Legacy / Backward-compatible helpers ────────────────────────────
+# ─── Legacy helpers ────────────────────────────────────────────────
+
 
 def get_stats() -> dict:
     """Get overall hippocampus statistics (backward-compatible)."""
@@ -445,13 +533,16 @@ def get_stats() -> dict:
     unconsolidated = conn.execute(
         "SELECT COUNT(*) FROM experiences WHERE consolidated = 0"
     ).fetchone()[0]
+    with_grads = conn.execute(
+        "SELECT COUNT(*) FROM experiences WHERE gradient_data IS NOT NULL"
+    ).fetchone()[0]
     avg_error = conn.execute(
         "SELECT AVG(prediction_error) FROM experiences"
     ).fetchone()[0]
-    # Connection is persistent (module-level) — do not close
     return {
         'total_experiences': total,
         'unconsolidated': unconsolidated,
+        'with_gradients': with_grads,
         'avg_error': round(avg_error, 3) if avg_error else 0,
     }
 
@@ -461,7 +552,6 @@ def clear():
     conn = get_db()
     conn.execute("DELETE FROM experiences")
     conn.commit()
-    # Connection is persistent (module-level) — do not close
 
 
 # ─── Surprise Detector ──────────────────────────────────────────────
@@ -469,15 +559,12 @@ def clear():
 @torch.no_grad()
 def compute_surprise(model, tokenizer, text: str) -> float:
     """Compute prediction error (surprise) for a text."""
-    import torch
     ids = tokenizer.encode(text, add_special_tokens=False)
     if len(ids) < 3:
         return 0.0
-
     device = next(model.parameters()).device
     x = torch.tensor([ids[:-1]], device=device)
     y = torch.tensor([ids[1:]], device=device)
-
     model.eval()
     _, loss, _ = model(x, y)
     return loss.item()
@@ -494,11 +581,8 @@ def auto_store(model, tokenizer, text: str, threshold: float = 1.0,
 
 
 if __name__ == '__main__':
-    # Test
-    store_experience('What is a mitochondrion?', 2.5, 'The powerhouse of the cell', 'biology')
-    store_experience('E=mc^2', 1.8, 'Energy equals mass times speed of light squared', 'physics')
+    store_experience('What is a mitochondrion?', 2.5,
+                     'The powerhouse of the cell', 'biology')
+    store_experience('E=mc^2', 1.8,
+                     'Energy equals mass times speed of light squared', 'physics')
     print(f'Stats: {get_stats()}')
-    print(f'Unconsolidated (active): {len(get_unconsolidated())}')
-    print(f'Unconsolidated (longterm): {len(get_unconsolidated(tier="longterm"))}')
-    print(f'Old memories: {len(get_old_memories())}')
-    print(f'Tiered stats: {get_tiered_stats()}')

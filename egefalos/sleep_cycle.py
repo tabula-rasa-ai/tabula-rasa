@@ -230,6 +230,16 @@ def consolidate_sleep_cycle(
     print(f"  [Sleep] Consolidation complete.")
     print(f"  [Sleep] Saved to {output_dir}")
     print(f"  [Sleep] Consolidated {len(exp_ids)} experiences")
+
+    # Gradient Replay — apply stored gradients directly (no forward pass needed)
+    try:
+        from egefalos.hippocampus import gradient_replay
+        n_replayed = gradient_replay(model, lr=0.001 * lambda_ewc_scale,
+                                      limit=num_samples, tier='longterm')
+        if n_replayed > 0:
+            print(f"  [Sleep] Gradient replay: {n_replayed} gradient-enhanced experiences applied")
+    except Exception as e:
+        print(f"  [Sleep] Gradient replay skipped: {e}")
     print(f"{'='*60}\n")
 
 
