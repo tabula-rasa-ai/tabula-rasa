@@ -883,6 +883,7 @@ def train_specialist(
     _nw = 4 if device.type == "cuda" else 0
 
     def _infinite_batches(dataset, batch_size):
+        from torch.utils.data import DataLoader
         while True:
             loader = DataLoader(
                 dataset, batch_size=batch_size, shuffle=True, num_workers=_nw, drop_last=True
