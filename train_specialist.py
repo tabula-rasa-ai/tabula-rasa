@@ -66,8 +66,8 @@ from tabula_rasa.lora import (
 from tabula_rasa.model import MathTransformer, count_parameters
 from tabula_rasa.tokenizer import MathTokenizer
 
-OPS = {"add": "+", "sub": "-", "mul": "*", "div": "/"}
-OP_NAMES = {"add": "Addition", "sub": "Subtraction", "mul": "Multiplication", "div": "Division"}
+OPS = {"add": "+", "sub": "-", "mul": "*", "div": "/", "pow": "^"}
+OP_NAMES = {"add": "Addition", "sub": "Subtraction", "mul": "Multiplication", "div": "Division", "pow": "Power"}
 
 # ─── Interrupted signal handling ─────────────────────────────────
 _INTERRUPTED = False
@@ -113,6 +113,12 @@ def generate_problem(
         if a == 0:
             a = b * max(1, ans)
         ans = a // b if b != 0 else 1
+    elif op == "pow":
+        # Small exponents to keep results manageable
+        a = random.randint(2, 12)
+        exp = random.randint(1, 4)
+        b = exp
+        ans = a ** exp
 
     if reversed and op in ("add", "sub"):
         a_str = str(a)[::-1]
@@ -1172,6 +1178,9 @@ Examples:
         "--wandb-project", type=str, default="tabula-rasa", help="W&B project name"
     )
     parser.add_argument(
+        "--dry-run", action="store_true", help="Preview config and estimated time, then exit"
+    )
+    parser.add_argument(
         "--grad-accum",
         type=int,
         default=0,
@@ -1268,6 +1277,33 @@ Examples:
             print(f"  W&B: enabled (project={args.wandb_project})")
         except ImportError:
             print("  [!] W&B requested but not installed. pip install wandb")
+
+    # ── Dry-run: show config and exit ──
+    import torch
+    if args.dry_run:
+        steps = args.steps or 30000
+        batch = args.batch or 128
+        has_gpu = torch.cuda.is_available()
+        gpu_name = torch.cuda.get_device_name(0) if has_gpu else "None"
+        sps = 200 if has_gpu else 0.9
+        est_min = steps / sps / 60
+        print(f"\n{'='*50}")
+        print(f"  DRY RUN — {args.op}")
+        print(f"{'='*50}")
+        print(f"  Steps:   {steps}")
+        print(f"  Batch:   {batch}")
+        print(f"  Device:  {'GPU (' + gpu_name + ')' if has_gpu else 'CPU'}")
+        print(f"  AMP:     {'ON' if args.amp else 'OFF'}")
+        print(f"  Compile: {'ON' if args.compile else 'OFF'}")
+        print(f"  MoE:     {'ON (config.use_moe)' if hasattr(args, 'moe') and args.moe else 'OFF'}")
+        print(f"  EWC:     {'ON (lambda=' + str(args.ewc_lambda) + ')' if args.ewc else 'OFF'}")
+        print(f"  Socratic: {'ON (steps=' + str(args.socratic_steps) + ')' if args.socratic else 'OFF'}")
+        print(f"  LoRA:    {'ON (rank=' + str(args.lora_rank) + ')' if args.lora else 'OFF'}")
+        print(f"  WandB:   {'ON' if args.wandb else 'OFF'}")
+        print(f"  Est. time: {est_min:.0f} min ({est_min/60:.1f} hours)")
+        print(f"{'='*50}")
+        print(f"  To train: python3 train_specialist.py {args.op} --steps {steps}")
+        sys.exit(0)
 
     train_specialist(
         args.op,
