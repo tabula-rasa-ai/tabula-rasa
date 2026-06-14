@@ -231,7 +231,14 @@ CONFIG_FIELDS = {
 
 def get_config_dict():
     """Read current config values from config.py."""
-    text = Path('config.py').read_text()
+    # Config moved to src/tabula_rasa/config.py in the src-layout refactor.
+    # Check both locations for backward compatibility.
+    config_path = Path('src/tabula_rasa/config.py')
+    if not config_path.exists():
+        config_path = Path('config.py')
+    if not config_path.exists():
+        return {'error': 'config.py not found'}
+    text = config_path.read_text()
     vals = {}
     for name, (pat, caster) in CONFIG_FIELDS.items():
         m = re.search(pat + r'\s*([^#\n]+)', text, re.MULTILINE)
@@ -868,7 +875,10 @@ class Handler(BaseHTTPRequestHandler):
         elif path == '/api/config':
             self._json(get_config_dict())
         elif path == '/config-raw':
-            fp = Path('config.py')
+            # Config moved to src/tabula_rasa/ — check both locations
+            fp = Path('src/tabula_rasa/config.py')
+            if not fp.exists():
+                fp = Path('config.py')
             if fp.exists():
                 self.send_response(200)
                 self.send_header('Content-Type', 'text/plain; charset=utf-8')
