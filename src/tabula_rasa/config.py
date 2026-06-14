@@ -35,6 +35,7 @@ class Config:
     # ═══════════════════════════════════════════════════════════
     # MODEL ARCHITECTURE — 1M params (full capacity)
     # ═══════════════════════════════════════════════════════════
+    config_preset: str = "1M"  # 1M | 10M — use apply_preset() to set architecture
     d_model: int = 128  # Embedding / hidden dimension
     n_layers: int = 4  # Number of transformer layers (depth)
     n_heads: int = 4  # Attention heads (must divide d_model)
@@ -46,6 +47,12 @@ class Config:
     activation: str = "relu"
     norm_type: str = "rmsnorm"  # rmsnorm | layernorm
     pos_encoding: str = "rope"  # learned | rope | none
+
+    # Mixture of Experts (MoE) — replaces FFN with expert routing
+    use_moe: bool = False         # Enable MoE layers
+    num_experts: int = 4          # Number of experts in each MoE layer
+    top_k: int = 2                # Top-K experts to route each token to
+    moe_capacity_factor: float = 1.25  # Expert capacity multiplier
 
     # Weight initialization
     weight_init: str = "normal"  # normal | xavier | kaiming
@@ -167,3 +174,34 @@ class Config:
         return "cpu"
 
     vocab_size: int | None = None  # Set after tokenizer is built
+
+    PRESETS: dict[str, dict] = {
+        "1M": {
+            "d_model": 128, "n_layers": 4, "n_heads": 4, "d_ff": 512,
+            "max_seq_len": 32, "dropout": 0.1, "params_approx": 1_060_992,
+        },
+        "10M": {
+            "d_model": 256, "n_layers": 6, "n_heads": 8, "d_ff": 1024,
+            "max_seq_len": 128, "dropout": 0.1, "params_approx": 9_850_000,
+        },
+    }
+
+    def apply_preset(self, name: str | None = None) -> "Config":
+        """Apply a named architecture preset.
+
+        Sets d_model, n_layers, n_heads, d_ff, max_seq_len, dropout.
+        Returns self for chaining.
+
+        Presets:
+            "1M"  — Default 1M-param (d=128, L=4, h=4, ff=512, seq=32)
+            "10M" — Scaled 10M-param (d=256, L=6, h=8, ff=1024, seq=128)
+        """
+        preset = name or self.config_preset
+        cfg = self.PRESETS.get(preset)
+        if cfg is None:
+            raise ValueError(f"Unknown preset: {preset}. Available: {list(self.PRESETS.keys())}")
+        for k, v in cfg.items():
+            if k != "params_approx":
+                setattr(self, k, v)
+        self.config_preset = preset
+        return self

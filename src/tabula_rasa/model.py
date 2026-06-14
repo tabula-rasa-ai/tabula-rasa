@@ -293,6 +293,94 @@ class FeedForward(nn.Module):
         return self.w2(self.act(self.w1(x)) * self.w3(x))
 
 
+class MoEFeedForward(nn.Module):
+    """Mixture of Experts feed-forward — replaces a single FFN with top-k routing.
+
+    Each token is routed to the top-k experts (by gating score). Only those
+    experts run, keeping compute cost constant while expanding capacity.
+
+    Different tasks naturally specialize different experts, so Fisher
+    matrices stop overlapping — solving the 3-task EWC collapse.
+
+    Args:
+        config: Must have d_model, d_ff, activation, num_experts, top_k.
+    """
+
+    def __init__(self, config: Any) -> None:
+        super().__init__()
+        self.num_experts = config.num_experts
+        self.top_k = min(config.top_k, config.num_experts)
+        self.d_model = config.d_model
+        self.d_ff = config.d_ff
+
+        # Router: projects d_model → logits over experts
+        self.router = nn.Linear(config.d_model, self.num_experts, bias=False)
+
+        # Expert FFNs: each is a SwiGLU-style FFN (gate + up projections)
+        self.expert_gate = nn.ModuleList([
+            nn.Linear(config.d_model, config.d_ff, bias=False)
+            for _ in range(self.num_experts)
+        ])
+        self.expert_up = nn.ModuleList([
+            nn.Linear(config.d_model, config.d_ff, bias=False)
+            for _ in range(self.num_experts)
+        ])
+        self.expert_down = nn.ModuleList([
+            nn.Linear(config.d_ff, config.d_model, bias=False)
+            for _ in range(self.num_experts)
+        ])
+
+        self.act = _make_activation(config.activation)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply MoE with top-k routing.
+
+        Args:
+            x: Input (batch, seq_len, d_model).
+
+        Returns:
+            Output of same shape. Auxiliary load-balancing loss
+            stored in self.last_aux_loss for CL integration.
+        """
+        orig_shape = x.shape
+        batch, seq_len, _ = orig_shape
+        x_flat = x.view(-1, self.d_model)  # (b*s, d)
+        n_tokens = x_flat.size(0)
+
+        # Router logits → softmax → top-k selection
+        router_logits = self.router(x_flat)  # (n_tokens, num_experts)
+        router_probs = torch.softmax(router_logits, dim=-1)
+        top_k_vals, top_k_idx = torch.topk(router_probs, self.top_k, dim=-1)
+
+        # Compute auxiliary load-balancing loss (minimize expert imbalance)
+        tokens_per_expert = router_probs.sum(dim=0)  # (num_experts,)
+        ideal_per_expert = n_tokens / self.num_experts
+        self.last_aux_loss = (tokens_per_expert ** 2).sum() / (self.num_experts * ideal_per_expert ** 2) - 1.0
+
+        # Route tokens through selected experts
+        output = torch.zeros_like(x_flat)
+        routing_weights = top_k_vals / (top_k_vals.sum(dim=-1, keepdim=True) + 1e-8)
+
+        for expert_idx in range(self.num_experts):
+            # Find tokens that route to this expert
+            mask = (top_k_idx == expert_idx).any(dim=-1)
+            if not mask.any():
+                continue
+
+            expert_input = x_flat[mask]
+            # SwiGLU: gate(x) * up(x) → down
+            gate = self.act(self.expert_gate[expert_idx](expert_input))
+            up = self.expert_up[expert_idx](expert_input)
+            expert_out = self.expert_down[expert_idx](gate * up)
+
+            # Weight by routing score (summed across top-k positions for this expert)
+            weight_mask = (top_k_idx == expert_idx)
+            weights = routing_weights[weight_mask]
+            output[mask] += expert_out * weights.unsqueeze(-1)
+
+        return output.view(orig_shape)
+
+
 class TransformerBlock(nn.Module):
     """One transformer decoder block with pre-normalisation and optional KV cache."""
 
@@ -306,7 +394,12 @@ class TransformerBlock(nn.Module):
         """
         super().__init__()
         self.attention = Attention(config)
-        self.feed_forward = FeedForward(config)
+        if getattr(config, "use_moe", False):
+            self.feed_forward = MoEFeedForward(config)
+            self._use_moe = True
+        else:
+            self.feed_forward = FeedForward(config)
+            self._use_moe = False
         self.attention_norm = _make_norm(config.d_model, config.norm_type)
         self.ffn_norm = _make_norm(config.d_model, config.norm_type)
         self.dropout = nn.Dropout(config.dropout)
@@ -459,7 +552,7 @@ class MathTransformer(nn.Module):
         if targets is not None:
             loss = F.cross_entropy(
                 logits.view(-1, logits.size(-1)),
-                targets.view(-1),
+                targets.reshape(-1),
                 ignore_index=-100,
                 label_smoothing=getattr(self.config, "label_smoothing", 0.0),
             )
@@ -757,7 +850,7 @@ def alphazero_loss(
     # Policy loss: cross-entropy on tokens
     policy_loss = F.cross_entropy(
         policy_logits.view(-1, policy_logits.size(-1)),
-        targets.view(-1),
+        targets.reshape(-1),
         ignore_index=-100,
         label_smoothing=getattr(config, "label_smoothing", 0.0) if config else 0.0,
     )
