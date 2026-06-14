@@ -21,6 +21,15 @@ from typing import Optional
 import torch
 import torch.nn.functional as F
 
+# Memory-aware MCTS uses sys.path-based imports from tabula_rasa
+import sys
+from pathlib import Path
+
+# Determine project root for tabula_rasa imports
+_project_root = str(Path(__file__).resolve().parent.parent / 'src')
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
+
 
 # ═════════════════════════════════════════════════════════════════════
 # MCTS NODE
@@ -417,6 +426,457 @@ def create_mcts_fn(model, tokenizer, grammar_rules: list = None,
 
 
 # ═════════════════════════════════════════════════════════════════════
+# MICRO-MCTS CLASS — Object-oriented wrapper around micro_mcts_search
+# ═════════════════════════════════════════════════════════════════════
+
+class MicroMCTS:
+    """Object-oriented MCTS that wraps micro_mcts_search.
+    
+    Provides a class-based interface that can be subclassed for
+    memory-aware or custom MCTS variants.
+    """
+    
+    def __init__(
+        self,
+        model,
+        tokenizer,
+        n_simulations: int = 16,
+        top_k: int = 5,
+        max_rollout_tokens: int = 8,
+        c_puct: float = 1.0,
+        grammar_rules: list = None,
+    ):
+        self.model = model
+        self.tokenizer = tokenizer
+        self.n_simulations = n_simulations
+        self.top_k = top_k
+        self.max_rollout_tokens = max_rollout_tokens
+        self.c_puct = c_puct
+        self.grammar_rules = grammar_rules or []
+    
+    def search(self, input_ids: torch.Tensor, concept,
+               temperature: float = 0.8) -> dict:
+        """Run MCTS search from the current state.
+        
+        Delegates to micro_mcts_search for the actual search logic.
+        
+        Args:
+            input_ids: Input tensor (1, seq_len)
+            concept: The concept being expressed
+            temperature: Temperature for token selection
+        
+        Returns:
+            dict with 'best_token', 'best_prob', 'visit_counts', 'tree_depth'
+        """
+        return micro_mcts_search(
+            self.model, self.tokenizer, input_ids, concept,
+            temperature=temperature, top_k=self.top_k,
+            simulations=self.n_simulations,
+            max_rollout_tokens=self.max_rollout_tokens,
+            grammar_rules=self.grammar_rules,
+            c_puct=self.c_puct,
+        )
+    
+    def node_confidence(self, state: str) -> float:
+        """Query memory confidence for a state.
+        
+        Base implementation returns neutral confidence.
+        Subclasses override this for memory-aware confidence.
+        
+        Args:
+            state: String representation of the current state.
+        
+        Returns:
+            float 0.0-1.0 where 1.0 = very confident.
+        """
+        return 0.5  # Neutral when no memory integration
+
+
+# ═════════════════════════════════════════════════════════════════════
+# MEMORY-AWARE MCTS — Queries tiered memory for confidence-based
+# simulation allocation and uses math_parser for fast pruning.
+# ═════════════════════════════════════════════════════════════════════
+
+class MemoryAwareMCTS(MicroMCTS):
+    """MCTS variant that queries tiered memory for confidence-based branching.
+    
+    Key differences from MicroMCTS:
+      - Queries search_memories() to assess confidence in current state.
+      - Low-confidence branches get more simulations; high-confidence get fewer.
+      - Uses math_parser.verify_equation() for fast deterministic pruning
+        during rollouts (prunes syntactically invalid expressions).
+    
+    The total simulation budget N is preserved, but distribution is shifted
+    toward branches the model is less sure about.
+    
+    Args:
+        model: LanguageAlphaZero model
+        tokenizer: Tokenizer
+        n_simulations: Total simulation budget (default: 16)
+        memory: Hippocampus memory module (optional). When None, behaves
+                like regular MicroMCTS.
+        top_k: Number of candidates per node
+        max_rollout_tokens: Max tokens per rollout
+        c_puct: Exploration constant
+        grammar_rules: Optional grammar constraint functions
+    """
+    
+    def __init__(
+        self,
+        model,
+        tokenizer,
+        n_simulations: int = 16,
+        memory=None,
+        top_k: int = 5,
+        max_rollout_tokens: int = 8,
+        c_puct: float = 1.0,
+        grammar_rules: list = None,
+    ):
+        super().__init__(
+            model, tokenizer,
+            n_simulations=n_simulations,
+            top_k=top_k,
+            max_rollout_tokens=max_rollout_tokens,
+            c_puct=c_puct,
+            grammar_rules=grammar_rules,
+        )
+        self.memory = memory
+        
+        # Math parser integration — lazy import
+        self._verify_equation = None
+    
+    # ── Confidence via memory query ───────────────────────────────────
+    
+    def node_confidence(self, state: str) -> float:
+        """Query tiered memory for confidence in current state.
+        
+        Searches across ALL tiers (active, working, longterm) for
+        memories matching the current state. Returns higher confidence
+        when memory has low prediction_error entries for similar states.
+        
+        Returns:
+            float 0.0-1.0 where 1.0 = very confident.
+            Defaults to 0.5 when memory is not available.
+        """
+        if self.memory is None:
+            return 0.5  # Neutral when no memory
+        
+        from egefalos.hippocampus import search_memories
+        
+        # Search all tiers for similar states
+        results = search_memories(state, tier=None, limit=5)
+        
+        if not results:
+            return 0.3  # Unknown state → low confidence
+        
+        # Average prediction_error across matched memories
+        # (Lower error = higher confidence)
+        total_errors = sum(r['prediction_error'] for r in results)
+        avg_error = total_errors / len(results)
+        
+        # Map avg_error (typically 0.0-5.0+) to 0.0-1.0 confidence
+        # Lower error → higher confidence
+        # Error of 0 → confidence 1.0; error ≥ 5 → confidence 0.0
+        confidence = max(0.0, min(1.0, 1.0 - (avg_error / 5.0)))
+        
+        # Boost if result is found across multiple tiers
+        tiers_seen = len(set(r['tier'] for r in results))
+        if tiers_seen >= 2:
+            confidence = min(1.0, confidence + 0.1 * tiers_seen)
+        
+        return confidence
+    
+    # ── Dynamic simulation allocation ─────────────────────────────────
+    
+    def _allocate_simulations(
+        self, children: list, total_budget: int
+    ) -> list[int]:
+        """Distribute simulations proportionally to uncertainty.
+        
+        For each child, query memory confidence. High-confidence branches
+        receive fewer simulations; low-confidence branches receive more.
+        
+        Args:
+            children: List of MCTSNodes (child nodes at a given level).
+            total_budget: Total number of simulations to allocate.
+        
+        Returns:
+            List of ints of length len(children), summing to total_budget,
+            with simulation counts per child.
+        """
+        if not children:
+            return []
+        
+        if len(children) == 1:
+            return [total_budget]
+        
+        # Compute confidence for each child
+        confidences = []
+        for child in children:
+            # Use token sequence as the state string
+            state = ' '.join(str(t) for t in child.token_ids[-8:])  # last 8 tokens
+            confidences.append(self.node_confidence(state))
+        
+        # Convert confidence to "uncertainty" (inverse)
+        # Branches with low confidence should get MORE simulations
+        # Add small epsilon to avoid division by zero
+        epsilon = 1e-6
+        uncertainties = [max(epsilon, 1.0 - c) for c in confidences]
+        
+        # Normalize to get proportions
+        total_uncertainty = sum(uncertainties)
+        proportions = [u / total_uncertainty for u in uncertainties]
+        
+        # Distribute budget proportionally
+        allocations = [max(1, int(p * total_budget)) for p in proportions]
+        
+        # Adjust to match total_budget exactly (rounding correction)
+        diff = total_budget - sum(allocations)
+        if diff > 0:
+            # Give extra simulations to the most uncertain child
+            most_uncertain_idx = uncertainties.index(max(uncertainties))
+            allocations[most_uncertain_idx] += diff
+        elif diff < 0:
+            # Remove from the most confident child
+            most_confident_idx = confidences.index(max(confidences))
+            allocations[most_confident_idx] = max(
+                1, allocations[most_confident_idx] + diff
+            )
+        
+        return allocations
+    
+    # ── Math parser fast pruning ──────────────────────────────────────
+    
+    def _get_verify_equation(self):
+        """Lazy-import verify_equation from math_parser."""
+        if self._verify_equation is None:
+            from tabula_rasa.math_parser import verify_equation
+            self._verify_equation = verify_equation
+        return self._verify_equation
+    
+    def fast_prune(self, partial_expression: str) -> bool:
+        """Check if a partially-generated expression is already invalid.
+        
+        Uses math_parser.verify_equation() to detect syntax errors or
+        mathematically invalid partial expressions. If the parser cannot
+        even parse the expression (syntax error), the branch is pruned.
+        
+        Args:
+            partial_expression: A string containing an equation or partial
+                                math expression, e.g. '12+34=46' or '12+'.
+        
+        Returns:
+            True if the branch should be PRUNED (invalid).
+            False if the branch is VALID (or cannot be determined).
+        """
+        verify = self._get_verify_equation()
+        
+        try:
+            result = verify(partial_expression)
+            # Prune if the equation contains a '=' but is invalid
+            # This catches: syntax errors, division by zero, wrong results
+            if '=' in partial_expression:
+                if result.get('error'):
+                    return True  # Syntax/parse error → prune
+                return not result.get('valid', True)  # Wrong result → prune
+            return False  # No '=' sign yet → still valid partial expression
+        except Exception:
+            return True  # Unexpected error during verification → prune
+    
+    # ── Memory-aware search ───────────────────────────────────────────
+    
+    @torch.no_grad()
+    def search(self, input_ids: torch.Tensor, concept,
+               temperature: float = 0.8) -> dict:
+        """Run memory-aware MCTS search.
+        
+        The same interface as MicroMCTS.search(), but with:
+          1. Dynamic simulation allocation based on memory confidence.
+          2. Math parser fast pruning during rollouts.
+        
+        Args:
+            input_ids: Input tensor (1, seq_len)
+            concept: The concept being expressed
+            temperature: Temperature for token selection
+        
+        Returns:
+            dict with 'best_token', 'best_prob', 'visit_counts',
+            'tree_depth', and 'confidence_map'
+        """
+        device = input_ids.device
+        seq_len = input_ids.size(1)
+        
+        # Get base probabilities from policy head
+        logits, _, _ = self.model.forward(input_ids)
+        base_logits = logits[0, -1, :]
+        base_probs = F.softmax(base_logits, dim=-1)
+        
+        # Build token sequence for root
+        root_tokens = input_ids[0].tolist()
+        
+        # Create root node
+        root = MCTSNode(token_ids=root_tokens, prior_prob=1.0)
+        
+        # Track confidence per node for diagnostics
+        confidence_map = {}
+        
+        # ─── Run simulations with dynamic allocation ───
+        for sim in range(self.n_simulations):
+            # 1. SELECT: traverse tree with PUCT
+            leaf = select(root)
+            
+            # 2. EXPAND: add children to leaf
+            if not leaf.is_terminal:
+                leaf_input = input_ids.clone()
+                if len(leaf.token_ids) > seq_len:
+                    leaf_tensor = torch.tensor([leaf.token_ids], device=device)
+                    leaf_input = leaf_tensor
+                
+                expand(self.model, self.tokenizer, leaf, leaf_input,
+                       top_k=self.top_k, grammar_rules=self.grammar_rules)
+            
+            # 3. ROLLOUT: simulate from the leaf
+            if leaf.children:
+                # Get list of children for allocation
+                child_items = list(leaf.children.items())
+                
+                # Dynamic allocation: if we have memory, distribute
+                # simulations based on confidence
+                if self.memory is not None and len(child_items) > 1:
+                    children_list = [c for _, c in child_items]
+                    # Track confidence for diagnostics
+                    for tok_id, child in child_items:
+                        state = ' '.join(str(t) for t in child.token_ids[-8:])
+                        conf = self.node_confidence(state)
+                        confidence_map.setdefault(tok_id, []).append(conf)
+                    
+                    # Pick the child with LOWEST confidence (explore uncertain)
+                    uncertainties = []
+                    for _, child in child_items:
+                        state = ' '.join(str(t) for t in child.token_ids[-8:])
+                        uncertainties.append(1.0 - self.node_confidence(state))
+                    most_uncertain_idx = uncertainties.index(max(uncertainties))
+                    child_token, chosen_child = child_items[most_uncertain_idx]
+                else:
+                    # Default: pick a child randomly
+                    child_token = random.choice(list(leaf.children.keys()))
+                
+                rollout_input = input_ids.clone()
+                child_ids = leaf.token_ids + [child_token]
+                rollout_input = torch.tensor([child_ids], device=device)
+                
+                # Math parser fast pruning: check partial expression
+                if self._is_math_state(concept):
+                    partial_text = self.tokenizer.decode(child_ids)
+                    if self.fast_prune(partial_text):
+                        # Prune this branch — assign a bad value
+                        rollout_value = -1.0
+                    else:
+                        rollout_value = rollout(
+                            self.model, self.tokenizer, rollout_input, concept,
+                            max_rollout_tokens=self.max_rollout_tokens,
+                            grammar_rules=self.grammar_rules,
+                        )
+                else:
+                    rollout_value = rollout(
+                        self.model, self.tokenizer, rollout_input, concept,
+                        max_rollout_tokens=self.max_rollout_tokens,
+                        grammar_rules=self.grammar_rules,
+                    )
+            else:
+                rollout_value = leaf.terminal_value if leaf.is_terminal else 0.0
+            
+            # 4. BACKUP: propagate value up the tree
+            backup(leaf, rollout_value)
+        
+        # ─── Select best token from root children ───
+        best_token = None
+        best_prob = 0.0
+        visit_counts = {}
+        
+        max_visits = 0
+        for token_id, child in root.children.items():
+            visit_counts[token_id] = child.visit_count
+            if child.visit_count > max_visits:
+                max_visits = child.visit_count
+                best_token = token_id
+                best_prob = base_probs[token_id].item()
+        
+        # Fallback: if no children explored, use best from policy head
+        if best_token is None:
+            best_token = base_logits.argmax(dim=-1).item()
+            best_prob = 1.0
+        
+        return {
+            'best_token': best_token,
+            'best_prob': best_prob,
+            'visit_counts': visit_counts,
+            'tree_depth': max(len(root.token_ids), 1),
+            'confidence_map': confidence_map,
+        }
+    
+    def _is_math_state(self, concept) -> bool:
+        """Heuristic: check if the current problem involves math.
+        
+        Math-aware pruning only applies when the concept looks like
+        a math problem (contains digits, operators, or math keywords).
+        """
+        if concept is None:
+            return False
+        concept_str = str(concept).lower()
+        math_keywords = ['math', 'equation', 'calculate', 'compute', 'solve',
+                         '+', '-', '*', '/', '=', 'digit', 'number', 'add',
+                         'subtract', 'multiply', 'divide', 'sum', 'count']
+        return any(kw in concept_str for kw in math_keywords)
+    
+    def __repr__(self) -> str:
+        return (
+            f"MemoryAwareMCTS(n_simulations={self.n_simulations}, "
+            f"memory={'set' if self.memory is not None else 'None'}, "
+            f"top_k={self.top_k})"
+        )
+
+
+# ═════════════════════════════════════════════════════════════════════
+# CONVENIENCE WRAPPER — Create MemoryAwareMCTS with integrated memory
+# ═════════════════════════════════════════════════════════════════════
+
+def create_memory_aware_mcts_fn(
+    model, tokenizer,
+    memory=None,
+    n_simulations: int = 16,
+    max_rollout_tokens: int = 8,
+    top_k: int = 5,
+    grammar_rules: list = None,
+):
+    """Create a closure wrapping MemoryAwareMCTS.search() for easy passing.
+    
+    Usage:
+        mcts_fn = create_memory_aware_mcts_fn(model, tokenizer, memory)
+        sentence = model.speaker_generate(tok, concept, mcts_fn=mcts_fn)
+    """
+    mcts = MemoryAwareMCTS(
+        model=model,
+        tokenizer=tokenizer,
+        memory=memory,
+        n_simulations=n_simulations,
+        max_rollout_tokens=max_rollout_tokens,
+        top_k=top_k,
+        grammar_rules=grammar_rules,
+    )
+    
+    def _mcts_fn(model_inner, tok_inner, input_ids, concept,
+                 temperature=0.8, top_k_inner=top_k):
+        return mcts.search(
+            input_ids=input_ids,
+            concept=concept,
+            temperature=temperature,
+        )
+    
+    return _mcts_fn
+
+
+# ═════════════════════════════════════════════════════════════════════
 # DEMO / TEST
 # ═════════════════════════════════════════════════════════════════════
 
@@ -455,3 +915,20 @@ if __name__ == '__main__':
     mcts_fn = create_mcts_fn(model, tok, simulations=8)
     result2 = mcts_fn(model, tok, input_tensor, concept)
     print(f'\nClosure result: token={result2["best_token"]}')
+    
+    # Test MicroMCTS class
+    print('\n--- Testing MicroMCTS class ---')
+    mmcts = MicroMCTS(model, tok, n_simulations=8)
+    result3 = mmcts.search(input_tensor, concept)
+    print(f'MicroMCTS result: token={result3["best_token"]}')
+    
+    # Test MemoryAwareMCTS (without memory = behaves like standard MCTS)
+    print('\n--- Testing MemoryAwareMCTS (no memory) ---')
+    mamcts = MemoryAwareMCTS(model, tok, n_simulations=8)
+    result4 = mamcts.search(input_tensor, concept)
+    print(f'MemoryAwareMCTS result: token={result4["best_token"]}')
+    print(f'Confidence map entries: {len(result4.get("confidence_map", {}))}')
+    
+    # Test node_confidence with no memory (should return 0.5)
+    conf = mamcts.node_confidence('apple:red:fall')
+    print(f'node_confidence(apple:red:fall) = {conf:.2f} (expected 0.5)')

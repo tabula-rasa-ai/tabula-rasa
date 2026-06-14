@@ -23,7 +23,7 @@ from tabula_rasa.model import MathTransformer
 from tabula_rasa.config import Config
 from tabula_rasa.tokenizer import MathTokenizer
 from egefalos.online_ewc import OnlineEWC
-from egefalos.hippocampus import get_unconsolidated, get_stats, mark_consolidated
+from egefalos.hippocampus import get_unconsolidated, get_stats, mark_consolidated, decay_memories
 
 
 def consolidate_sleep_cycle(
@@ -212,6 +212,11 @@ def consolidate_sleep_cycle(
     exp_ids = [e['id'] for e in experiences if 'id' in e]
     if exp_ids:
         mark_consolidated(exp_ids)
+
+    # Synaptic decay — demote/forget unused memories, clean up tiers
+    decay_result = decay_memories(min_access=3, max_age_days=7,
+                                  demote_working=True, cleanup_active=True)
+    print(f'  Synaptic decay: {decay_result}')
 
     print(f"  [Sleep] Consolidation complete.")
     print(f"  [Sleep] Saved to {output_dir}")

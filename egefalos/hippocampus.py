@@ -211,37 +211,103 @@ def promote_to_longterm(ids: list[int]):
     conn.close()
 
 
-def decay_memories(min_access: int = 3, max_age_days: int = 30):
-    """Demote longterm memories with low access count back to working,
-    or delete very old ones that have never been accessed.
+def decay_memories(min_access: int = 3, max_age_days: int = 30,
+                   decay_rate: float = 0.5,
+                   demote_working: bool = False,
+                   cleanup_active: bool = False):
+    """Full synaptic decay across all 3 memory tiers.
+
+    Always applies:
+      - Longterm → Working demotion (if access_count < min_access and old)
+      - Unconsolidated longterm deletion (if very old and never consolidated)
+      - Synaptic decay: gradual access_count reduction across all tiers
+
+    When enabled (opt-in):
+      - demote_working=True: Working → Active demotion
+      - cleanup_active=True:  Active cleanup (consolidated→Working,
+                               unconsolidated→deleted)
 
     Args:
-        min_access: Minimum access count for longterm retention.
+        min_access: Minimum access count for retention.
         max_age_days: Age in days beyond which a memory may be demoted/deleted.
+        decay_rate: Synaptic decay factor applied each cycle (default 0.5).
+                    Reduces access_count by int(decay_rate * max_age_days)
+                    across all tiers each cycle to simulate gradual forgetting.
+        demote_working: If True, demote unused Working memories back to Active.
+        cleanup_active: If True, promote consolidated old Active→Working,
+                        delete unconsolidated old Active entries.
     """
     conn = get_db()
     cutoff = time.time() - (max_age_days * 86400)
 
-    # Demote longterm memories with low access count back to working
-    demoted = conn.execute("""
+    # ── Synaptic decay: gradually reduce access_count across all tiers ──
+    decay_amount = int(decay_rate * max_age_days)
+    if decay_amount > 0:
+        conn.execute("""
+            UPDATE experiences
+            SET access_count = MAX(0, access_count - ?)
+            WHERE access_count > 0
+        """, (decay_amount,))
+        conn.commit()
+
+    # ── Demote longterm → working (existing behavior) ────────────────
+    demoted_longterm = conn.execute("""
         UPDATE experiences
         SET tier = 'working'
         WHERE tier = 'longterm'
           AND access_count < ?
-        AND timestamp < ?
+          AND timestamp < ?
     """, (min_access, cutoff)).rowcount
 
-    # Delete very old, unconsolidated longterm memories
-    deleted = conn.execute("""
+    # ── Delete very old unconsolidated longterm (existing behavior) ──
+    deleted_longterm = conn.execute("""
         DELETE FROM experiences
         WHERE tier = 'longterm'
           AND consolidated = 0
           AND timestamp < ?
     """, (cutoff,)).rowcount
 
+    # ── Working → Active demotion (opt-in) ────────────────────────────
+    demoted_working = 0
+    if demote_working:
+        demoted_working = conn.execute("""
+            UPDATE experiences
+            SET tier = 'active'
+            WHERE tier = 'working'
+              AND access_count < ?
+              AND timestamp < ?
+        """, (min_access, cutoff)).rowcount
+
+    # ── Active tier cleanup (opt-in) ──────────────────────────────────
+    promoted = 0
+    deleted_active = 0
+    if cleanup_active:
+        # Promote consolidated old Active → Working
+        promoted = conn.execute("""
+            UPDATE experiences
+            SET tier = 'working'
+            WHERE tier = 'active'
+              AND consolidated = 1
+              AND timestamp < ?
+        """, (cutoff,)).rowcount
+
+        # Delete unconsolidated old Active (never worth saving)
+        deleted_active = conn.execute("""
+            DELETE FROM experiences
+            WHERE tier = 'active'
+              AND consolidated = 0
+              AND timestamp < ?
+        """, (cutoff,)).rowcount
+
     conn.commit()
     conn.close()
-    return {'demoted': demoted, 'deleted': deleted}
+
+    return {
+        'demoted_longterm': demoted_longterm,
+        'demoted_working': demoted_working,
+        'promoted': promoted,
+        'deleted': deleted_longterm + deleted_active,
+    }
 
 
 # ─── Query / Search ──────────────────────────────────────────────────
