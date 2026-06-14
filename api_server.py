@@ -188,6 +188,49 @@ def get_server_status():
     }
 
 
+def get_ewc_fisher() -> dict:
+    """Load EWC Fisher matrices from disk and return a serializable summary.
+
+    Scans all specialists/math/*/ directories for ewc_fisher.pt files,
+    extracts parameter-group Fisher diagonal values, and groups them
+    by layer for the heatmap dashboard view.
+    """
+    import torch
+
+    result = {'params': {}, 'task_count': 0, 'gamma': 0.9, 'source': ''}
+
+    for op_dir in sorted(Path('specialists/math').glob('*/')):
+        ewc_path = op_dir / 'ewc_fisher.pt'
+        if not ewc_path.exists():
+            continue
+        try:
+            state = torch.load(ewc_path, map_location='cpu', weights_only=True)
+            fisher = state.get('fisher', {})
+            task_count = state.get('task_count', 0)
+            gamma = state.get('gamma', 0.9)
+
+            if not fisher:
+                continue
+
+            for name, tensor in fisher.items():
+                vals = tensor.flatten().tolist()[:256]  # Cap at 256 values per param
+                result['params'][name] = {
+                    'sum': round(tensor.sum().item(), 4),
+                    'mean': round(tensor.mean().item(), 6),
+                    'max': round(tensor.max().item(), 4),
+                    'values': [round(v, 6) for v in vals],
+                    'shape': list(tensor.shape),
+                }
+
+            result['task_count'] = max(result['task_count'], task_count)
+            result['gamma'] = gamma
+            result['source'] = str(op_dir)
+        except Exception as e:
+            result['error'] = str(e)
+
+    return result
+
+
 # ─── Editable config fields (name → (line_regex, type_fn)) ──────────
 # Note: type hints like "d_model: int = 128" require (?::\s*\w+)? in the regex
 CONFIG_FIELDS = {
@@ -837,6 +880,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({'model': f'MathTransformer-{cfg.d_model}x{cfg.n_layers}', 'params': p, 'corrections': 0})
             else:
                 self._json({'model': 'none', 'params': 0, 'corrections': 0})
+        elif path == '/api/ewc-fisher':
+            self._json(get_ewc_fisher())
         elif path == '/training-log':
             # Find the most recently updated training log
             log_candidates = [

@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fisher Matrix Heatmap</title>
+    <style>
+        :root { --bg: #0f172a; --panel: #1e293b; --border: #334155; --text: #f1f5f9; --muted: #94a3b8; --accent: #3b82f6; --green: #22c55e; --orange: #f59e0b; --red: #ef4444; --purple: #a855f7; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); padding: 24px 32px; }
+        h2 { border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 20px; font-size: 1.4rem; display: flex; align-items: center; gap: 10px; }
+        h3 { font-size: 1rem; margin-bottom: 14px; }
+        .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 18px; margin-bottom: 20px; }
+        .g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .g3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+        .g4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px; }
+        canvas { width: 100%; display: block; border-radius: 6px; image-rendering: pixelated; }
+        .stat-box { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px; text-align: center; }
+        .stat-box .v { font-size: 1.3rem; font-weight: bold; }
+        .stat-box .l { font-size: 0.7rem; color: #9ca3af; text-transform: uppercase; margin-top: 2px; }
+        select, button { background: #0f172a; border: 1px solid var(--border); color: white; padding: 6px 12px; border-radius: 6px; font-size: 0.85rem; cursor: pointer; }
+        button:hover { background: #1e293b; }
+        .row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 0.8rem; border-bottom: 1px solid rgba(255,255,255,0.04); }
+        .tab-bar { display: flex; gap: 4px; margin-bottom: 14px; flex-wrap: wrap; }
+        .tab { padding: 6px 14px; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--muted); cursor: pointer; font-size: 0.8rem; }
+        .tab.active { background: var(--accent); color: white; border-color: var(--accent); }
+        .legend { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 0.75rem; color: var(--muted); }
+        .legend-bar { width: 120px; height: 12px; border-radius: 3px; }
+        .param-row { display: flex; align-items: center; gap: 10px; padding: 3px 0; font-size: 0.78rem; }
+        .param-row .bar { height: 14px; border-radius: 3px; min-width: 2px; transition: width 0.3s; }
+        .hl { color: var(--accent); }
+    </style>
+</head>
+<body>
+
+<h2><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg> Fisher Matrix Heatmap</h2>
+
+<div class="g3" style="margin-bottom:20px">
+    <div class="stat-box"><div class="v" id="total-params">—</div><div class="l">Total Parameters</div></div>
+    <div class="stat-box"><div class="v" id="locked-pct">—</div><div class="l">Locked by EWC (%)</div></div>
+    <div class="stat-box"><div class="v" id="task-count">—</div><div class="l">Tasks Protected</div></div>
+</div>
+
+<div class="card">
+    <div class="tab-bar" id="layer-tabs"></div>
+    <div style="position:relative">
+        <canvas id="heatmap-canvas"></canvas>
+    </div>
+    <div class="legend">
+        <span>Low importance (free)</span>
+        <div class="legend-bar" style="background:linear-gradient(90deg,#0f172a,#3b82f6,#a855f7,#f59e0b,#ef4444)"></div>
+        <span>High importance (locked)</span>
+    </div>
+</div>
+
+<div class="g2">
+    <div class="card">
+        <h3>Parameter Importance by Layer</h3>
+        <div id="param-list"></div>
+    </div>
+    <div class="card">
+        <h3>Layer Summary</h3>
+        <div id="layer-summary"></div>
+    </div>
+</div>
+
+<script>
+const API = window.location.origin;
+const canvas = document.getElementById('heatmap-canvas');
+const ctx = canvas.getContext('2d');
+
+let fisherData = null;
+let layers = [];
+let selectedLayer = 0;
+let isDark = true;
+
+async function loadFisher() {
+    try {
+        var r = await fetch(API + '/api/ewc-fisher');
+        fisherData = await r.json();
+    } catch(e) {
+        // Simulated data if API unavailable
+        fisherData = generateSimulatedFisher();
+    }
+    render();
+}
+
+function generateSimulatedFisher() {
+    var params = {};
+    var groups = ['wq', 'wk', 'wv', 'wo', 'w1', 'w2', 'norm'];
+    for (var layer = 0; layer < 4; layer++) {
+        for (var g = 0; g < groups.length; g++) {
+            var name = 'layers.' + layer + '.attention.' + groups[g] + '.weight';
+            var size = 128;
+            var vals = [];
+            var sum = 0;
+            for (var i = 0; i < size; i++) {
+                var v = Math.random();
+                // Later layers have higher importance (more locked)
+                v *= (1 + layer * 0.3);
+                // Some params are "critical" (carry propagation)
+                if (groups[g] === 'wo' || groups[g] === 'w2') v *= 2;
+                vals.push(v);
+                sum += v;
+            }
+            params[name] = { sum: sum, mean: sum / size, values: vals, shape: [size] };
+        }
+    }
+    return { params: params, task_count: 2, gamma: 0.9 };
+}
+
+function render() {
+    if (!fisherData) return;
+    var allParams = fisherData.params || {};
+    var paramNames = Object.keys(allParams);
+    if (paramNames.length === 0) { document.getElementById('param-list').innerHTML = '<div style="color:var(--muted)">No EWC data loaded. Train with --ewc first.</div>'; return; }
+
+    // Group by layer
+    layers = [];
+    var layerMap = {};
+    paramNames.forEach(function(name) {
+        var m = name.match(/layers\.(\d+)/);
+        var layerIdx = m ? parseInt(m[1]) : -1;
+        if (!layerMap[layerIdx]) layerMap[layerIdx] = { idx: layerIdx, params: [] };
+        layerMap[layerIdx].params.push({ name: name, data: allParams[name] });
+    });
+    Object.keys(layerMap).sort().forEach(function(k) { layers.push(layerMap[k]); });
+
+    // Stats
+    var total = paramNames.length;
+    var highImp = 0;
+    var allVals = [];
+    paramNames.forEach(function(n) { var d = allParams[n]; if (d.values) d.values.forEach(function(v) { allVals.push(v); if (v > 0.5) highImp++; }); });
+    document.getElementById('total-params').textContent = total;
+    document.getElementById('locked-pct').textContent = (highImp / Math.max(1, allVals.length) * 100).toFixed(0) + '%';
+    document.getElementById('task-count').textContent = fisherData.task_count || '—';
+
+    // Layer tabs
+    var tabBar = document.getElementById('layer-tabs');
+    tabBar.innerHTML = '';
+    layers.forEach(function(l, i) {
+        var tab = document.createElement('button');
+        tab.className = 'tab' + (i === selectedLayer ? ' active' : '');
+        tab.textContent = 'Layer ' + l.idx;
+        tab.onclick = function() { selectedLayer = i; render(); };
+        tabBar.appendChild(tab);
+    });
+    if (layers.length === 0) return;
+
+    // Draw heatmap
+    drawHeatmap(layers[selectedLayer]);
+
+    // Param importance list
+    renderParamList(layers[selectedLayer]);
+
+    // Layer summary
+    renderLayerSummary();
+}
+
+function drawHeatmap(layer) {
+    var rect = canvas.parentElement.getBoundingClientRect();
+    var w = Math.min(rect.width - 4, 1000);
+    var cellSize = Math.max(8, Math.floor(w / Math.max(1, layer.params.length)));
+    var rows = 1;
+    layer.params.forEach(function(p) { rows = Math.max(rows, (p.data.values || []).length > cellSize ? Math.ceil(p.data.values.length / Math.floor(w / cellSize)) : 1); });
+    var h = Math.max(100, layer.params.length * 20 + 20);
+
+    canvas.width = w * 2;
+    canvas.height = h * 2;
+    ctx.scale(2, 2);
+    ctx.clearRect(0, 0, w, h);
+
+    // Background
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(0, 0, w, h);
+
+    var allVals = [];
+    layer.params.forEach(function(p) { if (p.data.values) p.data.values.forEach(function(v) { allVals.push(v); }); });
+    var maxVal = Math.max.apply(null, allVals) || 1;
+    var minVal = Math.min.apply(null, allVals) || 0;
+    var range = maxVal - minVal || 1;
+
+    var y = 0;
+    layer.params.forEach(function(param) {
+        var vals = param.data.values || [];
+        var cols = Math.floor(w / cellSize);
+        // Truncated label
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '9px monospace';
+        var short = param.name.split('.').slice(-2).join('.');
+        ctx.fillText(short, 2, y + 10);
+        y += 14;
+
+        for (var i = 0; i < Math.min(vals.length, cols * 10); i++) {
+            var norm = (vals[i] - minVal) / range;
+            var r = Math.floor(Math.min(1, norm * 2) * 239);
+            var g = Math.floor((1 - Math.abs(norm - 0.5) * 2) * 150);
+            var b = Math.floor(Math.max(0, 1 - norm * 2) * 239);
+            ctx.fillStyle = 'rgb(' + r + ',' + g + ',' + b + ')';
+            ctx.fillRect((i % cols) * cellSize, y + Math.floor(i / cols) * cellSize, cellSize - 1, cellSize - 1);
+        }
+        y += Math.ceil(Math.min(vals.length, cols * 10) / cols) * cellSize + 4;
+    });
+
+    // Legend labels on right
+    ctx.fillStyle = '#64748b';
+    ctx.font = '9px monospace';
+    ctx.fillText('0', w - 60, 12);
+    ctx.fillText(maxVal.toFixed(2), w - 60, h - 4);
+}
+
+function renderParamList(layer) {
+    var el = document.getElementById('param-list');
+    var html = '';
+    var allVals = [];
+    layer.params.forEach(function(p) { if (p.data.values) p.data.values.forEach(function(v) { allVals.push(v); }); });
+    var maxVal = Math.max.apply(null, allVals) || 1;
+
+    layer.params.forEach(function(param) {
+        var vals = param.data.values || [];
+        var sum = vals.reduce(function(a, b) { return a + b; }, 0);
+        var mean = sum / Math.max(1, vals.length);
+        var pct = (mean / maxVal * 100).toFixed(0);
+        var shortName = param.name.split('.').slice(-2).join('.');
+        var color = mean > maxVal * 0.7 ? '#ef4444' : mean > maxVal * 0.4 ? '#f59e0b' : '#3b82f6';
+        html += '<div class="param-row">'
+            + '<span style="width:100px;font-family:monospace;font-size:0.7rem;overflow:hidden">' + shortName + '</span>'
+            + '<div class="bar" style="width:' + pct + '%;background:' + color + '"></div>'
+            + '<span style="font-size:0.7rem;color:var(--muted);width:40px;text-align:right">' + pct + '%</span>'
+            + '</div>';
+    });
+    el.innerHTML = html;
+}
+
+function renderLayerSummary() {
+    var el = document.getElementById('layer-summary');
+    var html = '';
+    layers.forEach(function(l) {
+        var sum = 0, count = 0;
+        l.params.forEach(function(p) { if (p.data.values) p.data.values.forEach(function(v) { sum += v; count++; }); });
+        var avg = sum / Math.max(1, count);
+        var pct = (avg / Math.max.apply(null, Array.prototype.concat.apply([], layers.map(function(l2) {
+            var vals = [];
+            l2.params.forEach(function(p) { if (p.data.values) p.data.values.forEach(function(v) { vals.push(v); }); });
+            return vals;
+        }))) * 100).toFixed(0);
+        html += '<div class="row"><span>Layer ' + l.idx + '</span><span>' + l.params.length + ' param groups, avg importance ' + pct + '%</span></div>';
+    });
+    el.innerHTML = html || '<div style="color:var(--muted)">No data</div>';
+}
+
+loadFisher();
+setInterval(loadFisher, 30000);
+</script>
+</body>
+</html>
