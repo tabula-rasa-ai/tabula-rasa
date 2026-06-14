@@ -195,6 +195,12 @@ class MathGymEnv:
     def step(self, action: int) -> tuple:
         """Take a step by generating a token.
 
+        Provides **dense rewards**:
+        - +0.1 per valid token (digit or carry-digit pair)
+        - +0.5 per correctly calculated column
+        - +1.0 for the final correct answer
+        - -0.1 for invalid tokens (non-digit when digit expected)
+
         Args:
             action: Token ID to append.
 
@@ -212,10 +218,24 @@ class MathGymEnv:
         truncated = False
         reward = 0.0
 
-        # <EOS> token → episode complete, evaluate
+        # Compute intermediate dense reward for this step
+        decoded = self.tok.decode(self._tokens, skip_special=True).strip()
+
+        # Dense reward: +0.1 for any valid digit/carry-digit token
+        if decoded and decoded[-1].isdigit():
+            reward += 0.1
+
+        # Dense reward: +0.5 for a correctly completed column (pair of carry+digit)
+        if len(decoded) >= 2 and len(decoded) % 2 == 0:
+            # We have a complete column pair — check correctness
+            expected_scratchpad = self._generate_expected_scratchpad()
+            if expected_scratchpad and decoded == expected_scratchpad[:len(decoded)]:
+                reward += 0.5
+
+        # <EOS> token → episode complete, evaluate final answer
         if action == self.tok.eos_id or self._step >= self.max_steps:
             terminated = True
-            reward = self._compute_reward()
+            reward = self._compute_reward()  # +1 or -1
 
         obs = self._get_obs()
 
@@ -223,6 +243,46 @@ class MathGymEnv:
             self._done = True
 
         return obs, reward, terminated, truncated, self._get_info()
+
+    def _generate_expected_scratchpad(self) -> str:
+        """Generate the correct scratchpad for the current problem.
+
+        Uses fused carry-digit format matching the model's training.
+        Returns the expected scratchpad string (e.g. '0406' for 12+34).
+        """
+        parts = self._expr.split(self.op, 1)
+        if len(parts) != 2:
+            return ""
+        a_str, b_str = parts
+        try:
+            a = int(a_str)
+            b = int(b_str)
+        except ValueError:
+            return ""
+        ans = evaluate(a, b, self.op)
+        if self.op in ("+", "-"):
+            carry = 0
+            sp = ""
+            ra, rb = str(a)[::-1], str(b)[::-1]
+            max_len = max(len(ra), len(rb))
+            for i in range(max_len):
+                da = int(ra[i]) if i < len(ra) else 0
+                db = int(rb[i]) if i < len(rb) else 0
+                if self.op == "+":
+                    total = da + db + carry
+                    carry = total // 10
+                    digit = total % 10
+                else:  # subtraction
+                    if da < db + carry:
+                        da += 10
+                    total = da - db - carry
+                    carry = 1 if da >= 10 else 0
+                    digit = total % 10 if total >= 0 else (total + 10) % 10
+                sp += f"{carry}{digit}"
+            if carry and self.op == "+":
+                sp += f"0{carry}"
+            return sp
+        return str(ans)
 
     def _compute_reward(self) -> float:
         """Evaluate the token sequence and return the reward.
