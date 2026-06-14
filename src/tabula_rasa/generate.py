@@ -1,19 +1,31 @@
 """Interactive generation with trained model."""
+from __future__ import annotations
 
 import torch
 import sys
 from pathlib import Path
+from typing import NoReturn
 
 from tabula_rasa.config import Config
 from tabula_rasa.tokenizer import MathTokenizer
 from tabula_rasa.model import MathTransformer, count_parameters
 
 
-def load_model(checkpoint_path):
+def load_model(checkpoint_path: str | Path) -> tuple[MathTransformer, MathTokenizer]:
+    """Load a trained model and matching tokenizer from a checkpoint.
+
+    Args:
+        checkpoint_path: Path to the ``.pt`` checkpoint file. The
+            corresponding tokenizer JSON is expected at
+            ``{checkpoint_dir}/tokenizer.json``.
+
+    Returns:
+        Tuple ``(model, tokenizer)`` with the model in evaluation mode.
+    """
     cfg = Config()
     tok = MathTokenizer.load(str(Path(checkpoint_path).parent / 'tokenizer.json'))
     cfg.vocab_size = tok.vocab_size  # type: ignore[misc]
-    tok.max_seq_len = cfg.max_seq_len
+    tok.max_seq_len = cfg.max_seq_len  # type: ignore[attr-defined]
 
     model = MathTransformer(cfg)
     state = torch.load(checkpoint_path, map_location='cpu', weights_only=True)
@@ -22,7 +34,13 @@ def load_model(checkpoint_path):
     return model, tok
 
 
-def main():
+def main() -> None:
+    """Run an interactive REPL that solves math expressions.
+
+    Finds the best or final checkpoint in ``checkpoints/``, loads the model,
+    and enters a loop where the user can type expressions followed by ``=``.
+    Type ``exit``, ``quit``, ``q``, or send ``EOF`` to stop.
+    """
     # Find checkpoint
     ckpt = Path('checkpoints/best.pt')
     if not ckpt.exists():

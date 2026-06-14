@@ -1,29 +1,41 @@
 """Generate synthetic math problems for training."""
+from __future__ import annotations
 
 import random
 import json
 from pathlib import Path
+from typing import Optional
 
 import torch
 from torch.utils.data import Dataset
 from tabula_rasa.tokenizer import MathTokenizer
 
 
-OPERATIONS = ['+', '-', '*', '/']
+OPERATIONS: list[str] = ['+', '-', '*', '/']
 
 
-def generate_problem(min_digits=1, max_digits=4):
+def generate_problem(min_digits: int = 1, max_digits: int = 4) -> tuple[str, str]:
     """Generate an arithmetic problem and its answer.
 
-    Returns (expression_str, answer_str) e.g. ('12+34', '46')
+    Creates a random arithmetic expression using one of ``+``, ``-``, ``*``,
+    or ``/`` with operands having between *min_digits* and *max_digits*
+    digits. Subtraction results are always positive; division always yields
+    integer results.
+
+    Args:
+        min_digits: Minimum number of digits for each operand (default: 1).
+        max_digits: Maximum number of digits for each operand (default: 4).
+
+    Returns:
+        A tuple ``(expression_str, answer_str)``, e.g. ``('12+34', '46')``.
     """
     op = random.choice(OPERATIONS)
 
     a_digits = random.randint(min_digits, max_digits)
     b_digits = random.randint(min_digits, max_digits)
 
-    a = random.randint(10**(a_digits-1), 10**a_digits - 1)
-    b = random.randint(10**(b_digits-1), 10**b_digits - 1)
+    a = random.randint(10 ** (a_digits - 1), 10**a_digits - 1)
+    b = random.randint(10 ** (b_digits - 1), 10**b_digits - 1)
 
     if op == '+':
         ans = a + b
@@ -52,24 +64,47 @@ def generate_problem(min_digits=1, max_digits=4):
     return expr, answer
 
 
-def format_math_sample(expr, answer):
-    """Format as 'question=answer' e.g. '12+34=46'"""
+def format_math_sample(expr: str, answer: str) -> str:
+    """Format problem and answer as a single string.
+
+    Args:
+        expr: The expression string (e.g. ``'12+34'``).
+        answer: The answer string (e.g. ``'46'``).
+
+    Returns:
+        Formatted string ``'{expr}={answer}'`` (e.g. ``'12+34=46'``).
+    """
     return f'{expr}={answer}'
 
 
-class MathDataset(Dataset):
-    """Dataset of synthetic math problems."""
+class MathDataset(Dataset[tuple[torch.Tensor, torch.Tensor]]):
+    """Dataset of synthetic math problems for autoregressive training.
+
+    Each sample is a tokenised string of the form ``'{expr}={answer}'``,
+    wrapped in special tokens. Sequences are padded to *max_seq_len* and
+    returned as ``(input_ids, target_ids)`` where targets are shifted right
+    by one position.
+    """
 
     def __init__(self, tokenizer: MathTokenizer, num_samples: int,
                  min_digits: int = 1, max_digits: int = 4,
-                 seed: int = 42):
+                 seed: int = 42) -> None:
+        """Initialise the dataset by generating *num_samples* problems.
+
+        Args:
+            tokenizer: Tokenizer used to encode problem strings.
+            num_samples: Number of problems to generate.
+            min_digits: Minimum operand digits per problem.
+            max_digits: Maximum operand digits per problem.
+            seed: Random seed for reproducible problem generation.
+        """
         self.tokenizer = tokenizer
         self.min_digits = min_digits
         self.max_digits = max_digits
-        self.max_seq_len = tokenizer.max_seq_len if hasattr(tokenizer, 'max_seq_len') else 64
+        self.max_seq_len: int = tokenizer.max_seq_len if hasattr(tokenizer, 'max_seq_len') else 64
 
         rng = random.Random(seed)
-        self.samples = []
+        self.samples: list[list[int]] = []
         for _ in range(num_samples):
             expr, ans = generate_problem(min_digits, max_digits)
             text = format_math_sample(expr, ans)
@@ -79,10 +114,24 @@ class MathDataset(Dataset):
 
         print(f'Created {len(self.samples)} valid samples (filtered from {num_samples})')
 
-    def __len__(self):
+    def __len__(self) -> int:
+        """Return the number of samples in the dataset."""
         return len(self.samples)
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
+        """Return the ``(input, target)`` pair for sample at index *idx*.
+
+        The input is the token sequence without the last token; the target
+        is the sequence without the first token (shifted right). Both are
+        padded to *max_seq_len*.
+
+        Args:
+            idx: Sample index.
+
+        Returns:
+            A tuple ``(input_ids, target_ids)``, each a ``torch.long`` tensor
+            of shape ``(max_seq_len,)``.
+        """
         ids = self.samples[idx]
         # Pad to max_seq_len
         padded = ids + [self.tokenizer.pad_id] * (self.max_seq_len - len(ids))
@@ -93,10 +142,21 @@ class MathDataset(Dataset):
         return torch.tensor(x, dtype=torch.long), torch.tensor(y, dtype=torch.long)
 
 
-def generate_test_set(num_samples=100, seed=123):
-    """Generate a clean test set of problems for evaluation."""
+def generate_test_set(num_samples: int = 100, seed: int = 123) -> list[tuple[str, str]]:
+    """Generate a clean test set of problems for evaluation.
+
+    Problems are generated with operand digits ranging from 1 to 5 to
+    test generalisation beyond training difficulty.
+
+    Args:
+        num_samples: Number of test problems to generate (default: 100).
+        seed: Random seed for reproducibility (default: 123).
+
+    Returns:
+        List of ``(expression, answer)`` tuples.
+    """
     rng = random.Random(seed)
-    problems = []
+    problems: list[tuple[str, str]] = []
     for _ in range(num_samples):
         expr, ans = generate_problem(1, 5)
         problems.append((expr, ans))
@@ -105,6 +165,7 @@ def generate_test_set(num_samples=100, seed=123):
 
 if __name__ == '__main__':
     from tabula_rasa.config import Config
+
     cfg = Config()
     tok = MathTokenizer()
     # Test dataset creation

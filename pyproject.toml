@@ -1,0 +1,63 @@
+[build-system]
+requires = ["setuptools>=69.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tabula-rasa"
+version = "1.0.0"
+description = "Learning from scratch, one specialist at a time"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.9"
+authors = [
+    {name = "Tabula Rasa AI", email = "babischatzipanagiotou14@gmail.com"},
+]
+keywords = ["transformer", "continual-learning", "ewc", "arithmetic", "ai"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "torch>=2.0.0",
+    "numpy>=1.24.0",
+    "tqdm>=4.60.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/tabula-rasa-ai/tabula-rasa"
+Repository = "https://github.com/tabula-rasa-ai/tabula-rasa"
+Documentation = "https://github.com/tabula-rasa-ai/tabula-rasa"
+Telegram = "https://t.me/TabulaRasaAi"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "mypy>=1.0",
+]
+dashboard = [
+    "psutil>=5.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["tabula_rasa*"]
+
+[tool.setuptools.package-data]
+tabula_rasa = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v --tb=short"
+
+[tool.mypy]
+python_version = "3.9"
+strict = true
+ignore_missing_imports = true
+warn_unused_ignores = true

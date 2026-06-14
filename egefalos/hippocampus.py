@@ -1,13 +1,19 @@
-"""Hippocampus — Fast, short-term memory during awake state.
+"""Hippocampus — Tiered 3-layer memory architecture (Active → Working → Long-term).
 
 When the model encounters surprising data (high prediction error),
-it's instantly saved here. No heavy training — just storage.
+it's instantly saved in Active tier. Promoted to Working on repeated access,
+then to Long-term for permanent storage with decay.
 
-This mirrors the human hippocampus: fast encoding of experiences
-for later consolidation into permanent memory.
+Tiers:
+    active   — Short-term / current session. High surprise threshold. Auto-pruned after consolidation.
+    working  — Task-relevant / multi-session. Tracked by access count + last access time.
+    longterm — Cross-session knowledge. Decayed and demoted if unused.
 """
 
-import sqlite3, json, time, math
+import sqlite3
+import json
+import time
+import math
 from pathlib import Path
 from typing import Optional
 import torch
@@ -16,9 +22,12 @@ DB_PATH = Path('memory/hippocampus.db')
 
 
 def get_db() -> sqlite3.Connection:
-    """Get or create the hippocampus database."""
+    """Get or create the hippocampus database with tiered schema."""
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(DB_PATH))
+    conn.row_factory = sqlite3.Row
+
+    # Core table — add new columns if missing (backward-compatible ALTER)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS experiences (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -28,82 +37,90 @@ def get_db() -> sqlite3.Connection:
             prediction_error REAL NOT NULL,
             skill TEXT DEFAULT 'general',
             is_correction INTEGER DEFAULT 0,
+            tier TEXT DEFAULT 'active',
+            access_count INTEGER DEFAULT 0,
+            last_access REAL DEFAULT 0,
             consolidated INTEGER DEFAULT 0
         )
     """)
+
+    # Add missing columns for databases created with old schema
+    for col, col_type in [('tier', 'TEXT DEFAULT \'active\''),
+                          ('access_count', 'INTEGER DEFAULT 0'),
+                          ('last_access', 'REAL DEFAULT 0')]:
+        try:
+            conn.execute(f"ALTER TABLE experiences ADD COLUMN {col} {col_type}")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+
+    # Indexes
     conn.execute("""
-        CREATE INDEX IF NOT EXISTS idx_consolidated
-        ON experiences(consolidated)
+        CREATE INDEX IF NOT EXISTS idx_tier_consolidated
+        ON experiences(tier, consolidated)
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_tier_timestamp
+        ON experiences(tier, timestamp)
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_tier_access
+        ON experiences(tier, last_access)
     """)
     conn.commit()
     return conn
 
 
+# ─── CRUD ────────────────────────────────────────────────────────────
+
 def store_experience(input_text: str, prediction_error: float,
                      output_text: str = None, skill: str = 'general',
-                     is_correction: bool = False):
-    """Store a surprising experience in the hippocampus."""
+                     is_correction: bool = False, tier: str = 'active'):
+    """Store a surprising experience in the specified tier (default: active)."""
     conn = get_db()
+    ts = time.time()
     conn.execute("""
         INSERT INTO experiences (timestamp, input_text, output_text,
-                                 prediction_error, skill, is_correction)
-        VALUES (?, ?, ?, ?, ?, ?)
-    """, (time.time(), input_text, output_text,
-          prediction_error, skill, 1 if is_correction else 0))
+                                 prediction_error, skill, is_correction, tier)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (ts, input_text, output_text,
+          prediction_error, skill, 1 if is_correction else 0, tier))
     conn.commit()
     conn.close()
 
 
-def get_unconsolidated(limit: int = 100) -> list[dict]:
-    """Get experiences that haven't been consolidated yet."""
+def get_unconsolidated(limit: int = 100, tier: str = 'active') -> list[dict]:
+    """Get experiences that haven't been consolidated yet, optionally filtered by tier."""
     conn = get_db()
     rows = conn.execute("""
-        SELECT id, input_text, output_text, prediction_error, skill, is_correction
-        FROM experiences WHERE consolidated = 0
+        SELECT id, input_text, output_text, prediction_error,
+               skill, is_correction, tier, access_count, last_access
+        FROM experiences WHERE consolidated = 0 AND tier = ?
         ORDER BY prediction_error DESC
         LIMIT ?
-    """, (limit,)).fetchall()
+    """, (tier, limit)).fetchall()
     conn.close()
-
-    return [
-        {
-            'id': r[0],
-            'input': r[1],
-            'output': r[2],
-            'error': r[3],
-            'skill': r[4],
-            'is_correction': bool(r[5]),
-        }
-        for r in rows
-    ]
+    return [dict(r) for r in rows]
 
 
-def get_old_memories(limit: int = 50) -> list[dict]:
-    """Get random old consolidated memories for replay."""
+def get_old_memories(limit: int = 50, tier: str = 'longterm') -> list[dict]:
+    """Get random consolidated memories from a tier (default: longterm)."""
     conn = get_db()
-    total = conn.execute("SELECT COUNT(*) FROM experiences WHERE consolidated = 1").fetchone()[0]
+    total = conn.execute(
+        "SELECT COUNT(*) FROM experiences WHERE consolidated = 1 AND tier = ?",
+        (tier,)
+    ).fetchone()[0]
     if total == 0:
         conn.close()
         return []
 
     rows = conn.execute("""
-        SELECT id, input_text, output_text, prediction_error, skill, is_correction
-        FROM experiences WHERE consolidated = 1
+        SELECT id, input_text, output_text, prediction_error,
+               skill, is_correction, tier, access_count, last_access
+        FROM experiences WHERE consolidated = 1 AND tier = ?
         ORDER BY RANDOM() LIMIT ?
-    """, (limit,)).fetchall()
+    """, (tier, limit)).fetchall()
     conn.close()
-
-    return [
-        {
-            'id': r[0],
-            'input': r[1],
-            'output': r[2],
-            'error': r[3],
-            'skill': r[4],
-            'is_correction': bool(r[5]),
-        }
-        for r in rows
-    ]
+    return [dict(r) for r in rows]
 
 
 def mark_consolidated(ids: list[int]):
@@ -120,12 +137,165 @@ def mark_consolidated(ids: list[int]):
     conn.close()
 
 
+# ─── Tier Promotion / Demotion ───────────────────────────────────────
+
+def promote_to_working(ids: list[int]):
+    """Move experiences from active → working tier."""
+    if not ids:
+        return
+    conn = get_db()
+    ts = time.time()
+    placeholders = ','.join('?' * len(ids))
+    conn.execute(f"""
+        UPDATE experiences
+        SET tier = 'working', access_count = access_count + 1, last_access = ?
+        WHERE id IN ({placeholders}) AND tier = 'active'
+    """, [ts] + ids)
+    conn.commit()
+    conn.close()
+
+
+def promote_to_longterm(ids: list[int]):
+    """Move experiences from working → longterm tier."""
+    if not ids:
+        return
+    conn = get_db()
+    ts = time.time()
+    placeholders = ','.join('?' * len(ids))
+    conn.execute(f"""
+        UPDATE experiences
+        SET tier = 'longterm', access_count = access_count + 1, last_access = ?
+        WHERE id IN ({placeholders}) AND tier = 'working'
+    """, [ts] + ids)
+    conn.commit()
+    conn.close()
+
+
+def decay_memories(min_access: int = 3, max_age_days: int = 30):
+    """Demote longterm memories with low access count back to working,
+    or delete very old ones that have never been accessed.
+
+    Args:
+        min_access: Minimum access count for longterm retention.
+        max_age_days: Age in days beyond which a memory may be demoted/deleted.
+    """
+    conn = get_db()
+    cutoff = time.time() - (max_age_days * 86400)
+
+    # Demote longterm memories with low access count back to working
+    demoted = conn.execute("""
+        UPDATE experiences
+        SET tier = 'working'
+        WHERE tier = 'longterm'
+          AND access_count < ?
+        AND timestamp < ?
+    """, (min_access, cutoff)).rowcount
+
+    # Delete very old, unconsolidated longterm memories
+    deleted = conn.execute("""
+        DELETE FROM experiences
+        WHERE tier = 'longterm'
+          AND consolidated = 0
+          AND timestamp < ?
+    """, (cutoff,)).rowcount
+
+    conn.commit()
+    conn.close()
+    return {'demoted': demoted, 'deleted': deleted}
+
+
+# ─── Query / Search ──────────────────────────────────────────────────
+
+def get_tiered_stats() -> dict:
+    """Return count and avg_error per tier."""
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT tier,
+               COUNT(*) AS count,
+               AVG(prediction_error) AS avg_error
+        FROM experiences
+        GROUP BY tier
+        ORDER BY
+            CASE tier
+                WHEN 'active' THEN 1
+                WHEN 'working' THEN 2
+                WHEN 'longterm' THEN 3
+            END
+    """).fetchall()
+    conn.close()
+
+    stats = {}
+    for r in rows:
+        stats[r['tier']] = {
+            'count': r['count'],
+            'avg_error': round(r['avg_error'], 3) if r['avg_error'] else 0.0,
+        }
+    return stats
+
+
+def search_memories(query: str, tier: str = None, limit: int = 10) -> list[dict]:
+    """Text-based search across tiers using LIKE.
+
+    Args:
+        query: Search term (case-insensitive substring match).
+        tier: Optional tier filter (None = search all tiers).
+        limit: Max results.
+
+    Returns:
+        List of matching experience dicts.
+    """
+    conn = get_db()
+    pattern = f'%{query}%'
+    if tier:
+        rows = conn.execute("""
+            SELECT id, timestamp, input_text, output_text, prediction_error,
+                   skill, is_correction, tier, access_count, last_access, consolidated
+            FROM experiences
+            WHERE (input_text LIKE ? OR output_text LIKE ?)
+              AND tier = ?
+            ORDER BY prediction_error DESC
+            LIMIT ?
+        """, (pattern, pattern, tier, limit)).fetchall()
+    else:
+        rows = conn.execute("""
+            SELECT id, timestamp, input_text, output_text, prediction_error,
+                   skill, is_correction, tier, access_count, last_access, consolidated
+            FROM experiences
+            WHERE input_text LIKE ? OR output_text LIKE ?
+            ORDER BY prediction_error DESC
+            LIMIT ?
+        """, (pattern, pattern, limit)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_recent(limit: int = 20, tier: str = 'active') -> list[dict]:
+    """Get most recent memories from a tier."""
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT id, timestamp, input_text, output_text, prediction_error,
+               skill, is_correction, tier, access_count, last_access, consolidated
+        FROM experiences
+        WHERE tier = ?
+        ORDER BY timestamp DESC
+        LIMIT ?
+    """, (tier, limit)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+# ─── Legacy / Backward-compatible helpers ────────────────────────────
+
 def get_stats() -> dict:
-    """Get hippocampus statistics."""
+    """Get overall hippocampus statistics (backward-compatible)."""
     conn = get_db()
     total = conn.execute("SELECT COUNT(*) FROM experiences").fetchone()[0]
-    unconsolidated = conn.execute("SELECT COUNT(*) FROM experiences WHERE consolidated = 0").fetchone()[0]
-    avg_error = conn.execute("SELECT AVG(prediction_error) FROM experiences").fetchone()[0]
+    unconsolidated = conn.execute(
+        "SELECT COUNT(*) FROM experiences WHERE consolidated = 0"
+    ).fetchone()[0]
+    avg_error = conn.execute(
+        "SELECT AVG(prediction_error) FROM experiences"
+    ).fetchone()[0]
     conn.close()
     return {
         'total_experiences': total,
@@ -162,11 +332,11 @@ def compute_surprise(model, tokenizer, text: str) -> float:
 
 
 def auto_store(model, tokenizer, text: str, threshold: float = 1.0,
-               output: str = None, skill: str = 'general'):
+               output: str = None, skill: str = 'general', tier: str = 'active'):
     """Automatically compute surprise and store if above threshold."""
     error = compute_surprise(model, tokenizer, text)
     if error >= threshold:
-        store_experience(text, error, output, skill)
+        store_experience(text, error, output, skill, tier=tier)
         return True
     return False
 
@@ -176,5 +346,7 @@ if __name__ == '__main__':
     store_experience('What is a mitochondrion?', 2.5, 'The powerhouse of the cell', 'biology')
     store_experience('E=mc^2', 1.8, 'Energy equals mass times speed of light squared', 'physics')
     print(f'Stats: {get_stats()}')
-    print(f'Unconsolidated: {len(get_unconsolidated())}')
+    print(f'Unconsolidated (active): {len(get_unconsolidated())}')
+    print(f'Unconsolidated (longterm): {len(get_unconsolidated(tier="longterm"))}')
     print(f'Old memories: {len(get_old_memories())}')
+    print(f'Tiered stats: {get_tiered_stats()}')
