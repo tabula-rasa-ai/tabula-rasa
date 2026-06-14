@@ -616,6 +616,7 @@ def train_specialist(
     rl_total_steps=0,
     rl_lr=0,
     use_socratic_stage3=False,
+    use_auto_scale=False,
 ):
     """Train a specialist for one arithmetic operation.
 
@@ -651,6 +652,12 @@ def train_specialist(
         cfg.save_every = 100
         cfg.use_curriculum = False
         logger.info("Quick mode: 200 steps, 2K samples, 20 eval")
+
+    # Auto-scale: pick model size and hardware params based on task complexity
+    if use_auto_scale:
+        cfg.auto_scale(op=op, max_digits=cfg.max_digits)
+        if steps > 0:
+            cfg.max_steps = steps
 
     cfg.max_steps = steps or cfg.max_steps
     if batch_size > 0:
@@ -1514,6 +1521,10 @@ Examples:
     parser.add_argument(
         "--quick", action="store_true", help="Quick smoke test (500 steps, small dataset)"
     )
+    parser.add_argument(
+        "--auto", action="store_true",
+        help="Auto-configure model size, batch, and AMP based on task complexity and hardware"
+    )
     parser.add_argument("--resume", action="store_true", help="Resume from last checkpoint")
     parser.add_argument(
         "--test-hard", action="store_true", help="Also test on max_digits+1 (generalization check)"
@@ -1668,6 +1679,7 @@ Examples:
                 rl_total_steps=args.rl_steps,
                 rl_lr=args.rl_lr,
                 use_socratic_stage3=args.socratic_stage3,
+                use_auto_scale=args.auto,
             )
             results[op_name] = "OK" if model is not None else "FAILED"
         print(f"\n  Results: {results}")
@@ -1767,4 +1779,5 @@ Examples:
         rl_total_steps=args.rl_steps,
         rl_lr=args.rl_lr,
         use_socratic_stage3=args.socratic_stage3,
+        use_auto_scale=args.auto,
     )

@@ -192,7 +192,80 @@ class Config:
             return "mps"
         return "cpu"
 
-    vocab_size: int | None = None  # Set after tokenizer is built
+
+    def auto_scale(self, op: str = "add", max_digits: int = 1) -> "Config":
+        """Automatically pick model size and training params based on task complexity.
+
+        Complexity score = operation_weight * digit_weight:
+          op: add=1, sub=1, mul=2, div=2, pow=2
+          digits: max_digits * 1.5
+          CoT: +2 if enabled
+          curriculum phases: +1 per phase beyond 1
+
+        Score -> Preset:
+          < 3: 1M model (default, sufficient for 1-digit add/sub)
+          3-6: 5M model (multi-digit, multiplication)
+          > 6: 10M model (complex reasoning, many phases)
+
+        Also auto-selects batch size, AMP, and gradient accumulation
+        based on available hardware.
+
+        Returns self for chaining.
+        """
+        import torch
+
+        # Complexity score
+        op_weight = {"add": 1, "sub": 1, "mul": 2, "div": 2, "pow": 2}.get(op, 1)
+        digit_weight = max_digits * 1.5
+        cot_bonus = 2 if getattr(self, "cot_scratchpad", False) else 0
+        phases = getattr(self, "curriculum_phases", [])
+        curriculum_bonus = max(0, len(phases) - 1)
+
+        complexity = op_weight * digit_weight + cot_bonus + curriculum_bonus
+
+        # Model size
+        if complexity < 3:
+            preset = "1M"
+        elif complexity < 6:
+            preset = "5M"
+        else:
+            preset = "10M"
+        self.apply_preset(preset)
+        print(f"  [Auto] Task complexity={complexity:.1f} -> preset={preset}")
+
+        # Hardware-aware batch size and AMP
+        if torch.cuda.is_available():
+            mem_gb = torch.cuda.get_device_properties(0).total_mem / 1e9
+            if mem_gb >= 16:
+                self.batch_size = 512
+            elif mem_gb >= 8:
+                self.batch_size = 256
+            else:
+                self.batch_size = 128
+            self.use_amp = True
+            print(f"  [Auto] GPU ({mem_gb:.0f}GB VRAM) -> batch={self.batch_size}, AMP=ON")
+        elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            self.batch_size = 128
+            self.use_amp = False
+            print(f"  [Auto] Apple Silicon -> batch={self.batch_size}, AMP=OFF")
+        else:
+            self.batch_size = 128
+            self.use_amp = False
+            print(f"  [Auto] CPU -> batch={self.batch_size}, AMP=OFF")
+
+        # Gradient accumulation for consistent effective batch
+        target_effective = 512
+        if self.batch_size < target_effective:
+            self.gradient_accumulation_steps = max(1, target_effective // self.batch_size)
+        else:
+            self.gradient_accumulation_steps = 1
+        if self.gradient_accumulation_steps > 1:
+            print(f"  [Auto] Grad accum: {self.gradient_accumulation_steps} steps")
+
+        return self
+
+    vocab_size: int | None = None
+
 
     PRESETS: dict[str, dict] = {
         "1M": {
