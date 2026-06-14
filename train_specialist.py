@@ -22,6 +22,12 @@ from torch.cuda.amp import autocast, GradScaler
 from tabula_rasa.config import Config
 from tabula_rasa.tokenizer import MathTokenizer
 from tabula_rasa.model import MathTransformer, count_parameters
+from tabula_rasa.lora import (
+    apply_lora_to_model,
+    save_lora_adapters,
+    load_lora_adapters,
+    set_lora_trainable,
+)
 from egefalos.online_ewc import OnlineEWC
 
 OPS = {'add': '+', 'sub': '-', 'mul': '*', 'div': '/'}
@@ -288,14 +294,29 @@ def _estimate_time(steps, device_str):
     return f'~{total_sec:.0f}s'
 
 
-def _save_checkpoint(model, optimizer, global_step, best_acc, op_dir, name='checkpoint.pt'):
-    """Save a resume-able checkpoint."""
-    torch.save({
-        'model_state_dict': model.state_dict(),
-        'optimizer_state_dict': optimizer.state_dict(),
-        'global_step': global_step,
-        'best_acc': best_acc,
-    }, op_dir / name)
+def _save_checkpoint(model, optimizer, global_step, best_acc, op_dir, name='checkpoint.pt',
+                    lora_layers=None):
+    """Save a resume-able checkpoint.
+
+    When *lora_layers* is provided, saves only the LoRA adapter weights
+    (lightweight) and a small metadata checkpoint.
+    """
+    if lora_layers is not None:
+        # LoRA mode: save adapters + metadata
+        save_lora_adapters(lora_layers, str(op_dir / 'lora.pt'))
+        torch.save({
+            'optimizer_state_dict': optimizer.state_dict(),
+            'global_step': global_step,
+            'best_acc': best_acc,
+        }, op_dir / name)
+    else:
+        # Full checkpoint
+        torch.save({
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'global_step': global_step,
+            'best_acc': best_acc,
+        }, op_dir / name)
 
 
 def _load_checkpoint(op_dir, model, optimizer):
@@ -336,7 +357,8 @@ def train_specialist(op, steps=0, batch_size=0, lr=0,
                     use_reversed=None, use_loss_masking=None,
                     quick=False, resume=False, test_hard=False, deep=False,
                     use_ewc=False, ewc_lambda=1000.0, ewc_gamma=0.9,
-                    use_amp=False, gradient_accumulation_steps=0):
+                    use_amp=False, gradient_accumulation_steps=0,
+                    use_lora=False, lora_rank=8):
     """Train a specialist for one arithmetic operation.
 
     Args:
@@ -349,6 +371,8 @@ def train_specialist(op, steps=0, batch_size=0, lr=0,
         quick: Quick smoke test mode (500 steps, small dataset)
         resume: Resume from last checkpoint
         test_hard: Enable hard eval (max_digits+1, tests generalization)
+        use_lora: Enable LoRA fine-tuning (freezes base, trains adapters)
+        lora_rank: LoRA rank (default 8)
     """
     global _INTERRUPTED
     _INTERRUPTED = False
@@ -458,6 +482,18 @@ def train_specialist(op, steps=0, batch_size=0, lr=0,
 
     # ── Model ──
     model = MathTransformer(cfg).to(device)
+
+    # ── LoRA (low-rank adaptation) ──
+    lora_layers = None
+    if use_lora:
+        target_modules = [
+            m.strip() for m in cfg.lora_target_modules.split(',')
+        ]
+        print(f'  LoRA: enabled (rank={lora_rank}, targets={target_modules})')
+        lora_layers = apply_lora_to_model(model, rank=lora_rank, alpha=cfg.lora_alpha,
+                                           target_modules=target_modules)
+        set_lora_trainable(model, trainable=True)
+
     n_params = count_parameters(model)
     print(f'  Params: {n_params:,} | d={cfg.d_model} L={cfg.n_layers} ff={cfg.d_ff} heads={cfg.n_heads}')
     print(f'  Optimizer: {cfg.optimizer}  |  LR schedule: {cfg.lr_schedule}  |  Grad clip: {cfg.grad_clip_norm}')
@@ -487,12 +523,30 @@ def train_specialist(op, steps=0, batch_size=0, lr=0,
     global_step = 0
     best_acc = 0.0
     if resume:
-        result = _load_checkpoint(op_dir, model, optimizer)
-        if result:
-            global_step, best_acc = result
-            print(f'  Resumed from step {global_step} (best: {best_acc:.1f}%)')
+        if use_lora:
+            # Load base model + LoRA adapters
+            lora_path = op_dir / 'lora.pt'
+            if lora_path.exists():
+                target_modules = [m.strip() for m in cfg.lora_target_modules.split(',')]
+                lora_layers = load_lora_adapters(
+                    model, str(lora_path), rank=lora_rank,
+                    alpha=cfg.lora_alpha, target_modules=target_modules,
+                )
+                set_lora_trainable(model, trainable=True)
+                # Load optimizer state from checkpoint if available
+                result = _load_checkpoint(op_dir, model, optimizer)
+                if result:
+                    global_step, best_acc = result
+                print(f'  Resumed LoRA from step {global_step} (best: {best_acc:.1f}%)')
+            else:
+                print(f'  No LoRA adapter found at {lora_path} — starting fresh')
         else:
-            print(f'  No checkpoint found — starting fresh')
+            result = _load_checkpoint(op_dir, model, optimizer)
+            if result:
+                global_step, best_acc = result
+                print(f'  Resumed from step {global_step} (best: {best_acc:.1f}%)')
+            else:
+                print(f'  No checkpoint found — starting fresh')
 
     # ── Training log (overwrite, not append) ──
     log_path = op_dir / 'training.log'
@@ -627,7 +681,8 @@ def train_specialist(op, steps=0, batch_size=0, lr=0,
 
                     # ── Periodic checkpoint (for resume) ──
                     if global_step % cfg.save_every == 0:
-                        _save_checkpoint(model, optimizer, global_step, best_acc, op_dir)
+                        _save_checkpoint(model, optimizer, global_step, best_acc, op_dir,
+                                         lora_layers=lora_layers)
 
                     # ── Evaluation (with per-digit breakdown) ──
                     if global_step % cfg.eval_every == 0:
@@ -648,7 +703,19 @@ def train_specialist(op, steps=0, batch_size=0, lr=0,
                         if acc > best_acc:
                             best_acc = acc
                             loss_streak_count = 0
-                            torch.save({
+                            if use_lora and lora_layers:
+                                save_lora_adapters(lora_layers, str(op_dir / 'best_lora.pt'))
+                                torch.save({
+                                    'acc': acc,
+                                    'global_step': global_step,
+                                    'per_digit': per_digit,
+                                    'config': {k: getattr(cfg, k, None) for k in [
+                                        'd_model', 'n_layers', 'n_heads', 'd_ff',
+                                        'use_reversed', 'use_loss_masking', 'use_scratchpad'
+                                    ]}
+                                }, op_dir / 'best.pt')
+                            else:
+                                torch.save({
                                 'model_state_dict': model.state_dict(),
                                 'acc': acc,
                                 'global_step': global_step,
@@ -676,10 +743,21 @@ def train_specialist(op, steps=0, batch_size=0, lr=0,
     # ── Final save ──
     if _INTERRUPTED:
         print(f'\n  Saving checkpoint at step {global_step}...', flush=True)
-        _save_checkpoint(model, optimizer, global_step, best_acc, op_dir)
-        print(f'  Checkpoint saved. Resume with: python3 train_specialist.py {op} --resume', flush=True)
+        _save_checkpoint(model, optimizer, global_step, best_acc, op_dir,
+                         lora_layers=lora_layers)
+        if use_lora:
+            print(f'  LoRA adapters saved. Resume with: python3 train_specialist.py {op} --resume --lora', flush=True)
+        else:
+            print(f'  Checkpoint saved. Resume with: python3 train_specialist.py {op} --resume', flush=True)
 
-    torch.save({
+    if use_lora and lora_layers:
+        save_lora_adapters(lora_layers, str(op_dir / 'final_lora.pt'))
+        torch.save({
+            'acc': best_acc,
+            'global_step': global_step,
+        }, op_dir / 'final.pt')
+    else:
+        torch.save({
         'model_state_dict': model.state_dict(),
         'acc': best_acc,
         'global_step': global_step,
@@ -777,6 +855,10 @@ Examples:
                        help='Enable mixed precision (AMP) training (requires CUDA)')
     parser.add_argument('--grad-accum', type=int, default=0,
                        help='Gradient accumulation steps (0=config default, default: 1)')
+    parser.add_argument('--lora', action='store_true',
+                       help='Enable LoRA fine-tuning (freezes base, trains low-rank adapters)')
+    parser.add_argument('--lora-rank', type=int, default=8,
+                       help='LoRA rank (default: 8)')
 
     args = parser.parse_args()
 
@@ -804,6 +886,8 @@ Examples:
                 ewc_gamma=args.ewc_gamma,
                 use_amp=args.amp,
                 gradient_accumulation_steps=args.grad_accum,
+                use_lora=args.lora,
+                lora_rank=args.lora_rank,
             )
             results[op_name] = 'OK' if model is not None else 'FAILED'
         print(f'\n  Results: {results}')
@@ -831,4 +915,6 @@ Examples:
         ewc_gamma=args.ewc_gamma,
         use_amp=args.amp,
         gradient_accumulation_steps=args.grad_accum,
+        use_lora=args.lora,
+        lora_rank=args.lora_rank,
     )

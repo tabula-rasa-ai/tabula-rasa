@@ -88,6 +88,12 @@ class Config:
     use_value_head: bool = False      # AlphaZero-style value head (-1 to +1 intuition)
     alphazero_loss_weight: float = 0.5  # Weight for value loss when use_value_head=True
 
+    # ── Low-Rank Adaptation (LoRA) ──────────────────────────
+    use_lora: bool = False             # Enable LoRA fine-tuning
+    lora_rank: int = 8                 # LoRA rank (r)
+    lora_alpha: float = 1.0            # LoRA scaling alpha
+    lora_target_modules: str = 'wq,wk,wv,wo'  # Comma-separated target module substrings
+
     # Mixed precision (AMP)
     use_amp: bool = False             # Enable torch.cuda.amp (only effective on CUDA)
     gradient_accumulation_steps: int = 1  # Accumulate N micro-batches before optimizer step
