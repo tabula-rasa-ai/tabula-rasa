@@ -10,14 +10,34 @@ Usage:
     python3 train_specialist.py add --quick         # Quick smoke test (500 steps)
     python3 train_specialist.py add --resume        # Resume from checkpoint
     python3 train_specialist.py add --steps 5000    # Custom step count
+    python3 train_specialist.py add --log-level DEBUG  # Debug logging
 """
 import sys, os; sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 import sys, time, math, json, random, urllib.request, signal
+import logging
 from pathlib import Path
 import torch, torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 from torch import optim
 from torch.cuda.amp import autocast, GradScaler
+
+# ── Structured Logging Setup ────────────────────────────────────
+logger = logging.getLogger('train_specialist')
+
+LOG_FORMAT = '%(asctime)s | %(levelname)-7s | %(message)s'
+LOG_DATE_FORMAT = '%H:%M:%S'
+
+def setup_logging(level: str = 'INFO', log_file: str | None = None):
+    """Configure structured logging with optional file output."""
+    handlers = [logging.StreamHandler()]
+    if log_file:
+        handlers.append(logging.FileHandler(log_file))
+    logging.basicConfig(
+        level=getattr(logging, level.upper(), logging.INFO),
+        format=LOG_FORMAT,
+        datefmt=LOG_DATE_FORMAT,
+        handlers=handlers,
+    )
 
 from tabula_rasa.config import Config
 from tabula_rasa.tokenizer import MathTokenizer
@@ -392,8 +412,8 @@ def train_specialist(op, steps=0, batch_size=0, lr=0,
         cfg.eval_every = 100
         cfg.eval_samples = 20
         cfg.save_every = 100
-        cfg.use_curriculum = False  # No curriculum in quick mode
-        print(f'  *** QUICK MODE: 200 steps, 2K samples, 20 eval — smoke test ***')
+        cfg.use_curriculum = False
+        logger.info('Quick mode: 200 steps, 2K samples, 20 eval')
 
     cfg.max_steps = steps or cfg.max_steps
     if batch_size > 0:
@@ -418,9 +438,9 @@ def train_specialist(op, steps=0, batch_size=0, lr=0,
     # ── Validate ──
     warnings = _validate_config(cfg, op)
     for w in warnings:
-        print(f'  [!] WARNING: {w}')
+        logger.warning(w)
     if any('CRASH' in w for w in warnings):
-        print(f'  [X] Aborting — fix config issues first.')
+        logger.error('Aborting — fix config issues first.')
         return None, None
 
     # ── Device detection ──
@@ -937,8 +957,13 @@ Examples:
                        help='Training steps for Socratic refinement (default: 500)')
     parser.add_argument('--socratic-problems', type=int, default=200,
                        help='Problems per Socratic iteration (default: 200)')
+    parser.add_argument('--log-level', type=str, default='INFO',
+                       choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
+                       help='Logging verbosity (default: INFO)')
 
     args = parser.parse_args()
+    setup_logging(level=args.log_level, log_file='training_specialist.log')
+    logger.info('Starting train_specialist with log level: %s', args.log_level)
 
     if args.op == 'all':
         print('\n  Training ALL specialists (add, sub, mul, div)')

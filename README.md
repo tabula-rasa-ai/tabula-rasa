@@ -24,6 +24,8 @@
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![Paper](https://img.shields.io/badge/Paper-Whitepaper-red.svg)](whitepaper.md)
 [![Telegram](https://img.shields.io/badge/Telegram-Join-blue.svg)](https://t.me/TabulaRasaAi)
+[![Tests](https://github.com/tabula-rasa-ai/tabula-rasa/actions/workflows/test.yml/badge.svg)](https://github.com/tabula-rasa-ai/tabula-rasa/actions/workflows/test.yml)
+[![GitHub Stars](https://img.shields.io/github/stars/tabula-rasa-ai/tabula-rasa?style=social)](https://github.com/tabula-rasa-ai/tabula-rasa)
 
 Tabula Rasa is an experimental AI system that trains small transformer models from a blank slate. Currently in **Phase 1**: proving single-task arithmetic mastery before adding continual learning.
 
