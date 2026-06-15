@@ -108,17 +108,28 @@ In addition to EWC, three complementary continual learning methods are available
 
 ```mermaid
 graph TD
-    Prompt["Input Prompt"] --> Router["Router (egefalos/router.py)"]
-    Router -->|math| MathSpec["Math Specialist"]
-    Router -->|text| TextSpec["Text Specialist"]
-    Router -->|logic| LogicSpec["Logic Specialist"]
-    Router -->|code| CodeSpec["Code AlphaZero"]
+    Prompt["Input Prompt"] --> DetRouter["Deterministic Router (egefalos/router.py)"]
+    Prompt --> NeuralRouter["Neural Router (egefalos/router_model.py)\n541K param transformer"]
+
+    DetRouter -->|math| MathSpec["Math Specialist"]
+    DetRouter -->|text| TextSpec["Text Specialist"]
+    DetRouter -->|logic| LogicSpec["Logic Specialist"]
+    DetRouter -->|code| CodeSpec["Code AlphaZero"]
+
+    NeuralRouter -->|"MATH"| MathSpec
+    NeuralRouter -->|"CODE"| CodeSpec
+    NeuralRouter -->|"MEMORY"| MemSpec["Memory Lookup"]
+    NeuralRouter -->|"CHAT"| GenSpec["General Response"]
+
+    NeuralRouter -->|"< 60% confidence"| Hippocampus["Hippocampus (SQLite)\nstores for consolidation"]
 
     MathSpec --> Training["train_specialist.py"]
     Training --> Curriculum["Curriculum Learning"]
     Curriculum -->|Phase 1: 1-digit| EWC["Online EWC"]
-    EWC -->|Phase 2: 2-digit| Hippocampus["Hippocampus (SQLite)"]
-    Hippocampus --> SleepCycle["Sleep Cycle Daemon"]
+    EWC -->|Phase 2: 2-digit| SleepCycle["Sleep Cycle Daemon"]
+    SleepCycle -->|consolidates| Hippocampus
+
+    MathSpec --> LookupServer["Lookup Server (port 8084)\n100% accurate arithmetic"]
 
     Training --> Socratic["Socratic Self-Improvement"]
     Socratic --> Critique["5-Round Critique Loop"]
@@ -126,16 +137,19 @@ graph TD
     Correction --> Retrain["Fine-tune on Corrections"]
 
     subgraph Inference
-        Router --> Chat["Interactive Chat"]
-        Router --> API["REST API (port 8000)"]
+        NeuralRouter --> Chat["Interactive Chat"]
+        NeuralRouter --> API["REST API (port 8001)"]
+        LookupServer --> API
     end
 
     subgraph DashboardUI["Dashboard UI"]
-        API --> WebDash["Web Dashboard"]
+        Chat --> WebDash["Web Dashboard (port 8000)"]
+        API --> WebDash
         WebDash --> TrainingMonitor["Training Monitor"]
         WebDash --> FisherHeatmap["Fisher Heatmap"]
         WebDash --> AttentionFlow["Attention Flow"]
         WebDash --> ExperimentComparator["Experiment Comparator"]
+        WebDash --> ArchitectureCheat["Architecture Cheatsheet"]
     end
 ```
 
