@@ -54,36 +54,64 @@
 
 <h3 id="arch">1. Architecture Overview</h3>
 <div class="card">
-    <p style="font-size:0.85rem;margin-bottom:10px;">A decoder-only transformer for next-token prediction (the architecture used in Tabula Rasa):</p>
+    <p style="font-size:0.85rem;margin-bottom:10px;">Tabula Rasa uses two model architectures depending on the task:</p>
+
+    <p style="font-size:0.85rem;margin-bottom:6px;color:var(--accent);"><strong>A) MathTransformer</strong> — decoder-only transformer for next-token prediction (arithmetic, codegen):</p>
     <pre>Input Tokens [batch, seq_len]
     |
     v
 Token Embedding [vocab_size, d_model]
     |
     v
-Positional Encoding (learned) [seq_len, d_model]
+Positional Encoding (RoPE / learned) [seq_len, d_model]
     |
     v
 +---------[N x Transformer Block]--------+
 |                                        |
-|   LayerNorm                            |
+|   RMSNorm                              |
 |   Multi-Head Self-Attention (causal)   |
 |   Residual + Dropout                   |
 |                                        |
-|   LayerNorm                            |
-|   FFN: Linear -> GELU -> Linear        |
+|   RMSNorm                              |
+|   SwiGLU FFN: Linear -> SiLU -> Linear |
 |   Residual + Dropout                   |
 |                                        |
 +----------------------------------------+
     |
     v
-Final LayerNorm
+Final RMSNorm
     |
     v
-Output Projection (unembed) [d_model, vocab_size]
+LM Head (unembed) [d_model, vocab_size]
     |
     v
 Logits -> Softmax -> Predicted Token</pre>
+
+    <p style="font-size:0.85rem;margin-top:16px;margin-bottom:6px;color:var(--purple);"><strong>B) RouterModel</strong> — transformer classifier for semantic parsing (intent routing):</p>
+    <pre>Input Tokens [batch, seq_len]  (BPE tokenized)
+    |
+    v
+Token Embedding [vocab_size, d_model]
+    |
+    v
++---------[2 x Transformer Block]--------+
+|   Same as MathTransformer above        |
+|   (RoPE, RMSNorm, SwiGLU FFN)         |
++----------------------------------------+
+    |
+    v
+RMSNorm
+    |
+    v
+Mean Pooling (over all valid tokens)
+    |
+    v
+Classifier Head [d_model, num_intents]   (softmax or sigmoid)
+    |
+    v
+Intent Tags: MATH | CODE | MEMORY | CHAT</pre>
+
+    <div class="tip"><strong>Key difference:</strong> MathTransformer generates text tokens autoregressively. RouterModel classifies the entire input into intent categories — no text generation required. This tiny classifier (541K params) achieves >99% accuracy on 4 intent classes.</div>
 </div>
 
 <h3 id="attn">2. Attention Mechanics</h3>
