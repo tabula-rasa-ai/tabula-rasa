@@ -1636,6 +1636,10 @@ Examples:
         "--stage3-problems", type=int, default=20, help="Stage 3 problems to debate (default: 20)"
     )
     parser.add_argument(
+        "--unify", action="store_true",
+        help="Train ONE model on all ops with prefix tokens (unified LLM mode)"
+    )
+    parser.add_argument(
         "--log-level",
         type=str,
         default="INFO",
