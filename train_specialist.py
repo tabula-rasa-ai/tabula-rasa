@@ -515,7 +515,7 @@ def _estimate_time(steps, device_str):
 
 
 def _save_checkpoint(
-    model, optimizer, global_step, best_acc, op_dir, name="checkpoint.pt", lora_layers=None
+    model, optimizer, global_step, best_acc, op_dir, name="checkpoint.pt", lora_layers=None, scaler=None
 ):
     """Save a resume-able checkpoint.
 
@@ -539,6 +539,7 @@ def _save_checkpoint(
             {
                 "model_state_dict": model.state_dict(),
                 "optimizer_state_dict": optimizer.state_dict(),
+                "scaler_state_dict": scaler.state_dict() if scaler is not None else None,
                 "global_step": global_step,
                 "best_acc": best_acc,
             },
@@ -698,7 +699,16 @@ def train_specialist(
         logger.error("Aborting — fix config issues first.")
         return None, None
 
-    # ── Device detection ──
+    # ── Reproducibility ──
+    if not quick:
+        seed = getattr(cfg, 'seed', 42)
+        torch.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+        import random, numpy as np
+        random.seed(seed)
+        np.random.seed(seed)
+
+    # ── Device Detection & Setup ──
     if torch.cuda.is_available():
         device = torch.device("cuda")
         device_name = torch.cuda.get_device_name(0)
@@ -907,12 +917,12 @@ def train_specialist(
     _nw = 4 if device.type == "cuda" else 0
 
     def _infinite_batches(dataset, batch_size):
+        from itertools import cycle
         from torch.utils.data import DataLoader
-        while True:
-            loader = DataLoader(
-                dataset, batch_size=batch_size, shuffle=True, num_workers=_nw, drop_last=True
-            )
-            yield from loader
+        loader = DataLoader(
+            dataset, batch_size=batch_size, shuffle=True, num_workers=_nw, drop_last=True
+        )
+        return cycle(loader)
 
     scaler = GradScaler() if use_amp_enabled else None
     batch_iter = _infinite_batches(train_ds, cfg.batch_size)
