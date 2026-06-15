@@ -39,7 +39,7 @@
         </div>
         <nav id="nav-links">
             <div class="nav-section">Interaction</div>
-            <a href="../views/interactive_chat.html" target="workspace" class="active" onclick="setActive(this)">
+            <a href="../views/interactive_chat.html?v=5" target="workspace" class="active" onclick="setActive(this)">
                 <svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
                 Interactive Chat
             </a>
@@ -177,10 +177,10 @@
         </div>
     </aside>
     <main>
-        <iframe name="workspace" src="../views/interactive_chat.html" id="workspace-frame"></iframe>
+        <iframe name="workspace" src="../views/interactive_chat.html?v=5" id="workspace-frame"></iframe>
     </main>
     <script>
-        var API = 'http://localhost:8000';
+        var API = 'http://localhost:8001';
 
         function setActive(el) {
             document.querySelectorAll('#nav-links a').forEach(function(a) { a.classList.remove('active'); });

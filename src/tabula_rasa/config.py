@@ -174,6 +174,27 @@ class Config:
     text_max_seq_len: int = 64  # Max sequence length for text tasks
     text_num_merges: int = 50  # BPE merge operations to learn
 
+    # ═══════════════════════════════════════════════════════════════
+    # NEURAL ROUTER — Semantic Parser (Phase 1-3)
+    # ═══════════════════════════════════════════════════════════════
+    # The router is a tiny transformer that reads human text and
+    # outputs structured JSON/classification tags instead of generating
+    # text. This avoids needing grammar/syntax/vocabulary knowledge.
+    use_router: bool = False  # Enable the neural router (vs deterministic regex)
+    router_vocab_size: int = 768  # BPE tokenizer vocab (base chars + merges)
+    router_max_seq_len: int = 128  # Context window for understanding paragraphs
+    router_d_model: int = 128  # Router embedding dim (~1M param target)
+    router_n_layers: int = 2  # Transformer depth (2 is enough for classification)
+    router_n_heads: int = 4  # Attention heads (must divide d_model)
+    router_d_ff: int = 512  # FFN hidden dim
+    router_dropout: float = 0.1
+    router_num_intents: int = 4  # Phase 1: MATH, CODE, MEMORY, CHAT
+    router_multi_label: bool = False  # Phase 3: sigmoid multi-label (True) vs softmax (False)
+    router_confidence_threshold: float = 0.6  # Below this → hippocampus surprise
+    router_dataset_size: int = 5000  # Synthetic prompts for initial training
+    router_bpe_merges: int = 100  # BPE merge operations for router vocab
+    router_save_dir: str = "checkpoints/router"
+
     @property
     def device(self) -> str:
         """Return the compute device string.

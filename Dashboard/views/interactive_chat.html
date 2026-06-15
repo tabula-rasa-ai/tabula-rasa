@@ -97,7 +97,7 @@
     <div class="status" id="status"></div>
 
     <script>
-    var API2 = 'http://localhost:8002';
+    var API2 = 'http://localhost:8084';
     var API1 = 'http://localhost:8000';
     var autoTeach = false, busy = false, totalCorrections = 0;
 
@@ -132,9 +132,9 @@
     // Math queries go directly to the math server (port 8000) — the router's generalist gives wrong answers
     async function askMath(prompt) {
         try {
-            var r = await fetch(API1 + '/generate', {
+            var r = await fetch('http://localhost:8084/compute', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ prompt: prompt, temperature: 0.0, top_k: 3 })
+                body: JSON.stringify({ prompt: prompt })
             });
             return await r.json();
         } catch(e) {
@@ -196,7 +196,7 @@
                 } else {
                     var raw = d.result || '';
                     if (raw.includes('=')) raw = raw.split('=').pop().replace(/<[^>]+>/g, '').trim();
-                    show = (raw && raw.length >= 2) ? parseScratchpad(raw) : raw;
+                    show = (raw && raw.length >= 2 && raw.includes('<')) ? parseScratchpad(raw) : raw;
                 }
                 el.textContent = show || '(no answer)';
                 el.style.cssText = 'color:white;font-size:1.1rem;font-weight:bold';
@@ -299,7 +299,7 @@
                 } else {
                     var raw = d.result || '';
                     if (raw.includes('=')) raw = raw.split('=').pop().replace(/<[^>]+>/g, '').trim();
-                    show = (raw && raw.length >= 2) ? parseScratchpad(raw) : raw;
+                    show = (raw && raw.length >= 2 && raw.includes('<')) ? parseScratchpad(raw) : raw;
                 }
                 el.textContent = show || '(no answer)';
                 el.style.cssText = 'color:white;font-size:1.1rem;font-weight:bold';

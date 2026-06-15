@@ -287,8 +287,16 @@ class BPETokenizer:
 
         tok = cls.__new__(cls)
         tok.stoi = data["stoi"]
-        tok.itos = {int(k): v for k, v in data["itos"].items()}
-        # Restore merges (serialized as "a|b" key format)
+        # Only keep itos entries that correspond to valid stoi entries
+        tok.itos = {}
+        for k_str, token in data["itos"].items():
+            try:
+                idx = int(k_str)
+            except (ValueError, TypeError):
+                continue
+            if token in data["stoi"] and data["stoi"][token] == idx:
+                tok.itos[idx] = token
+        tok.vocab_size = len(tok.stoi)
         tok.merges = {}
         tok.merge_rank = {}
         for key, mid in data.get("merges", {}).items():

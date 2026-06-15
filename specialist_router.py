@@ -57,13 +57,18 @@ class SpecialistManager:
                 continue
 
             tok = MathTokenizer.load(str(op_dir / "tokenizer.json"))
+            # Load checkpoint first to get actual vocab size
+            state = torch.load(ckpt, map_location=self.device, weights_only=True)
+            sd = state.get("model_state_dict", state)
+            actual_vocab = sd["token_embedding.weight"].shape[0] if isinstance(sd, dict) else tok.vocab_size
+
             cfg = Config()
-            cfg.vocab_size = tok.vocab_size
+            cfg.vocab_size = actual_vocab
+            # Ensure tok.max_seq_len matches model's training config
             tok.max_seq_len = cfg.max_seq_len
 
             model = MathTransformer(cfg)
-            state = torch.load(ckpt, map_location=self.device, weights_only=True)
-            model.load_state_dict(state["model_state_dict"])
+            model.load_state_dict(sd)
             model.eval()
             model.to(self.device)
 
