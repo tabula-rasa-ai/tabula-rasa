@@ -712,7 +712,7 @@ def train_specialist(
         device_name = "CPU"
         print(f"  Device: CPU (no CUDA detected)")
         # CPU thread tuning — avoid oversubscription on many-core machines
-        n_threads = min(6, os.cpu_count() or 4)
+        n_threads = os.cpu_count() or 4
         torch.set_num_threads(n_threads)
         torch.set_num_interop_threads(2)
         print(f"  CPU threads: {n_threads} intra / 2 inter")

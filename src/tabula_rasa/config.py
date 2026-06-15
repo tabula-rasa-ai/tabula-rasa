@@ -184,6 +184,7 @@ class Config:
             'cuda' if CUDA GPU available, 'mps' if Apple Silicon,
             otherwise 'cpu'.
         """
+        import os
         import torch
 
         if torch.cuda.is_available():
@@ -212,6 +213,7 @@ class Config:
 
         Returns self for chaining.
         """
+        import os
         import torch
 
         # Complexity score
@@ -251,7 +253,11 @@ class Config:
         else:
             self.batch_size = 128
             self.use_amp = False
-            print(f"  [Auto] CPU -> batch={self.batch_size}, AMP=OFF")
+            self.num_threads = os.cpu_count() or 4
+            torch.set_num_threads(self.num_threads)
+            os.environ["OMP_NUM_THREADS"] = str(self.num_threads)
+            os.environ["MKL_NUM_THREADS"] = str(self.num_threads)
+            print(f"  [Auto] CPU -> batch={self.batch_size}, AMP=OFF, threads={self.num_threads}")
 
         # Gradient accumulation for consistent effective batch
         target_effective = 512
