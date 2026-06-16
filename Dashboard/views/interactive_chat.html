@@ -383,7 +383,7 @@
                 if (ans.includes('=') && d.skill) {
                     var parts = ans.split('=');
                     ans = parts.slice(1).join('=').trim();
-                    if (!ans) ans = parts[0]; // fallback if nothing after =
+                    if (!ans) ans = parts[0];
                 }
                 el.textContent = ans;
                 el.style.cssText = 'color:white;font-size:1.1rem;font-weight:bold';
@@ -404,6 +404,13 @@
                 el.nextElementSibling.innerHTML = meta;
                 $('status').textContent = d.is_confident ? 'Answered.' : 'Answered (low confidence).';
                 addMsgToSession(currentSessionId, 'ai', ans, meta);
+            } else if (d.status === 'training') {
+                // Training in progress
+                el.innerHTML = '<span style="color:#3b82f6;font-weight:bold;">&#x1F9E0; ' + esc(d.message || 'Training...') + '</span>';
+                el.style.cssText = '';
+                el.nextElementSibling.innerHTML = '<span class="tag" style="background:rgba(59,130,246,0.15);color:#60a5fa;">training</span>';
+                $('status').textContent = d.message || 'Training...';
+                addMsgToSession(currentSessionId, 'ai', d.message || 'Training...', '<span class="tag">training</span>');
             } else {
                 el.innerHTML = '';
                 el.style.cssText = '';
