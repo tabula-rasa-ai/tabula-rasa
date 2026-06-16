@@ -181,10 +181,18 @@ class SkillManager:
                             tok_path = Path('specialists/math/general/tokenizer.json')
                         tok = MathTokenizer.load(str(tok_path))
                     cfg = Config()
+                    # Use saved model config if available (chat specialists have different arch)
+                    state = torch.load(ckpt_path, map_location=self.device, weights_only=True)
+                    mc = state.get('model_config', {})
+                    if mc:
+                        cfg.d_model = mc.get('d_model', cfg.d_model)
+                        cfg.n_layers = mc.get('n_layers', cfg.n_layers)
+                        cfg.n_heads = mc.get('n_heads', cfg.n_heads)
+                        cfg.d_ff = mc.get('d_ff', cfg.d_ff)
+                        cfg.max_seq_len = mc.get('max_seq_len', cfg.max_seq_len)
                     cfg.vocab_size = tok.vocab_size
                     tok.max_seq_len = cfg.max_seq_len
                     model = MathTransformer(cfg)
-                    state = torch.load(ckpt_path, map_location=self.device, weights_only=True)
                     model.load_state_dict(state['model_state_dict'])
                     model.eval()
                     model.to(self.device)
@@ -659,6 +667,13 @@ class SkillManager:
                 'step': cfg.max_steps,
                 'model_state_dict': model.state_dict(),
                 'loss': loss.item(),
+                'model_config': {
+                    'd_model': cfg.d_model,
+                    'n_layers': cfg.n_layers,
+                    'n_heads': cfg.n_heads,
+                    'd_ff': cfg.d_ff,
+                    'max_seq_len': cfg.max_seq_len,
+                },
             }, save_dir / 'best.pt')
             tok.save(str(save_dir / 'tokenizer.json'))
 
