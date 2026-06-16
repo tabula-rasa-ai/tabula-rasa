@@ -133,6 +133,7 @@ class SkillManager:
         self.models = {}
         self.tokenizers = {}
         self.device = 'cpu'
+        self.training_queue = {}  # intent -> True if training in progress
         self._load_existing()
 
     def _load_existing(self):
@@ -398,23 +399,50 @@ class SkillManager:
                     'analysis': None,
                 }
 
+            # ─── Auto-train for any unknown intent ───
+            # Check if we already have the model or are training it
+            if intent in self.models:
+                # Model already trained, use it
+                model = self.models[intent]
+                tok = self.tokenizers[intent]
+                t0 = time.time()
+                full = model.generate(tok, prompt, max_new_tokens=30, temperature=0.3, top_k=5)
+                elapsed = time.time() - t0
+                return {
+                    'prompt': prompt,
+                    'answer': full,
+                    'knows': True,
+                    'skill': intent,
+                    'time_ms': round(elapsed * 1000),
+                    'status': 'answered',
+                    'confidence': 50.0,
+                    'is_confident': True,
+                    'message': None,
+                }
+
+            if intent in self.training_queue:
+                return {
+                    'answer': None,
+                    'knows': False,
+                    'message': f"Training a {intent} specialist right now... ask me again in a moment!",
+                    'detected_skill': None,
+                    'suggested_skills': [],
+                    'status': 'training',
+                    'time_ms': 0,
+                    'analysis': None,
+                }
+
+            # Trigger auto-training
+            self._auto_train_intent(intent, prompt)
             return {
                 'answer': None,
                 'knows': False,
-                'message': f"I don't know about that yet.",
-                'detected_skill': skill,
+                'message': f"I don't know about that yet. Auto-training a {intent} specialist now — try again shortly!",
+                'detected_skill': None,
                 'suggested_skills': [suggested_skill_name] if suggested_skill_name else [],
-                'status': 'unknown',
+                'status': 'training',
                 'time_ms': 0,
-                'analysis': {
-                    'unknown_characters': unknown_chars,
-                    'char_types': char_type_labels if char_type_labels else ['digits/math only'],
-                    'intent': intent,
-                    'training_plan': training_plan,
-                    'tokenizer_needs': tokenizer_expansions,
-                    'suggested_skill': suggested_skill_name,
-                    'prompt_type': 'question' if '?' in prompt else 'statement',
-                }
+                'analysis': None,
             }
 
         model = self.models[skill]
@@ -465,6 +493,156 @@ class SkillManager:
             'is_confident': is_confident,
             'message': None if is_confident else "I have a specialist for this, but I'm not confident in my answer yet.",
         }
+
+    def _auto_train_intent(self, intent: str, prompt: str):
+        """Auto-train a specialist for an intent type in background."""
+        if intent in self.training_queue:
+            return  # Already training this intent
+
+        # Intent-specific training data
+        INTENT_DATA = {
+            'greeting': [
+                ("Hello!", "Hi there! I'm Tabula Rasa, a helpful AI assistant."),
+                ("Hi!", "Hello! How can I help you today?"),
+                ("Hey!", "Hey there! Ask me anything or try a math problem."),
+                ("Good morning!", "Good morning! Ready to learn and help."),
+                ("Hello there!", "Hi! I'm Tabula Rasa. Want to solve some math?"),
+                ("Hi how are you?", "I'm doing great! Ready to help with math or answer questions."),
+                ("Greetings!", "Greetings! I'm a learning AI. Type a math expression like '2+3='!"),
+                ("Hey, what's up?", "Not much, just learning new things! Ask me anything."),
+                ("Hello, are you there?", "Yes, I'm here! What can I help you with?"),
+                ("Hi, nice to meet you!", "Nice to meet you too! I'm Tabula Rasa, a continual learning AI."),
+            ],
+            'explanation_question': [
+                ("Where are you from?", "I'm from the Tabula Rasa AI research project — a system that learns from scratch, one specialist at a time."),
+                ("Where do you live?", "I live in the cloud! Or more precisely, on whatever machine I'm running on."),
+                ("How do you work?", "I use transformer neural networks trained from scratch on specific skills called specialists."),
+                ("Why are you here?", "To learn and assist! I'm designed to continually acquire new skills through training."),
+                ("How old are you?", "I'm a young AI — every time I train a new specialist, I grow a little more!"),
+                ("How were you made?", "I was built using PyTorch, with a custom transformer architecture trained from random initialization."),
+                ("Why do you exist?", "I exist to demonstrate that AIs can learn from scratch, one skill at a time, without forgetting."),
+                ("When were you created?", "I was first trained as a tiny math transformer and have been growing since."),
+                ("How can you learn?", "Through continual learning techniques like EWC that prevent catastrophic forgetting."),
+            ],
+            'definition_question': [
+                ("What is AI?", "AI is the field of creating machines that can perform tasks requiring human intelligence."),
+                ("Who is your creator?", "I was created by the Tabula Rasa AI research project."),
+                ("What is machine learning?", "Machine learning is a branch of AI where systems learn patterns from data."),
+                ("What is Python?", "Python is a high-level, interpreted programming language."),
+                ("What is a transformer?", "A transformer is a neural network architecture that uses self-attention."),
+                ("What is deep learning?", "Deep learning uses multi-layer neural networks to learn hierarchical representations."),
+            ],
+            'conversation': [
+                ("Tell me a joke.", "Why did the math book look sad? Because it had too many problems."),
+                ("Tell me something interesting.", "Octopuses have three hearts, and two stop beating when they swim!"),
+                ("Sing a song.", "I'm not much of a singer! How about a math problem instead?"),
+                ("Thanks!", "You're welcome! Ask me anything."),
+                ("Goodbye!", "Goodbye! Come back anytime."),
+                ("Are you smart?", "I'm learning! My model is small but I grow through continual learning."),
+            ],
+        }
+
+        pairs = INTENT_DATA.get(intent, [])
+        if not pairs:
+            # Generate generic training pair from the prompt
+            pairs = [(prompt, f"I'm still learning about that. My suggested skill is '{intent}'.")]
+
+        self.training_queue[intent] = True
+        import threading
+        t = threading.Thread(target=self._train_intent_worker, args=(intent, pairs), daemon=True)
+        t.start()
+
+    def _train_intent_worker(self, intent: str, pairs: list):
+        """Train a tiny chat specialist on intent-specific data."""
+        try:
+            from tabula_rasa.bpe_tokenizer import BPETokenizer
+            from tabula_rasa.model import MathTransformer, count_parameters
+            from tabula_rasa.config import Config
+
+            print(f"  [*] Auto-training {intent} specialist ({len(pairs)} pairs)...")
+
+            # Build BPE tokenizer from training texts
+            tok = BPETokenizer()
+            texts = []
+            for q, a in pairs:
+                texts.append(f"{q}=")
+                texts.append(a)
+            # Add the separator pattern
+            tok.learn_bpe_from_texts(texts, num_merges=50, verbose=False)
+            print(f"  [*] BPE vocab: {tok.vocab_size} tokens")
+
+            # Tiny config for fast training
+            cfg = Config()
+            cfg.d_model = 32
+            cfg.n_layers = 2
+            cfg.n_heads = 2
+            cfg.d_ff = 64
+            cfg.vocab_size = tok.vocab_size
+            cfg.max_seq_len = 64
+            cfg.batch_size = len(pairs)
+            cfg.max_steps = 100
+            cfg.learning_rate = 0.001
+            cfg.use_reversed = False
+            cfg.use_loss_masking = True
+
+            tok.max_seq_len = cfg.max_seq_len
+            model = MathTransformer(cfg)
+            opt = torch.optim.AdamW(model.parameters(), lr=cfg.learning_rate)
+
+            # Encode training data
+            import torch
+            xs, ys = [], []
+            for q, a in pairs:
+                text = f"{q}={a}"
+                ids = tok.encode(text, add_special_tokens=True)
+                ids = (ids + [tok.pad_id] * cfg.max_seq_len)[:cfg.max_seq_len]
+                xs.append(torch.tensor(ids[:-1]))
+                ys.append(torch.tensor(ids[1:]))
+
+            x = torch.stack(xs)
+            y = torch.stack(ys)
+            dataset = torch.utils.data.TensorDataset(x, y)
+            loader = torch.utils.data.DataLoader(dataset, batch_size=min(8, len(pairs)), shuffle=True)
+
+            model.train()
+            for step in range(cfg.max_steps):
+                for bx, by in loader:
+                    opt.zero_grad()
+                    _, loss, _ = model(bx, by)
+                    loss.backward()
+                    opt.step()
+                if (step + 1) % 25 == 0:
+                    print(f"  [*] {intent} training step {step+1}/{cfg.max_steps}, loss={loss.item():.4f}")
+
+            model.eval()
+
+            # Save
+            save_dir = Path(f"specialists/{intent}")
+            save_dir.mkdir(parents=True, exist_ok=True)
+            torch.save({
+                'step': cfg.max_steps,
+                'model_state_dict': model.state_dict(),
+                'loss': loss.item(),
+            }, save_dir / 'best.pt')
+            tok.save(str(save_dir / 'tokenizer.json'))
+
+            # Register and load
+            SKILL_REGISTRY[intent] = {
+                'ops': [],
+                'description': f'Auto-trained {intent} specialist',
+                'status': 'ready',
+                'dir': f'specialists/{intent}',
+            }
+            self.models[intent] = model
+            self.tokenizers[intent] = tok
+            params = count_parameters(model)
+            print(f"  [*] Auto-trained {intent} specialist ready ({params:,} params)")
+        except Exception as e:
+            import traceback
+            print(f"  [!] Auto-train {intent} failed: {e}")
+            traceback.print_exc()
+        finally:
+            self.training_queue.pop(intent, None)
 
 
 # ─── Server ────────────────────────────────────────────────────────
