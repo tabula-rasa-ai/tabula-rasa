@@ -380,7 +380,11 @@
 
             if (d.knows && d.answer) {
                 var ans = d.answer.replace(/<[^>]+>/g, '').trim();
-                if (ans.includes('=') && d.skill) ans = ans.split('=').pop().trim();
+                if (ans.includes('=') && d.skill) {
+                    var parts = ans.split('=');
+                    ans = parts.slice(1).join('=').trim();
+                    if (!ans) ans = parts[0]; // fallback if nothing after =
+                }
                 el.textContent = ans;
                 el.style.cssText = 'color:white;font-size:1.1rem;font-weight:bold';
                 var meta = '';

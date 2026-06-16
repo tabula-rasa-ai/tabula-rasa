@@ -433,7 +433,7 @@ class SkillManager:
                 model = self.models[intent]
                 tok = self.tokenizers[intent]
                 t0 = time.time()
-                full = model.generate(tok, prompt, max_new_tokens=30, temperature=0.3, top_k=5)
+                full = model.generate(tok, prompt, max_new_tokens=50, temperature=0.0, top_k=0)
                 elapsed = time.time() - t0
                 # Retrain with this new example for continual improvement
                 self._auto_train_intent(intent, prompt, retrain=True)
@@ -627,7 +627,7 @@ class SkillManager:
             cfg.n_heads = 4
             cfg.d_ff = 128
             cfg.vocab_size = tok.vocab_size
-            cfg.max_seq_len = 64
+            cfg.max_seq_len = 128
             cfg.batch_size = len(pairs)
             cfg.max_steps = self.training_progress[intent]['total']
             cfg.learning_rate = 0.001
