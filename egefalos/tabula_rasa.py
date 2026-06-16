@@ -136,6 +136,15 @@ SKILL_REGISTRY = {
     },
 }
 
+# Per-specialist generation config
+SPECIALIST_CONFIG = {
+    'greeting':             {'temp': 0.0, 'max_tokens': 40, 'max_seq': 96,  'd_model': 64, 'n_layers': 3, 'n_heads': 4, 'd_ff': 128, 'steps': 500},
+    'capability_question':  {'temp': 0.0, 'max_tokens': 50, 'max_seq': 128, 'd_model': 64, 'n_layers': 3, 'n_heads': 4, 'd_ff': 128, 'steps': 600},
+    'explanation_question': {'temp': 0.0, 'max_tokens': 60, 'max_seq': 128, 'd_model': 64, 'n_layers': 3, 'n_heads': 4, 'd_ff': 128, 'steps': 600},
+    'definition_question':  {'temp': 0.0, 'max_tokens': 50, 'max_seq': 128, 'd_model': 64, 'n_layers': 3, 'n_heads': 4, 'd_ff': 128, 'steps': 600},
+    'conversation':         {'temp': 0.0, 'max_tokens': 60, 'max_seq': 128, 'd_model': 64, 'n_layers': 3, 'n_heads': 4, 'd_ff': 128, 'steps': 600},
+}
+
 # Future domains to add:
 #   'biology': {'ops': ['cell', 'dna', 'organism', 'photosynthesis'], 'status': 'queued'}
 #   'spelling': {'ops': ['spell', 'reverse', 'capitalize'], 'status': 'queued'}
@@ -436,7 +445,6 @@ class SkillManager:
                 _sc = SPECIALIST_CONFIG.get(intent, SPECIALIST_CONFIG['greeting'])
                 full = model.generate(tok, prompt, max_new_tokens=_sc['max_tokens'], temperature=_sc['temp'], top_k=0)
                 elapsed = time.time() - t0
-                # Retrain with this new example for continual improvement
                 self._auto_train_intent(intent, prompt, retrain=True)
                 return {
                     'prompt': prompt,
@@ -530,15 +538,6 @@ class SkillManager:
             return  # Already training this intent
 
         # Intent-specific training data
-
-        # Per-specialist config (temperature, generation length, model size, training steps)
-        SPECIALIST_CONFIG = {
-            'greeting':          {'temp': 0.0, 'max_tokens': 40, 'max_seq': 96,  'd_model': 64, 'n_layers': 3, 'n_heads': 4, 'd_ff': 128, 'steps': 500},
-            'capability_question': {'temp': 0.0, 'max_tokens': 50, 'max_seq': 128, 'd_model': 64, 'n_layers': 3, 'n_heads': 4, 'd_ff': 128, 'steps': 600},
-            'explanation_question': {'temp': 0.0, 'max_tokens': 60, 'max_seq': 128, 'd_model': 64, 'n_layers': 3, 'n_heads': 4, 'd_ff': 128, 'steps': 600},
-            'definition_question': {'temp': 0.0, 'max_tokens': 50, 'max_seq': 128, 'd_model': 64, 'n_layers': 3, 'n_heads': 4, 'd_ff': 128, 'steps': 600},
-            'conversation':      {'temp': 0.0, 'max_tokens': 60, 'max_seq': 128, 'd_model': 64, 'n_layers': 3, 'n_heads': 4, 'd_ff': 128, 'steps': 600},
-        }
         sc = SPECIALIST_CONFIG.get(intent, SPECIALIST_CONFIG['greeting'])
 
         INTENT_DATA = {
