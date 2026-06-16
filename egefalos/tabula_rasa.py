@@ -159,7 +159,7 @@ SPECIALIST_CONFIG = {
     'greeting':             {'temp': 0.0, 'max_tokens': 50, 'max_seq': 128, 'd_model': 128, 'n_layers': 4, 'n_heads': 8, 'd_ff': 256, 'steps': 1000},
     'capability_question':  {'temp': 0.0, 'max_tokens': 60, 'max_seq': 160, 'd_model': 128, 'n_layers': 4, 'n_heads': 8, 'd_ff': 256, 'steps': 1200},
     'explanation_question': {'temp': 0.0, 'max_tokens': 70, 'max_seq': 160, 'd_model': 128, 'n_layers': 4, 'n_heads': 8, 'd_ff': 256, 'steps': 1200},
-    'definition_question':  {'temp': 0.0, 'max_tokens': 60, 'max_seq': 160, 'd_model': 128, 'n_layers': 4, 'n_heads': 8, 'd_ff': 256, 'steps': 1200},
+    'definition_question':  {'temp': 0.0, 'max_tokens': 60, 'max_seq': 160, 'd_model': 128, 'n_layers': 4, 'n_heads': 8, 'd_ff': 256, 'steps': 600},
     'conversation':         {'temp': 0.0, 'max_tokens': 70, 'max_seq': 160, 'd_model': 128, 'n_layers': 4, 'n_heads': 8, 'd_ff': 256, 'steps': 1200},
     'question':             {'temp': 0.0, 'max_tokens': 60, 'max_seq': 160, 'd_model': 128, 'n_layers': 4, 'n_heads': 8, 'd_ff': 256, 'steps': 1200},
     'unknown':              {'temp': 0.0, 'max_tokens': 40, 'max_seq': 96,  'd_model': 64,  'n_layers': 3, 'n_heads': 4, 'd_ff': 128, 'steps': 500},
@@ -705,7 +705,7 @@ class SkillManager:
                     seed_prompt=prompt,
                     seed_answer=seed_answer,
                     skill_manager=self,
-                    max_pairs=20,
+                    max_pairs=10,
                     output_path=str(dataset_path),
                 )
                 if gen_pairs:
