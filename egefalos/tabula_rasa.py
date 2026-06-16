@@ -286,13 +286,15 @@ class SkillManager:
         else:
             skill, confidence = detect_skill(prompt)
 
-        # If detected skill is not loaded, fall back to a loaded one
+        # If detected skill is not loaded, don't fall back to math for chat skills — auto-train instead
         if skill is not None and skill not in self.models:
-            # Try general_math as fallback
-            if 'general_math' in self.models:
+            # Chat skills should auto-train instead of falling back to math
+            chat_skills = {'greeting', 'explanation_question', 'definition_question', 'conversation'}
+            if skill in chat_skills:
+                skill = None  # Will trigger auto-training below
+            elif 'general_math' in self.models:
                 skill = 'general_math'
             else:
-                # Any loaded skill
                 for s in self.known_skills:
                     skill = s
                     break
