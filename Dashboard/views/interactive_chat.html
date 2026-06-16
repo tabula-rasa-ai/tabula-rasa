@@ -201,7 +201,10 @@
             var msgCount = (s.messages || []).length;
             html += '<div class="session-item' + active + '" onclick="switchSession(\'' + keys[i] + '\')">'
                  + '<div class="name">' + esc(s.name || 'Untitled') + ' <span style="color:#6b7280;font-size:0.7rem;">' + Math.ceil(msgCount/2) + ' msgs</span></div>'
+                 + '<div style="display:flex;gap:2px;">'
+                 + '<span class="del" style="opacity:0.5;font-size:0.75rem;" onclick="event.stopPropagation();exportOne(\'' + keys[i] + '\')" title="Export this session">&#x1F4E4;</span>'
                  + '<span class="del" onclick="event.stopPropagation();deleteSesh(\'' + keys[i] + '\')">&#x2716;</span>'
+                 + '</div>'
                  + '</div>';
         }
         list.innerHTML = html;
@@ -466,25 +469,35 @@
     function exportChat() {
         var data = getSessions();
         var text = JSON.stringify(data, null, 2);
-        // Copy to clipboard
+        copyText(text, 'All sessions copied to clipboard!');
+    }
+
+    function exportOne(id) {
+        var s = getSession(id);
+        if (!s) { notify('Session not found', '#ef4444'); return; }
+        var text = JSON.stringify(s, null, 2);
+        copyText(text, 'Session "' + (s.name || 'Untitled') + '" copied to clipboard!');
+    }
+
+    function copyText(text, msg) {
         if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(text).then(function() {
-                notify('Chat history copied to clipboard! Paste it in the chat.', '#22c55e');
+                notify(msg, '#22c55e');
             }).catch(function() {
-                fallbackCopy(text);
+                fallbackCopy(text, msg);
             });
         } else {
-            fallbackCopy(text);
+            fallbackCopy(text, msg);
         }
     }
 
-    function fallbackCopy(text) {
+    function fallbackCopy(text, msg) {
         var ta = document.createElement('textarea');
         ta.value = text;
         ta.style.position = 'fixed'; ta.style.left = '-9999px';
         document.body.appendChild(ta);
         ta.select();
-        try { document.execCommand('copy'); notify('Chat history copied! Paste it in the chat.', '#22c55e'); }
+        try { document.execCommand('copy'); notify(msg, '#22c55e'); }
         catch(e) { notify('Copy failed. Use browser dev tools to copy localStorage.tr_sessions', '#ef4444'); }
         document.body.removeChild(ta);
     }
