@@ -7,5 +7,9 @@
   ["How were you made?", "I was built using PyTorch, with a custom transformer architecture trained from random initialization."],
   ["Why do you exist?", "I exist to demonstrate that AIs can learn from scratch, one skill at a time, without forgetting."],
   ["When were you created?", "I was first trained as a tiny math transformer and have been growing since."],
-  ["How can you learn?", "Through continual learning techniques like EWC that prevent catastrophic forgetting."]
+  ["How can you learn?", "Through continual learning techniques like EWC that prevent catastrophic forgetting."],
+  ["Where is Greece?", "Greece is a country in southeastern Europe, known for its ancient history and islands."],
+  ["Where is France?", "France is a country in western Europe, known for its art, cuisine, and landmarks."],
+  ["How does rain form?", "Rain forms when water vapor in the air condenses into droplets and falls due to gravity."],
+  ["What is the sun?", "The Sun is the star at the center of our Solar System, providing light and heat."]
 ]

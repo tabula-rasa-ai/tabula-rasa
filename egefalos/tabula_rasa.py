@@ -633,7 +633,7 @@ class SkillManager:
             scored = [(0, "I don't know about that yet.")]
         best_score = max(s[0] for s in scored)
         # Pick randomly from all matches >= 40% of best score (wider pool = more creativity)
-        threshold = max(best_score * 0.4, 0.3)
+        threshold = max(best_score * 0.4, 0.15)
         candidates = [a for s, a in scored if s >= threshold]
         import random
         best_answer = random.choice(candidates)
