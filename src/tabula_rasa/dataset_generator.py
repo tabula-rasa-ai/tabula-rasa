@@ -173,8 +173,11 @@ class AutoDatasetGenerator:
         for pattern in config.get('topic_extract', []):
             m = re.search(pattern, text.lower().strip())
             if m:
-                return m.group(1).strip()
-        return text.strip()
+                topic = m.group(1).strip()
+                # Strip trailing punctuation that got captured
+                topic = topic.rstrip('?!.,;:"\' ')
+                return topic
+        return text.strip().rstrip('?!.,;:"\' ')
 
     # ─── Stage 1: Template Augmentation ────────────────────────
 
@@ -328,7 +331,7 @@ class AutoDatasetGenerator:
 
     @staticmethod
     def _is_garbage(text: str) -> bool:
-        """Check if generated text is garbage (repetitive or too short)."""
+        """Check if generated text is garbage (repetitive, keyboard-smash, or too short)."""
         if len(text) < 3:
             return True
         # Check for excessive repetition
@@ -341,6 +344,20 @@ class AutoDatasetGenerator:
         # Check for non-alphanumeric junk
         alpha_ratio = sum(c.isalpha() for c in text) / max(len(text), 1)
         if alpha_ratio < 0.3:
+            return True
+        # Check for keyboard-smash: high consonant clusters, no vowels in long strings
+        vowels = set('aeiouyAEIOUY')
+        has_vowel = any(c in vowels for c in text)
+        if len(text) >= 8 and not has_vowel:
+            return True
+        # Check for all-caps smash (GWDGDWWDG type)
+        if len(text) >= 6:
+            upper_ratio = sum(1 for c in text if c.isupper()) / max(len(text), 1)
+            lower_ratio = sum(1 for c in text if c.islower()) / max(len(text), 1)
+            if upper_ratio > 0.8 and lower_ratio < 0.1:
+                return True
+        # Check for low unique chars (repetitive garbage like "ABABABABAB")
+        if len(text) >= 10 and len(set(text)) <= 4:
             return True
         return False
 
