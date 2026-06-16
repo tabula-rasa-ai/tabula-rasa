@@ -433,7 +433,8 @@ class SkillManager:
                 model = self.models[intent]
                 tok = self.tokenizers[intent]
                 t0 = time.time()
-                full = model.generate(tok, prompt, max_new_tokens=50, temperature=0.0, top_k=0)
+                _sc = SPECIALIST_CONFIG.get(intent, SPECIALIST_CONFIG['greeting'])
+                full = model.generate(tok, prompt, max_new_tokens=_sc['max_tokens'], temperature=_sc['temp'], top_k=0)
                 elapsed = time.time() - t0
                 # Retrain with this new example for continual improvement
                 self._auto_train_intent(intent, prompt, retrain=True)
@@ -529,6 +530,17 @@ class SkillManager:
             return  # Already training this intent
 
         # Intent-specific training data
+
+        # Per-specialist config (temperature, generation length, model size, training steps)
+        SPECIALIST_CONFIG = {
+            'greeting':          {'temp': 0.0, 'max_tokens': 40, 'max_seq': 96,  'd_model': 64, 'n_layers': 3, 'n_heads': 4, 'd_ff': 128, 'steps': 500},
+            'capability_question': {'temp': 0.0, 'max_tokens': 50, 'max_seq': 128, 'd_model': 64, 'n_layers': 3, 'n_heads': 4, 'd_ff': 128, 'steps': 600},
+            'explanation_question': {'temp': 0.0, 'max_tokens': 60, 'max_seq': 128, 'd_model': 64, 'n_layers': 3, 'n_heads': 4, 'd_ff': 128, 'steps': 600},
+            'definition_question': {'temp': 0.0, 'max_tokens': 50, 'max_seq': 128, 'd_model': 64, 'n_layers': 3, 'n_heads': 4, 'd_ff': 128, 'steps': 600},
+            'conversation':      {'temp': 0.0, 'max_tokens': 60, 'max_seq': 128, 'd_model': 64, 'n_layers': 3, 'n_heads': 4, 'd_ff': 128, 'steps': 600},
+        }
+        sc = SPECIALIST_CONFIG.get(intent, SPECIALIST_CONFIG['greeting'])
+
         INTENT_DATA = {
             'greeting': [
                 ("Hello!", "Hi there! I'm Tabula Rasa, a helpful AI assistant."),
@@ -595,7 +607,11 @@ class SkillManager:
             extra_steps = 100
 
         self.training_queue[intent] = True
-        self.training_progress[intent] = {'step': 0, 'total': 500 + (extra_steps if retrain else 0), 'loss': 0, 'status': 'starting'}
+        self.training_progress[intent] = {
+            'step': 0, 'total': sc['steps'] + (extra_steps if retrain else 0),
+            'loss': 0, 'status': 'starting',
+            'config': sc,
+        }
         import threading
         t = threading.Thread(target=self._train_intent_worker, args=(intent, pairs), daemon=True)
         t.start()
@@ -621,15 +637,17 @@ class SkillManager:
             print(f"  [*] BPE vocab: {tok.vocab_size} tokens")
 
             # Tiny config for fast training
+            prog = self.training_progress.get(intent, {})
+            _sc = prog.get('config', {})
             cfg = Config()
-            cfg.d_model = 64
-            cfg.n_layers = 3
-            cfg.n_heads = 4
-            cfg.d_ff = 128
+            cfg.d_model = _sc.get('d_model', 64)
+            cfg.n_layers = _sc.get('n_layers', 3)
+            cfg.n_heads = _sc.get('n_heads', 4)
+            cfg.d_ff = _sc.get('d_ff', 128)
             cfg.vocab_size = tok.vocab_size
-            cfg.max_seq_len = 128
+            cfg.max_seq_len = _sc.get('max_seq', 128)
             cfg.batch_size = len(pairs)
-            cfg.max_steps = self.training_progress[intent]['total']
+            cfg.max_steps = prog.get('total', 500)
             cfg.learning_rate = 0.001
             cfg.use_reversed = False
             cfg.use_loss_masking = True
