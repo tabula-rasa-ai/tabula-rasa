@@ -494,6 +494,32 @@ class SkillManager:
                 'analysis': None,
             }
 
+        # ─── Chat skill path (use per-specialist config) ───
+        chat_skills = {'greeting', 'explanation_question', 'definition_question', 'conversation', 'capability_question'}
+        if skill in chat_skills:
+            model = self.models[skill]
+            tok = self.tokenizers[skill]
+            t0 = time.time()
+            _sc = SPECIALIST_CONFIG.get(skill, SPECIALIST_CONFIG['greeting'])
+            full = model.generate(tok, prompt, max_new_tokens=_sc['max_tokens'], temperature=_sc['temp'], top_k=0)
+            elapsed = time.time() - t0
+            debug(f"ask: chat skill {skill} generate -> {full!r} ({elapsed*1000:.0f}ms)")
+            # Retrain to improve
+            self._auto_train_intent(skill, prompt, retrain=True)
+            return {
+                'prompt': prompt,
+                'answer': full,
+                'knows': True,
+                'skill': skill,
+                'skill_description': SKILL_REGISTRY[skill]['description'],
+                'time_ms': round(elapsed * 1000),
+                'status': 'answered',
+                'confidence': 50.0,
+                'is_confident': True,
+                'message': None,
+            }
+
+        # ─── Math skill path ───
         model = self.models[skill]
         tok = self.tokenizers[skill]
 
