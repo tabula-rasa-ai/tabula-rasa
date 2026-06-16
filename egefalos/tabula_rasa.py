@@ -415,6 +415,16 @@ class SkillManager:
             skill, confidence = detect_skill(prompt)
         debug(f"ask: prompt={prompt!r} detect_skill={skill!r} conf={confidence}")
 
+        # Multi-specialist orchestration: decompose complex questions
+        try:
+            from tabula_rasa.orchestrator import SpecialistOrchestrator
+            orch = SpecialistOrchestrator(self)
+            orch_result = orch.answer(prompt)
+            if orch_result is not None:
+                return orch_result
+        except Exception:
+            pass
+
         # Conversational learning: if user follows up with an answer to a pending question
         if self.pending_question:
             result = self.learn_from_followup(prompt)
@@ -1105,6 +1115,19 @@ class TabulaRasaHandler(BaseHTTPRequestHandler):
                 self._send_json({'total': 0, 'error': str(e)})
         elif path == '/datasets':
             self._send_json({'datasets': manager.datasets_status})
+        elif path == '/compose':
+            from urllib.parse import parse_qs
+            qs = parse_qs(urlparse(self.path).query)
+            test_q = qs.get('q', [''])[0]
+            if test_q:
+                try:
+                    from tabula_rasa.orchestrator import SpecialistOrchestrator, decompose_question
+                    parts = decompose_question(test_q)
+                    self._send_json({'original': test_q, 'sub_questions': parts, 'count': len(parts)})
+                except Exception as e:
+                    self._send_json({'error': str(e)}, 500)
+            else:
+                self._send_json({'usage': 'GET /compose?q=what+is+X+and+how+does+Y+work'})
         else:
             self._send_json({'error': 'Not found'}, 404)
 
