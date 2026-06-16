@@ -5,9 +5,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Interactive Chat — Tabula Rasa</title>
     <style>
-        :root { --bg: #111827; --panel: #1f2937; --border: #374151; --text: #f3f4f6; --accent: #3b82f6; }
+        :root { --bg: #111827; --panel: #1f2937; --border: #374151; --text: #f3f4f6; --accent: #3b82f6; --sidebar: 260px; }
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; padding: 20px 24px; max-width: 800px; margin: 0 auto; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); height: 100vh; display: flex; }
+        .sidebar { width: var(--sidebar); background: #0f172a; border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; }
+        .sidebar-hdr { padding: 14px 16px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+        .sidebar-hdr h2 { font-size: 0.95rem; }
+        .sidebar-hdr button { background: var(--accent); color: white; border: none; padding: 4px 10px; border-radius: 6px; cursor: pointer; font-size: 0.8rem; }
+        .sidebar-hdr button:hover { background: #2563eb; }
+        .session-list { flex: 1; overflow-y: auto; padding: 6px 0; }
+        .session-item { padding: 10px 16px; cursor: pointer; font-size: 0.85rem; border-bottom: 1px solid rgba(255,255,255,0.04); display: flex; justify-content: space-between; align-items: center; }
+        .session-item:hover { background: rgba(59,130,246,0.08); }
+        .session-item.active { background: rgba(59,130,246,0.15); border-left: 3px solid var(--accent); }
+        .session-item .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .session-item .del { opacity: 0; color: #ef4444; cursor: pointer; font-size: 0.75rem; padding: 2px 6px; border-radius: 4px; }
+        .session-item:hover .del { opacity: 1; }
+        .session-item .del:hover { background: rgba(239,68,68,0.2); }
+        .main { flex: 1; display: flex; flex-direction: column; padding: 20px 24px; max-width: 800px; }
         .hdr { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
         .hdr .l { display: flex; align-items: center; gap: 10px; }
         .hdr .l .ic { width: 36px; height: 36px; border-radius: 50%; background: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 1rem; }
@@ -29,9 +43,7 @@
         .msg .meta .tag.skill { background: rgba(59,130,246,0.2); color: #60a5fa; }
         .msg .meta .tag.correct { background: rgba(34,197,94,0.15); color: #22c55e; }
         .msg .meta .tag.wrong { background: rgba(239,68,68,0.15); color: #ef4444; }
-        .msg .meta .tag.scratchpad { background: rgba(168,85,247,0.15); color: #a855f7; }
         .msg .meta .tag.needs { background: rgba(250,204,21,0.15); color: #facc15; }
-        .msg .meta .tag.taught { background: rgba(59,130,246,0.15); color: #3b82f6; }
         .unknown-box { background: rgba(250,204,21,0.08); border-left: 3px solid #facc15; padding: 8px 12px; border-radius: 0 6px 6px 0; margin: 4px 0; font-size: 0.85rem; color: #d1d5db; }
         .chips { display: flex; gap: 6px; margin-bottom: 12px; overflow-x: auto; flex-wrap: wrap; }
         .chips button { background: var(--panel); border: 1px solid var(--border); color: #d1d5db; padding: 5px 12px; border-radius: 16px; font-size: 0.8rem; cursor: pointer; white-space: nowrap; }
@@ -48,58 +60,171 @@
         .at .tk .kb { width: 16px; height: 16px; border-radius: 50%; background: white; position: absolute; top: 2px; left: 2px; transition: left .2s; }
         .at .tk.on .kb { left: 18px; }
         .status { font-size: 0.75rem; color: #6b7280; min-height: 18px; margin-top: 6px; }
-        #welcome { display: block; }
         .notif { position: fixed; top: 16px; right: 16px; background: var(--panel); border: 1px solid var(--border); padding: 10px 16px; border-radius: 8px; font-size: 0.8rem; z-index: 999; opacity: 0; transition: opacity .3s; pointer-events: none; }
         .notif.show { opacity: 1; }
+        .empty-state { flex: 1; display: flex; align-items: center; justify-content: center; color: #4b5563; font-size: 0.9rem; text-align: center; padding: 40px; }
+        .empty-state p { max-width: 300px; line-height: 1.6; }
     </style>
 </head>
 <body>
     <div class="notif" id="notif"></div>
-    <div class="hdr">
-        <div class="l"><div class="ic">&#x1F9E0;</div><div><h1>Tabula Rasa <small>V1.3</small></h1><small>Blank slate AI — learns skills one at a time</small></div></div>
-        <div class="r">
-            Known: <strong id="known-c">0</strong><br>
-            Learning: <strong id="queued-c">0</strong><br>
-            Corrections: <span class="corr-num" id="corr-c">0</span>
+
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <div class="sidebar-hdr">
+            <h2>&#x1F4AC; Sessions</h2>
+            <button onclick="newSession()">+ New</button>
         </div>
+        <div class="session-list" id="session-list"></div>
     </div>
 
-    <div class="chat" id="chat">
-        <div id="welcome">
-            <div class="msg ai">
-                <div class="av">&#x1F9E0;</div>
-                <div class="bub">
-                    <strong>I start as a blank slate, knowing nothing.</strong><br><br>
-                    Every capability — every concept, every operation, every word — must be learned through experience.<br><br>
-                    Ask me a math problem, and I'll try my best. If I don't know it yet, I'll tell you honestly.
-                    <div class="meta">
-                        <span class="tag">&#x1F9ED; Router: generalist</span>
-                        <span style="color:#6b7280;"><em>"I don't know about that yet."</em></span>
-                    </div>
-                </div>
+    <!-- Main -->
+    <div class="main">
+        <div class="hdr">
+            <div class="l"><div class="ic">&#x1F9E0;</div><div><h1>Tabula Rasa <small>V1.3</small></h1><small id="session-name">Current session</small></div></div>
+            <div class="r">
+                Known: <strong id="known-c">0</strong><br>
+                Learning: <strong id="queued-c">0</strong><br>
+                Corrections: <span class="corr-num" id="corr-c">0</span>
             </div>
         </div>
-    </div>
 
-    <div class="chips">
-        <button onclick="ask('12+34=')">12+34=</button>
-        <button onclick="ask('5+7=')">5+7=</button>
-        <button onclick="ask('99+1=')">99+1=</button>
-        <button onclick="ask('hello')">Hello</button>
-        <button onclick="ask('What can you do?')">What can you do?</button>
-    </div>
+        <div class="chat" id="chat"></div>
 
-    <div class="input-row">
-        <div class="at" onclick="toggleAT()"><div class="tk" id="atk"><div class="kb"></div></div> Auto-Teach</div>
-        <input type="text" id="inp" placeholder="Ask a question or give a math problem..." onkeydown="if(event.key==='Enter')sendMsg()">
-        <button id="ask-btn" onclick="sendMsg()">Ask</button>
+        <div class="chips">
+            <button onclick="ask('12+34=')">12+34=</button>
+            <button onclick="ask('5+7=')">5+7=</button>
+            <button onclick="ask('99+1=')">99+1=</button>
+            <button onclick="ask('hello')">Hello</button>
+            <button onclick="ask('What can you do?')">What can you do?</button>
+        </div>
+
+        <div class="input-row">
+            <div class="at" onclick="toggleAT()"><div class="tk" id="atk"><div class="kb"></div></div> Auto-Teach</div>
+            <input type="text" id="inp" placeholder="Ask a question..." onkeydown="if(event.key==='Enter')sendMsg()">
+            <button id="ask-btn" onclick="sendMsg()">Ask</button>
+        </div>
+        <div class="status" id="status"></div>
     </div>
-    <div class="status" id="status"></div>
 
     <script>
     var API2 = 'http://localhost:8002';
     var API1 = 'http://localhost:8000';
     var autoTeach = false, busy = false, totalCorrections = 0;
+    var currentSessionId = null;
+
+    // ─── Session Storage ───
+    function getSessions() {
+        try { return JSON.parse(localStorage.getItem('tr_sessions')) || {}; } catch(e) { return {}; }
+    }
+    function saveSessions(s) {
+        localStorage.setItem('tr_sessions', JSON.stringify(s));
+    }
+    function getSession(id) {
+        var all = getSessions();
+        return all[id] || null;
+    }
+    function putSession(id, data) {
+        var all = getSessions();
+        all[id] = data;
+        saveSessions(all);
+    }
+    function delSession(id) {
+        var all = getSessions();
+        delete all[id];
+        saveSessions(all);
+    }
+    function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+
+    function newSession() {
+        var id = genId();
+        var data = { id: id, name: 'Session ' + Object.keys(getSessions()).length, messages: [], created: Date.now() };
+        putSession(id, data);
+        switchSession(id);
+        renderSidebar();
+    }
+
+    function switchSession(id) {
+        currentSessionId = id;
+        renderSidebar();
+        renderChat();
+    }
+
+    function deleteSesh(id) {
+        if (!confirm('Delete this session?')) return;
+        delSession(id);
+        var all = getSessions();
+        var keys = Object.keys(all);
+        if (keys.length === 0) {
+            newSession();
+        } else {
+            switchSession(keys[keys.length - 1]);
+        }
+        renderSidebar();
+    }
+
+    function addMsgToSession(sessionId, role, content, meta) {
+        var s = getSession(sessionId);
+        if (!s) return;
+        if (!s.messages) s.messages = [];
+        s.messages.push({ role: role, content: content, meta: meta || '', ts: Date.now() });
+        // Update name from first user message
+        if (s.messages.length === 1 && role === 'user') {
+            s.name = content.slice(0, 40) + (content.length > 40 ? '...' : '');
+        }
+        putSession(sessionId, s);
+        renderSidebar();
+    }
+
+    // ─── Rendering ───
+    function renderSidebar() {
+        var list = document.getElementById('session-list');
+        var all = getSessions();
+        var keys = Object.keys(all);
+        if (keys.length === 0) {
+            list.innerHTML = '<div style="padding:20px;text-align:center;color:#4b5563;font-size:0.8rem;">No sessions yet.<br>Click + New to start.</div>';
+            return;
+        }
+        var html = '';
+        // Sort by most recent message
+        keys.sort(function(a, b) {
+            var ma = (all[a].messages && all[a].messages.length) ? all[a].messages[all[a].messages.length - 1].ts : all[a].created;
+            var mb = (all[b].messages && all[b].messages.length) ? all[b].messages[all[b].messages.length - 1].ts : all[b].created;
+            return mb - ma;
+        });
+        for (var i = 0; i < keys.length; i++) {
+            var s = all[keys[i]];
+            var active = keys[i] === currentSessionId ? ' active' : '';
+            var msgCount = (s.messages || []).length;
+            html += '<div class="session-item' + active + '" onclick="switchSession(\'' + keys[i] + '\')">'
+                 + '<div class="name">' + esc(s.name || 'Untitled') + ' <span style="color:#6b7280;font-size:0.7rem;">' + Math.ceil(msgCount/2) + ' msgs</span></div>'
+                 + '<span class="del" onclick="event.stopPropagation();deleteSesh(\'' + keys[i] + '\')">&#x2716;</span>'
+                 + '</div>';
+        }
+        list.innerHTML = html;
+    }
+
+    function renderChat() {
+        var chat = document.getElementById('chat');
+        var s = getSession(currentSessionId);
+        if (!s || !s.messages || s.messages.length === 0) {
+            chat.innerHTML = '<div class="empty-state"><p>Ask a question to start the conversation.<br>The AI learns from scratch — every skill must be trained.</p></div>';
+            document.getElementById('session-name').textContent = s ? esc(s.name) : '';
+            return;
+        }
+        document.getElementById('session-name').textContent = esc(s.name);
+        var html = '';
+        for (var i = 0; i < s.messages.length; i++) {
+            var m = s.messages[i];
+            if (m.role === 'user') {
+                html += '<div class="msg user"><div class="av">&#x1F464;</div><div class="bub">' + esc(m.content) + '</div></div>';
+            } else {
+                html += '<div class="msg ai"><div class="av">&#x1F9E0;</div><div class="bub">' + m.content + (m.meta ? '<div class="meta">' + m.meta + '</div>' : '') + '</div></div>';
+            }
+        }
+        chat.innerHTML = html;
+        chat.scrollTop = chat.scrollHeight;
+    }
 
     function $(id) { return document.getElementById(id); }
     function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
@@ -113,9 +238,10 @@
     }
 
     function addBubble(role, content, meta) {
-        var w = $('welcome');
-        if (w) w.style.display = 'none';
         var chat = $('chat');
+        // Remove empty state
+        var emp = chat.querySelector('.empty-state');
+        if (emp) emp.remove();
         if (role === 'user') {
             chat.insertAdjacentHTML('beforeend', '<div class="msg user"><div class="av">&#x1F464;</div><div class="bub">' + content + '</div></div>');
         } else {
@@ -124,12 +250,11 @@
         chat.scrollTop = chat.scrollHeight;
     }
 
-    // Detect if prompt is a math expression
+    // ─── API Calls ───
     function isMath(prompt) {
         return /^\d+\s*[+\-*/]\s*\d+\s*=\s*$|^\d+\s*[+\-*/]\s*\d+$/.test(prompt.trim());
     }
 
-    // Math queries go directly to the math server (port 8000) — the router's generalist gives wrong answers
     async function askMath(prompt) {
         try {
             var r = await fetch('http://localhost:8084/compute', {
@@ -142,9 +267,7 @@
         }
     }
 
-    // Parse scratchpad format for display
     function parseScratchpad(raw) {
-        // raw is the answer part (after =) in carry-digit format
         if (!raw || raw.length < 2) return raw;
         var digits = '', carries = '';
         for (var i = 0; i < raw.length; i += 2) {
@@ -174,16 +297,21 @@
     async function ask(prompt) {
         if (busy) return;
         if (!prompt || !prompt.trim()) return;
+        // Ensure we have a session
+        if (!currentSessionId) newSession();
+        if (!currentSessionId) return;
+
         busy = true;
         $('ask-btn').disabled = true;
 
         addBubble('user', esc(prompt));
+        addMsgToSession(currentSessionId, 'user', prompt, '');
+
         $('inp').value = '';
         $('status').textContent = 'Thinking...';
         var cid = 'r' + Date.now();
         addBubble('ai', '<span id="' + cid + '" style="color: #6b7280;">...</span>', '<span style="color:#6b7280;">computing...</span>');
 
-        // Math queries go directly to the math specialist (port 8000), not the router
         if (isMath(prompt)) {
             try {
                 var d = await askMath(prompt);
@@ -204,14 +332,12 @@
                 var meta = '<span>' + (d.time_ms || '?') + 'ms</span><span class="tag skill">math specialist</span>';
                 if (d.display && d.result) {
                     var rawPart = d.result.split('=').pop().replace(/<[^>]+>/g, '').trim();
-                    if (rawPart && d.display !== rawPart) {
-                        meta += '<span class="tag scratchpad">scratchpad</span>';
-                    }
+                    if (rawPart && d.display !== rawPart) meta += '<span class="tag scratchpad">scratchpad</span>';
                 }
                 el.nextElementSibling.innerHTML = meta;
                 $('status').textContent = 'Answered.';
+                addMsgToSession(currentSessionId, 'ai', show || '(no answer)', meta);
 
-                // Auto-Teach: if answer is wrong, correct it
                 if (autoTeach) {
                     var expr = prompt.replace(/=\s*$/, '').trim();
                     try {
@@ -226,15 +352,16 @@
             } catch(e2) {
                 var el = $(cid);
                 if (el) {
-                    el.innerHTML = '<span style="color:#ef4444;">I don&#39;t know about that yet.</span><div class="unknown-box">No specialist is trained for this topic. I would need a new skill to answer.</div>';
+                    el.innerHTML = '<span style="color:#ef4444;">I don&#39;t know about that yet.</span><div class="unknown-box">No specialist trained for this topic.</div>';
                     el.style.cssText = '';
                 }
                 $('status').textContent = 'Server offline.';
+                addMsgToSession(currentSessionId, 'ai', 'I don\'t know about that yet.', '<span class="tag needs">No specialist</span>');
             }
             busy = false; $('ask-btn').disabled = false; return;
         }
 
-        // Non-math queries: try AI consciousness (port 8002) first
+        // Non-math: try AI
         try {
             var r = await fetch(API2 + '/ask', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -252,26 +379,22 @@
                 var meta = '';
                 if (d.skill) meta += '<span class="tag skill">&#x1F9ED; ' + esc(d.skill) + '</span>';
                 if (d.confidence !== null && d.confidence !== undefined) {
-                    var p = d.confidence, cls = p >= 80 ? 'correct' : p >= 50 ? 'tag' : 'wrong';
+                    var p = d.confidence;
                     var col = p >= 80 ? '#22c55e' : p >= 50 ? '#facc15' : '#ef4444';
-                    meta += '<span style="color:' + col + ';">&#x' + (p >= 80 ? '2705' : '26A0') + '; ' + p + '% confident</span>';
+                    meta += '<span style="color:' + col + ';">&#x' + (p >= 80 ? '2705' : '26A0') + '; ' + p + '%</span>';
                 }
                 meta += '<span>' + (d.time_ms || '?') + 'ms</span>';
                 el.nextElementSibling.innerHTML = meta;
                 $('status').textContent = d.is_confident ? 'Answered.' : 'Answered (low confidence).';
+                addMsgToSession(currentSessionId, 'ai', ans, meta);
             } else {
-                // Honest ignorance: "I don't know about that yet."
                 el.innerHTML = '';
                 el.style.cssText = '';
                 var html = '<span style="color:#facc15;font-weight:bold;">I don\'t know about that yet.</span>';
-                if (d.analysis || d.suggested_skills) {
-                    html += '<div class="unknown-box">';
-                    if (d.suggested_skills && d.suggested_skills.length) {
-                        html += 'To answer this I would need: <strong>' + esc(d.suggested_skills.join(', ')) + '</strong>.';
-                    } else if (d.analysis) {
-                        html += esc(d.analysis);
-                    }
-                    html += '</div>';
+                if (d.suggested_skills && d.suggested_skills.length) {
+                    html += '<div class="unknown-box">To answer this I would need: <strong>' + esc(d.suggested_skills.join(', ')) + '</strong>.</div>';
+                } else if (d.analysis) {
+                    html += '<div class="unknown-box">' + esc(d.analysis) + '</div>';
                 }
                 el.insertAdjacentHTML('afterbegin', html);
                 var meta = '';
@@ -279,10 +402,10 @@
                     meta += '<span class="tag needs">Needs: ' + esc(d.suggested_skills.join(', ')) + '</span>';
                 }
                 el.nextElementSibling.innerHTML = meta;
-                $('status').textContent = 'Unknown.';
+                $('status').textContent = d.message || 'Unknown.';
+                addMsgToSession(currentSessionId, 'ai', html, meta);
             }
         } catch(e) {
-            // Fallback to math server (port 8000)
             try {
                 var r = await fetch(API1 + '/generate', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -291,30 +414,14 @@
                 var d = await r.json();
                 var el = $(cid);
                 if (!el) { busy = false; $('ask-btn').disabled = false; return; }
-
-                // Use display field if available, otherwise parse scratchpad
-                var show = '';
-                if (d.display) {
-                    show = d.display;
-                } else {
-                    var raw = d.result || '';
-                    if (raw.includes('=')) raw = raw.split('=').pop().replace(/<[^>]+>/g, '').trim();
-                    show = (raw && raw.length >= 2 && raw.includes('<')) ? parseScratchpad(raw) : raw;
-                }
+                var show = d.display || (d.result || '').split('=').pop().replace(/<[^>]+>/g, '').trim() || '';
                 el.textContent = show || '(no answer)';
                 el.style.cssText = 'color:white;font-size:1.1rem;font-weight:bold';
-
                 var meta = '<span>' + (d.time_ms || '?') + 'ms</span><span class="tag skill">math specialist</span>';
-                if (d.display && d.result) {
-                    var rawPart = d.result.split('=').pop().replace(/<[^>]+>/g, '').trim();
-                    if (rawPart && d.display !== rawPart) {
-                        meta += '<span class="tag scratchpad">scratchpad</span>';
-                    }
-                }
                 el.nextElementSibling.innerHTML = meta;
                 $('status').textContent = 'Answered.';
+                addMsgToSession(currentSessionId, 'ai', show || '(no answer)', meta);
 
-                // Auto-Teach: if answer is wrong, correct it
                 if (autoTeach && isMath(prompt)) {
                     var expr = prompt.replace(/=\s*$/, '').trim();
                     try {
@@ -324,17 +431,16 @@
                             $('status').textContent = 'Wrong. Auto-teaching correct answer...';
                             await sendCorrect(expr, String(correctAns));
                         }
-                    } catch(calcErr) {
-                        // not a computable expression
-                    }
+                    } catch(calcErr) {}
                 }
             } catch(e2) {
                 var el = $(cid);
                 if (el) {
-                    el.innerHTML = '<span style="color:#ef4444;">I don\'t know about that yet.</span><div class="unknown-box">No specialist is trained for this topic. I would need a new skill to answer.</div>';
+                    el.innerHTML = '<span style="color:#ef4444;">Server offline.</span>';
                     el.style.cssText = '';
                 }
                 $('status').textContent = 'Server offline.';
+                addMsgToSession(currentSessionId, 'ai', 'Server offline.', '');
             }
         }
 
@@ -351,7 +457,7 @@
     function toggleAT() {
         autoTeach = !autoTeach;
         $('atk').className = 'tk' + (autoTeach ? ' on' : '');
-        notify(autoTeach ? 'Auto-Teach ON — wrong answers auto-corrected' : 'Auto-Teach OFF', autoTeach ? '#3b82f6' : '#6b7280');
+        notify(autoTeach ? 'Auto-Teach ON' : 'Auto-Teach OFF', autoTeach ? '#3b82f6' : '#6b7280');
     }
 
     async function pollSkills() {
@@ -367,6 +473,17 @@
     }
     pollSkills();
     setInterval(pollSkills, 15000);
+
+    // ─── Init ───
+    // Load existing sessions or create first
+    var sessions = getSessions();
+    var keys = Object.keys(sessions);
+    if (keys.length > 0) {
+        switchSession(keys[keys.length - 1]);
+    } else {
+        newSession();
+    }
+    renderSidebar();
     </script>
 </body>
 </html>
