@@ -14,6 +14,12 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse
 from socketserver import ThreadingMixIn
 
+DEBUG_LOG = Path("debug_tabula.log")
+
+def debug(msg):
+    with open(DEBUG_LOG, "a", encoding="utf-8") as f:
+        f.write(f"[{time.strftime('%H:%M:%S')}] {msg}\n")
+
 
 class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
     allow_reuse_address = True
@@ -309,6 +315,7 @@ class SkillManager:
             confidence = 0.9
         else:
             skill, confidence = detect_skill(prompt)
+        debug(f"ask: prompt={prompt!r} detect_skill={skill!r} conf={confidence}")
 
         # If detected skill is not loaded, don't fall back to math for chat skills — auto-train instead
         if skill is not None and skill not in self.models:
@@ -325,6 +332,7 @@ class SkillManager:
 
         if skill is None or skill not in self.models:
             # No skill knows this — analyze what's needed
+            debug(f"ask: no skill loaded for {skill!r}, entering intent detection")
             prompt_lower = prompt.lower()
 
             # ─── Character/script analysis ───
@@ -378,6 +386,7 @@ class SkillManager:
                 intent = 'translation'
             elif not has_math_ops and any(c.isalpha() for c in prompt):
                 intent = 'conversation'
+            debug(f"ask: intent={intent!r}")
 
             # ─── Build plan ───
             plan_parts = []
@@ -437,6 +446,7 @@ class SkillManager:
 
             # ─── Auto-train for any unknown intent ───
             # Check if we already have the model or are training it
+            debug(f"ask: intent={intent!r} in_models={intent in self.models} in_queue={intent in self.training_queue}")
             if intent in self.models:
                 # Model already trained — use it AND retrain to improve
                 model = self.models[intent]
@@ -445,6 +455,7 @@ class SkillManager:
                 _sc = SPECIALIST_CONFIG.get(intent, SPECIALIST_CONFIG['greeting'])
                 full = model.generate(tok, prompt, max_new_tokens=_sc['max_tokens'], temperature=_sc['temp'], top_k=0)
                 elapsed = time.time() - t0
+                debug(f"ask: {intent} generate -> {full!r} ({elapsed*1000:.0f}ms)")
                 self._auto_train_intent(intent, prompt, retrain=True)
                 return {
                     'prompt': prompt,
@@ -618,6 +629,7 @@ class SkillManager:
     def _train_intent_worker(self, intent: str, pairs: list):
         """Train a tiny chat specialist on intent-specific data."""
         import torch
+        debug(f"train: worker starting intent={intent!r} pairs={len(pairs)}")
         try:
             from tabula_rasa.bpe_tokenizer import BPETokenizer
             from tabula_rasa.model import MathTransformer, count_parameters
@@ -722,6 +734,7 @@ class SkillManager:
                 'loss': round(loss.item(), 4), 'status': 'done'
             }
             params = count_parameters(model)
+            debug(f"train: {intent} done, loss={loss.item():.4f} params={params}")
             print(f"  [*] Auto-trained {intent} specialist ready ({params:,} params)")
         except Exception as e:
             import traceback
