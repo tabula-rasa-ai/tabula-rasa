@@ -142,20 +142,47 @@ curl http://localhost:8002/training-progress
 
 ```mermaid
 graph TD
-    Browser["Browser Dashboard (port 8000)"] -->|chat questions| AI["Tabula Rasa AI (port 8002)"]
-    Browser -->|math queries| MathAPI["Math API (/generate)"]
+    User -->|asks question| Browser["Browser Dashboard (port 8000)"]
 
-    AI --> Detect["Intent Detection"]
-    Detect -->|known skill| Specialist["Loaded Specialist Model"]
-    Detect -->|unknown| AutoTrain["Auto-Train Specialist"]
-    AutoTrain -->|background thread| BPE["BPE Tokenizer + Tiny Transformer"]
-    AutoTrain -->|while training| Retrieval["Retrieval Fallback (word overlap)"]
+    Browser -->|math (has digits + =)| MathAPI["/generate endpoint"]
+    Browser -->|text questions| AI["Tabula Rasa AI (port 8002)"]
+    Browser -->|multi-session| LocalStorage["localStorage (persists history)"]
+    Browser -->|export| Clipboard["📤 Copy Session JSON"]
 
-    Specialist -->|good answer| Response["Return Answer + Training Info"]
-    Specialist -->|bad/repetitive| Retrieval
+    AI --> Detect["egefalos/tabula_rasa.py\nIntent Detection"]
 
-    MathAPI --> MathSpec["MathTransformer (1M params)"]
-    MathSpec --> Scratchpad["Carry-Digit Scratchpad Format"]
+    Detect -->|known skill + good output| NN["Neural Model (generation)"]
+    Detect -->|known skill + bad output| Retrieve["Retrieval Fallback\n(word-overlap match)"]
+    Detect -->|unknown intent| AutoTrain["Auto-Train Specialist"]
+
+    NN -->|Lv0 d=128 1000st| Greet["greeting"]
+    NN -->|Lv0 d=128 1200st| Cap["capability_question"]
+    NN -->|Lv0 d=128 1200st| Expl["explanation_question"]
+    NN -->|Lv0 d=128 1200st| Def["definition_question"]
+    NN -->|Lv0 d=128 1200st| Conv["conversation"]
+
+    Retrieve --> Response["Correct Answer\n+ Training Info Tags"]
+
+    AutoTrain -->|background thread| TrainWorker["_train_intent_worker()"]
+    TrainWorker --> BPE["BPE Tokenizer\n(learns from texts)"]
+    TrainWorker --> Model["MathTransformer\n(d_model auto-scales on retrain)"]
+    TrainWorker --> Save["saves to specialists/<intent>/"]
+    TrainWorker --> Progress["/training-progress endpoint\n(polled every 2s by UI)"]
+
+    AutoTrain -->|while training| Retrieve
+
+    MathAPI --> MathSpec["MathTransformer (1M params)\ncarry-digit scratchpad"]
+    MathSpec --> MathResponse["Math Answer"]
+
+    subgraph Config
+        SC["SPECIALIST_CONFIG\nper-intent: temp, tokens, d_model, steps"]
+        SCALE["scale_config()\n+32 d_model, +500 steps per level\nup to d_model=384, 6 layers"]
+    end
+
+    subgraph Storage
+        CKPT["specialists/<intent>/\nbest.pt + tokenizer.json"]
+        LOG["debug_tabula.log\n(intent/gen/train debug)"]
+    end
 ```
 
 ---
