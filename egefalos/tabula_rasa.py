@@ -163,6 +163,7 @@ SPECIALIST_CONFIG = {
     'conversation':         {'temp': 0.0, 'max_tokens': 70, 'max_seq': 160, 'd_model': 128, 'n_layers': 4, 'n_heads': 8, 'd_ff': 256, 'steps': 1200},
     'question':             {'temp': 0.0, 'max_tokens': 60, 'max_seq': 160, 'd_model': 128, 'n_layers': 4, 'n_heads': 8, 'd_ff': 256, 'steps': 1200},
     'unknown':              {'temp': 0.0, 'max_tokens': 40, 'max_seq': 96,  'd_model': 64,  'n_layers': 3, 'n_heads': 4, 'd_ff': 128, 'steps': 500},
+    'translation':          {'temp': 0.0, 'max_tokens': 60, 'max_seq': 160, 'd_model': 128, 'n_layers': 4, 'n_heads': 8, 'd_ff': 256, 'steps': 1200},
 }
 
 def scale_config(intent, level=0):
@@ -368,7 +369,7 @@ class SkillManager:
         # If detected skill is not loaded, don't fall back to math for chat skills — auto-train instead
         if skill is not None and skill not in self.models:
             # Chat skills should auto-train instead of falling back to math
-            chat_skills = {'greeting', 'explanation_question', 'definition_question', 'conversation', 'capability_question', 'question', 'unknown'}
+            chat_skills = {'greeting', 'explanation_question', 'definition_question', 'conversation', 'capability_question', 'question', 'unknown', 'translation'}
             if skill in chat_skills:
                 skill = None  # Will trigger auto-training below
             elif 'general_math' in self.models:
@@ -548,7 +549,7 @@ class SkillManager:
             }
 
         # Chat skill: retrieval first (instant, 100% accurate), neural only when needed
-        if skill in {'greeting', 'capability_question', 'explanation_question', 'definition_question', 'conversation', 'question', 'unknown'}:
+        if skill in {'greeting', 'capability_question', 'explanation_question', 'definition_question', 'conversation', 'question', 'unknown', 'translation'}:
             ans_ret, meta_ret, score = self._retrieve_answer(skill, prompt)
             # Good retrieval match (>30% word overlap) → return immediately, train once for creativity
             if score >= 0.3:
@@ -652,7 +653,22 @@ class SkillManager:
             cpu_count = 1
         pairs = load_dataset(intent)
         if not pairs:
-            pairs = [(prompt, f"I'm still learning about that. My suggested skill is '{intent}'.")]
+            # Auto-create dataset file with the prompt as first training pair
+            import json
+            dataset_path = Path(f"datasets/{intent}.json")
+            dataset_path.parent.mkdir(parents=True, exist_ok=True)
+            auto_answer = f"I'm learning about '{prompt}'. Ask me again and I'll improve!"
+            pairs = [(prompt, auto_answer)]
+            dataset_path.write_text(json.dumps(pairs, indent=2), encoding="utf-8")
+            debug(f"auto-dataset: created datasets/{intent}.json with 1 pair")
+            # Also add to SKILL_REGISTRY so it persists across restarts (in-memory only here)
+            if intent not in SKILL_REGISTRY:
+                SKILL_REGISTRY[intent] = {
+                    'ops': [],
+                    'description': f'Auto-created specialist for {intent}',
+                    'status': 'queued',
+                    'dir': f'specialists/{intent}',
+                }
 
         extra_steps = 0
         if retrain:
