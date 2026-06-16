@@ -534,9 +534,21 @@ class SkillManager:
                 'analysis': None,
             }
 
-        # Retrieve and generate: find best matching example, then train if wanted
+        # Chat skill: retrieval first (instant, 100% accurate), neural only when needed
         if skill in {'greeting', 'capability_question', 'explanation_question', 'definition_question', 'conversation', 'question', 'unknown'}:
-            # Try neural model first if loaded
+            ans_ret, meta_ret, score = self._retrieve_answer(skill, prompt)
+            # Good retrieval match (>30% word overlap) → return immediately, no training
+            if score >= 0.3:
+                debug(f"ask: retrieval {skill} match={score:.2f} -> {ans_ret!r}")
+                return {
+                    'prompt': prompt, 'answer': ans_ret, 'knows': True,
+                    'skill': skill,
+                    'skill_description': SKILL_REGISTRY[skill]['description'],
+                    'time_ms': 0, 'status': 'answered',
+                    'confidence': 100.0, 'is_confident': True, 'message': None,
+                    'training_info': meta_ret,
+                }
+            # Low retrieval score → try neural model if loaded
             if skill in self.models:
                 model = self.models[skill]
                 tok = self.tokenizers[skill]
@@ -549,11 +561,9 @@ class SkillManager:
                     ans = full.split('=', 1)[1].strip()
                 else:
                     ans = full.strip()
-                # If generation is reasonable (>=5 chars, not repetitive), use it
                 is_repetitive = len(set(ans)) <= 3 and len(ans) >= 8
                 if len(ans) >= 5 and not is_repetitive:
-                    self._auto_train_intent(skill, prompt, retrain=True)
-                    debug(f"ask: chat nn {skill} generate -> ans={ans!r} ({elapsed*1000:.0f}ms)")
+                    debug(f"ask: nn {skill} -> {ans!r} ({elapsed*1000:.0f}ms)")
                     return {
                         'prompt': prompt, 'answer': ans, 'knows': True,
                         'skill': skill,
@@ -567,10 +577,9 @@ class SkillManager:
                             'params': sum(p.numel() for p in model.parameters()),
                         },
                     }
-                # Fall through to retrieval if neural output is bad
-            # Retrieval fallback: find best matching training example
-            ans_ret, meta_ret = self._retrieve_answer(skill, prompt)
-            debug(f"ask: retrieval {skill} -> {ans_ret!r}")
+            # No good answer from either → auto-train and return best retrieval attempt
+            self._auto_train_intent(skill, prompt)
+            debug(f"ask: auto-train {skill} for novel query: {prompt!r}")
             return {
                 'prompt': prompt, 'answer': ans_ret, 'knows': True,
                 'skill': skill,
@@ -655,7 +664,7 @@ class SkillManager:
         return best_answer, {
             'level': level, 'd_model': sc.get('d_model', '?'),
             'steps': sc.get('steps', '?'), 'mode': 'retrieval',
-        }
+        }, best_score
 
     def _auto_train_intent(self, intent: str, prompt: str, retrain=False):
         """Auto-train a specialist for an intent type in background."""
