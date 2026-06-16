@@ -144,7 +144,7 @@ curl http://localhost:8002/training-progress
 graph TD
     User -->|asks question| Browser["Browser Dashboard (port 8000)"]
 
-    Browser -->|math (has digits + =)| MathAPI["/generate endpoint"]
+    Browser -->|math has digits| MathAPI["/generate endpoint"]
     Browser -->|text questions| AI["Tabula Rasa AI (port 8002)"]
     Browser -->|multi-session| LocalStorage["localStorage (persists history)"]
     Browser -->|export| Clipboard["📤 Copy Session JSON"]
