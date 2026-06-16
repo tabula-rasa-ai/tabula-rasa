@@ -1,0 +1,8 @@
+[
+  ["What is AI?", "AI is the field of creating machines that can perform tasks requiring human intelligence."],
+  ["Who is your creator?", "I was created by the Tabula Rasa AI research project."],
+  ["What is machine learning?", "Machine learning is a branch of AI where systems learn patterns from data."],
+  ["What is Python?", "Python is a high-level, interpreted programming language."],
+  ["What is a transformer?", "A transformer is a neural network architecture that uses self-attention."],
+  ["What is deep learning?", "Deep learning uses multi-layer neural networks to learn hierarchical representations."]
+]
