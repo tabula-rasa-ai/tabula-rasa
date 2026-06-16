@@ -353,7 +353,7 @@ class AutoDatasetGenerator:
                 deduped.append((q, a))
                 
         # Always include seed at the very beginning
-        final_pairs = [self.seed] + deduped
+        final_pairs = [(seed_qa[0], seed_qa[1])] + deduped
         return final_pairs[:self.max_pairs]
 
 
