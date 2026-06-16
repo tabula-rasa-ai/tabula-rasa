@@ -235,7 +235,7 @@ class AutoDatasetGenerator:
     @staticmethod
     def _is_garbage(text: str) -> bool:
         if len(text) < 3: return True
-        if len(set(text)) <= 2 and len(text) >= 5: return True
+        if len(set(text)) <= 3 and len(text) >= 4: return True
         
         # Check for repeating n-grams (e.g., "I am I am I am")
         words = text.split()
