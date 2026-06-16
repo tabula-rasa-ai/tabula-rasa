@@ -657,8 +657,6 @@ class SkillManager:
             if overlap > best_score:
                 best_score = overlap
                 best_answer = a
-        # Also trigger auto-training in background for continual improvement
-        self._auto_train_intent(skill, prompt, retrain=True)
         level = self.skill_levels.get(skill, 0)
         sc = scale_config(skill, level)
         return best_answer, {
