@@ -739,8 +739,16 @@ class SkillManager:
         if not scored:
             scored = [(0, "I don't know about that yet.", "")]
         best_score = max(s[0] for s in scored)
-        # Higher threshold: require at least 0.3 AND content word match for non-trivial queries
-        threshold = best_score * 0.5 if best_score > 0 else 0
+        # Higher threshold: require content word match (best_score > 0) for non-trivial queries
+        if best_score <= 0:
+            # No content word match — return fallback
+            return ("I don't know about that yet.", {
+                'level': self.skill_levels.get(skill, 0),
+                'd_model': scale_config(skill, self.skill_levels.get(skill, 0)).get('d_model', '?'),
+                'steps': scale_config(skill, self.skill_levels.get(skill, 0)).get('steps', '?'),
+                'mode': 'retrieval', 'creativity': 0,
+            }, 0.0)
+        threshold = best_score * 0.5
         candidates = [(a, q) for s, a, q in scored if s >= threshold]
         if not candidates:
             candidates = [(a, q) for s, a, q in scored]

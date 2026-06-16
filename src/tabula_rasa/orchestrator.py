@@ -13,7 +13,7 @@ from typing import Optional, List, Tuple
 
 # Question type patterns
 SUB_QUESTION_SPLITTERS = [
-    r'\band\b(?=\s+\w+\s+\?)',     # "what is X and how does Y work?"
+    r'\band\b(?=\s+\w+(?:\s|$))',   # "what is X and how does Y work"
     r'\bbut\b',                      # "what is X but what about Y?"
     r'\b(vs|versus|compared to)\b',  # "difference between X and Y"
     r'[.;]\s*',                      # "what is X. How does Y work?"
@@ -32,21 +32,27 @@ SPECIALIST_DETECTORS = [
 
 def decompose_question(question: str) -> List[str]:
     """Split a complex question into sub-questions."""
-    parts = [question]
+    q = question.strip()
+    if not q.endswith('?'):
+        q += '?'
+    parts = [q]
 
     for splitter in SUB_QUESTION_SPLITTERS:
         split = []
         for p in parts:
             pieces = re.split(splitter, p, maxsplit=1)
-            # Only split if both pieces are substantial questions
             if len(pieces) == 2 and len(pieces[0].strip()) > 5 and len(pieces[1].strip()) > 5:
-                # Check both pieces look like questions
-                split.extend([p.strip().rstrip('.,;') + '?' for p in pieces if p.strip()])
+                a = pieces[0].strip().rstrip('.,; ')
+                b = pieces[1].strip().rstrip('.,; ')
+                if not a.endswith('?'): a += '?'
+                if not b.endswith('?'): b += '?'
+                split.append(a)
+                split.append(b)
             else:
                 split.append(p)
         parts = split
         if len(parts) >= 3:
-            break  # Don't over-split
+            break
 
     return parts
 
@@ -58,7 +64,7 @@ def detect_specialist_for_subquestion(subq: str) -> str:
         for pat in patterns:
             if re.search(pat, subq_lower):
                 return specialty
-    return 'definition_question'  # default
+    return 'definition_question'
 
 
 class SpecialistOrchestrator:
@@ -72,14 +78,12 @@ class SpecialistOrchestrator:
         sub_questions = decompose_question(question)
 
         if len(sub_questions) <= 1:
-            # Not a multi-part question — normal routing
             return None  # Signal to use normal ask flow
 
         answers = []
         all_known = True
         for subq in sub_questions:
             specialty = detect_specialist_for_subquestion(subq)
-            # Find the best model for this specialty
             model_name = None
             if specialty == 'math':
                 for s in ['addition', 'multiplication', 'division', 'general_math']:
@@ -89,13 +93,19 @@ class SpecialistOrchestrator:
             elif specialty in self.manager.models:
                 model_name = specialty
             else:
-                # Try any loaded model
                 for s in self.manager.known_skills:
                     if s not in ['addition', 'multiplication', 'division', 'general_math']:
                         model_name = s
                         break
 
             if model_name:
+                # Try retrieval first (instant, accurate)
+                retrieved = self.manager._retrieve_answer(specialty, subq)
+                if retrieved and len(retrieved[0]) > 5 and 'learning about' not in retrieved[0]:
+                    answers.append((subq, retrieved[0]))
+                    continue
+
+                # Fallback to neural generation
                 subq_with_eq = subq if subq.endswith('=') else subq + '='
                 model = self.manager.models[model_name]
                 tok = self.manager.tokenizers[model_name]
@@ -117,19 +127,10 @@ class SpecialistOrchestrator:
                         continue
                 except Exception:
                     pass
-
-            # Fallback to retrieval
-            if specialty in self.manager.models:
-                retrieved = self.manager._retrieve_answer(specialty, subq)
-                if retrieved and len(retrieved[0]) > 3:
-                    answers.append((subq, retrieved[0]))
-                    continue
-
-            # Last resort
+            # Last resort (neural generation also failed)
             answers.append((subq, f'I need to learn about {subq} first.'))
             all_known = False
 
-        # Combine answers
         if len(answers) == 1:
             combined = answers[0][1]
         else:
