@@ -593,7 +593,7 @@ class SkillManager:
         """Retrieval fallback — find best training example by word overlap."""
         INTENT_DATA = {
             'greeting': [
-                ("Hello!", "Hi there! I'm Tabula Rasa, a helpful AI assistant."),
+                ("Hello!", "Hi there! I'm Tabula Rasa, a helpful AI assistant. What can I help you with?"),
                 ("hello", "Hi there! I'm Tabula Rasa. What can I help you with?"),
                 ("Hi!", "Hello! How can I help you today?"),
                 ("hi", "Hello! How can I help you today?"),
@@ -606,6 +606,11 @@ class SkillManager:
                 ("Hey, what's up?", "Not much, just learning new things! Ask me anything."),
                 ("Hello, are you there?", "Yes, I'm here! What can I help you with?"),
                 ("Hi, nice to meet you!", "Nice to meet you too! I'm Tabula Rasa, a continual learning AI."),
+                # Creative variants
+                ("hello", "Hey! Ready to learn something new today? Ask me anything!"),
+                ("hello", "Hello! I'm blank slate AI — every answer I give was learned from scratch."),
+                ("Hi", "Well hello there! What's on your mind? Math, questions, or just saying hi?"),
+                ("hey", "Hey! I'm always learning. Got something interesting for me?"),
             ],
             'capability_question': [
                 ("What can you do?", "I can solve math problems, answer questions, and learn new skills through continual learning."),
@@ -646,22 +651,28 @@ class SkillManager:
             ],
         }
         pairs = INTENT_DATA.get(skill, [])
-        # Find best match by word overlap
+        # Find best matching examples (collect all above 50% of best score)
         prompt_words = set(prompt.lower().split())
-        best_score = 0
-        best_answer = "I don't know about that yet."
+        scored = []
         for q, a in pairs:
             q_words = set(q.lower().split())
             if not q_words: continue
             overlap = len(prompt_words & q_words) / len(q_words)
-            if overlap > best_score:
-                best_score = overlap
-                best_answer = a
+            scored.append((overlap, a))
+        if not scored:
+            scored = [(0, "I don't know about that yet.")]
+        best_score = max(s[0] for s in scored)
+        # Pick randomly from all matches >= 70% of best score
+        candidates = [a for s, a in scored if s >= best_score * 0.7]
+        import random
+        best_answer = random.choice(candidates)
+        creativity = round(len(candidates) / max(len(pairs), 1) * 100)
         level = self.skill_levels.get(skill, 0)
         sc = scale_config(skill, level)
         return best_answer, {
             'level': level, 'd_model': sc.get('d_model', '?'),
             'steps': sc.get('steps', '?'), 'mode': 'retrieval',
+            'creativity': creativity,
         }, best_score
 
     def _auto_train_intent(self, intent: str, prompt: str, retrain=False):
@@ -686,7 +697,7 @@ class SkillManager:
 
         INTENT_DATA = {
             'greeting': [
-                ("Hello!", "Hi there! I'm Tabula Rasa, a helpful AI assistant."),
+                ("Hello!", "Hi there! I'm Tabula Rasa, a helpful AI assistant. What can I help you with?"),
                 ("hello", "Hi there! I'm Tabula Rasa. What can I help you with?"),
                 ("Hi!", "Hello! How can I help you today?"),
                 ("hi", "Hello! How can I help you today?"),
@@ -699,6 +710,11 @@ class SkillManager:
                 ("Hey, what's up?", "Not much, just learning new things! Ask me anything."),
                 ("Hello, are you there?", "Yes, I'm here! What can I help you with?"),
                 ("Hi, nice to meet you!", "Nice to meet you too! I'm Tabula Rasa, a continual learning AI."),
+                # Creative variants
+                ("hello", "Hey! Ready to learn something new today? Ask me anything!"),
+                ("hello", "Hello! I'm blank slate AI — every answer I give was learned from scratch."),
+                ("Hi", "Well hello there! What's on your mind? Math, questions, or just saying hi?"),
+                ("hey", "Hey! I'm always learning. Got something interesting for me?"),
             ],
             'capability_question': [
                 ("What can you do?", "I can solve math problems, answer questions, and learn new skills through continual learning."),
