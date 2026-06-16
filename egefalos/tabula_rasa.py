@@ -357,6 +357,43 @@ class SkillManager:
         return [{'name': n, 'status': i['status'], 'description': i['description']}
                 for n, i in SKILL_REGISTRY.items()]
 
+    @property
+    def datasets_status(self) -> dict:
+        """List all datasets with training/model status for the dashboard."""
+        import json as _json
+        from pathlib import Path
+        datasets_dir = Path('datasets')
+        result = {}
+        if datasets_dir.exists():
+            for ds_file in sorted(datasets_dir.glob('*.json')):
+                name = ds_file.stem
+                try:
+                    data = _json.loads(ds_file.read_text(encoding='utf-8'))
+                    pairs = [(q, a) for q, a in data] if data else []
+                    pair_count = len(pairs)
+                    has_real_answers = any(
+                        'learning about' not in a.lower() and len(a) > 10
+                        for q, a in pairs
+                    )
+                except Exception:
+                    pair_count = 0
+                    has_real_answers = False
+                is_trained = name in self.models
+                is_training = name in self.training_queue
+                level = self.skill_levels.get(name, 0)
+                params = 0
+                if is_trained and name in self.models:
+                    params = sum(p.numel() for p in self.models[name].parameters())
+                result[name] = {
+                    'pairs': pair_count,
+                    'has_real_answers': has_real_answers,
+                    'trained': is_trained,
+                    'training': is_training,
+                    'level': level,
+                    'params': params,
+                }
+        return result
+
     @torch.no_grad()
     def ask(self, prompt: str, temperature=0.3, top_k=5, skill=None) -> dict:
         """Route a question to the right skill.
@@ -1043,6 +1080,8 @@ class TabulaRasaHandler(BaseHTTPRequestHandler):
                     self._send_json({'total': 0})
             except Exception as e:
                 self._send_json({'total': 0, 'error': str(e)})
+        elif path == '/datasets':
+            self._send_json({'datasets': manager.datasets_status})
         else:
             self._send_json({'error': 'Not found'}, 404)
 
