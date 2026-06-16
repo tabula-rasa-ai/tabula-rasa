@@ -1358,6 +1358,36 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         data = self._read_body()
         if path == "/generate":
+            prompt = (data or {}).get("prompt", "").strip()
+            if not prompt:
+                return self._json({"error": "Missing prompt"}, 400)
+
+            # Non-math questions → forward to Tabula Rasa AI on port 8002
+            if any(c.isalpha() for c in prompt) and "=" not in prompt:
+                try:
+                    import urllib.request
+                    body = json.dumps({"question": prompt}).encode()
+                    req = urllib.request.Request(
+                        "http://127.0.0.1:8002/ask", data=body,
+                        headers={"Content-Type": "application/json"}
+                    )
+                    resp = urllib.request.urlopen(req, timeout=10)
+                    ai_result = json.loads(resp.read())
+                    return self._json({
+                        "prompt": prompt,
+                        "result": ai_result.get("answer", ""),
+                        "ai_response": ai_result,
+                        "time_ms": 0,
+                        "model": "TabulaRasaAI",
+                    })
+                except Exception as e:
+                    return self._json({
+                        "prompt": prompt,
+                        "result": f"(AI offline: {e})",
+                        "time_ms": 0,
+                        "model": "error",
+                    })
+
             # Optional checkpoint override
             ckpt = (data or {}).get("checkpoint", None)
             if ckpt:
@@ -1367,9 +1397,6 @@ class Handler(BaseHTTPRequestHandler):
             if not m:
                 return self._json({"error": "No model loaded"}, 503)
             model, tok, cfg = m
-            prompt = (data or {}).get("prompt", "").strip()
-            if not prompt:
-                return self._json({"error": "Missing prompt"}, 400)
             if not prompt.endswith("="):
                 prompt += "="
             import torch
