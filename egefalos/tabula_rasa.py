@@ -307,7 +307,7 @@ class SkillManager:
                 intent = 'greeting'
             elif prompt_lower.startswith('what is') or prompt_lower.startswith('who is') or prompt_lower.startswith('what are'):
                 intent = 'definition_question'
-            elif prompt_lower.startswith('do you') or prompt_lower.startswith('can you') or prompt_lower.startswith('are you'):
+            elif 'what can you' in prompt_lower or 'what do you' in prompt_lower or prompt_lower.startswith('do you') or prompt_lower.startswith('can you') or prompt_lower.startswith('are you'):
                 intent = 'capability_question'
             elif prompt_lower.startswith('how') or prompt_lower.startswith('why') or prompt_lower.startswith('when') or prompt_lower.startswith('where'):
                 intent = 'explanation_question'
@@ -373,6 +373,30 @@ class SkillManager:
             ]
 
             training_plan = ' → '.join(plan_parts) if plan_parts else 'Define training dataset for this domain'
+
+            # ─── For capability questions ("what can you do"), list available skills ───
+            if intent == 'capability_question':
+                ready = [name for name, info in SKILL_REGISTRY.items() if info['status'] == 'ready']
+                queued = [name for name, info in SKILL_REGISTRY.items() if info['status'] == 'queued' or info['status'] == 'training']
+                lines = ["I have these skills:"]
+                if ready:
+                    lines.append(f"  Ready: {', '.join(ready)}")
+                if queued:
+                    lines.append(f"  Learning: {', '.join(queued)}")
+                if not ready:
+                    lines.append("  (none trained yet)")
+                lines.append(f"Ask me a math problem like '2+3=' to see me in action!")
+                answer_text = '\n'.join(lines)
+                return {
+                    'answer': answer_text,
+                    'knows': True,
+                    'message': None,
+                    'detected_skill': None,
+                    'suggested_skills': [],
+                    'status': 'answered',
+                    'time_ms': 0,
+                    'analysis': None,
+                }
 
             return {
                 'answer': None,
