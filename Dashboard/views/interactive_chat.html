@@ -73,7 +73,10 @@
     <div class="sidebar">
         <div class="sidebar-hdr">
             <h2>&#x1F4AC; Sessions</h2>
-            <button onclick="newSession()">+ New</button>
+            <div style="display:flex;gap:4px;">
+                <button onclick="exportChat()" title="Export all sessions">&#x1F4E4;</button>
+                <button onclick="newSession()">+ New</button>
+            </div>
         </div>
         <div class="session-list" id="session-list"></div>
     </div>
@@ -458,6 +461,32 @@
         autoTeach = !autoTeach;
         $('atk').className = 'tk' + (autoTeach ? ' on' : '');
         notify(autoTeach ? 'Auto-Teach ON' : 'Auto-Teach OFF', autoTeach ? '#3b82f6' : '#6b7280');
+    }
+
+    function exportChat() {
+        var data = getSessions();
+        var text = JSON.stringify(data, null, 2);
+        // Copy to clipboard
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(function() {
+                notify('Chat history copied to clipboard! Paste it in the chat.', '#22c55e');
+            }).catch(function() {
+                fallbackCopy(text);
+            });
+        } else {
+            fallbackCopy(text);
+        }
+    }
+
+    function fallbackCopy(text) {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed'; ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); notify('Chat history copied! Paste it in the chat.', '#22c55e'); }
+        catch(e) { notify('Copy failed. Use browser dev tools to copy localStorage.tr_sessions', '#ef4444'); }
+        document.body.removeChild(ta);
     }
 
     async function pollSkills() {
