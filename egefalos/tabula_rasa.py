@@ -501,14 +501,20 @@ class SkillManager:
             tok = self.tokenizers[skill]
             t0 = time.time()
             _sc = SPECIALIST_CONFIG.get(skill, SPECIALIST_CONFIG['greeting'])
-            full = model.generate(tok, prompt, max_new_tokens=_sc['max_tokens'], temperature=_sc['temp'], top_k=0)
+            inp = prompt if prompt.endswith('=') else prompt + '='
+            full = model.generate(tok, inp, max_new_tokens=_sc['max_tokens'], temperature=_sc['temp'], top_k=0)
             elapsed = time.time() - t0
-            debug(f"ask: chat skill {skill} generate -> {full!r} ({elapsed*1000:.0f}ms)")
+            # Extract answer after =
+            if '=' in full:
+                ans = full.split('=', 1)[1].strip()
+            else:
+                ans = full.strip()
+            debug(f"ask: chat skill {skill} generate -> {full!r} -> ans={ans!r} ({elapsed*1000:.0f}ms)")
             # Retrain to improve
             self._auto_train_intent(skill, prompt, retrain=True)
             return {
                 'prompt': prompt,
-                'answer': full,
+                'answer': ans,
                 'knows': True,
                 'skill': skill,
                 'skill_description': SKILL_REGISTRY[skill]['description'],
