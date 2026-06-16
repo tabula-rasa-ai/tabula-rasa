@@ -351,7 +351,7 @@ class AutoDatasetGenerator:
         if len(text) >= 8 and not has_vowel:
             return True
         # Check for all-caps smash (GWDGDWWDG type)
-        if len(text) >= 6:
+        if len(text) >= 4:
             upper_ratio = sum(1 for c in text if c.isupper()) / max(len(text), 1)
             lower_ratio = sum(1 for c in text if c.islower()) / max(len(text), 1)
             if upper_ratio > 0.8 and lower_ratio < 0.1:
