@@ -128,6 +128,12 @@ SKILL_REGISTRY = {
         'status': 'queued',
         'dir': 'specialists/conversation',
     },
+    'capability_question': {
+        'ops': ['what can you', 'what do you', 'capabilities', 'skills'],
+        'description': 'Can describe its own capabilities',
+        'status': 'queued',
+        'dir': 'specialists/capability_question',
+    },
 }
 
 # Future domains to add:
@@ -298,7 +304,7 @@ class SkillManager:
         # If detected skill is not loaded, don't fall back to math for chat skills — auto-train instead
         if skill is not None and skill not in self.models:
             # Chat skills should auto-train instead of falling back to math
-            chat_skills = {'greeting', 'explanation_question', 'definition_question', 'conversation'}
+            chat_skills = {'greeting', 'explanation_question', 'definition_question', 'conversation', 'capability_question'}
             if skill in chat_skills:
                 skill = None  # Will trigger auto-training below
             elif 'general_math' in self.models:
@@ -420,39 +426,17 @@ class SkillManager:
 
             training_plan = ' → '.join(plan_parts) if plan_parts else 'Define training dataset for this domain'
 
-            # ─── For capability questions ("what can you do"), list available skills ───
-            if intent == 'capability_question':
-                ready = [name for name, info in SKILL_REGISTRY.items() if info['status'] == 'ready']
-                queued = [name for name, info in SKILL_REGISTRY.items() if info['status'] == 'queued' or info['status'] == 'training']
-                lines = ["I have these skills:"]
-                if ready:
-                    lines.append(f"  Ready: {', '.join(ready)}")
-                if queued:
-                    lines.append(f"  Learning: {', '.join(queued)}")
-                if not ready:
-                    lines.append("  (none trained yet)")
-                lines.append(f"Ask me a math problem like '2+3=' to see me in action!")
-                answer_text = '\n'.join(lines)
-                return {
-                    'answer': answer_text,
-                    'knows': True,
-                    'message': None,
-                    'detected_skill': None,
-                    'suggested_skills': [],
-                    'status': 'answered',
-                    'time_ms': 0,
-                    'analysis': None,
-                }
-
             # ─── Auto-train for any unknown intent ───
             # Check if we already have the model or are training it
             if intent in self.models:
-                # Model already trained, use it
+                # Model already trained — use it AND retrain to improve
                 model = self.models[intent]
                 tok = self.tokenizers[intent]
                 t0 = time.time()
                 full = model.generate(tok, prompt, max_new_tokens=30, temperature=0.3, top_k=5)
                 elapsed = time.time() - t0
+                # Retrain with this new example for continual improvement
+                self._auto_train_intent(intent, prompt, retrain=True)
                 return {
                     'prompt': prompt,
                     'answer': full,
@@ -539,7 +523,7 @@ class SkillManager:
             'message': None if is_confident else "I have a specialist for this, but I'm not confident in my answer yet.",
         }
 
-    def _auto_train_intent(self, intent: str, prompt: str):
+    def _auto_train_intent(self, intent: str, prompt: str, retrain=False):
         """Auto-train a specialist for an intent type in background."""
         if intent in self.training_queue:
             return  # Already training this intent
@@ -557,6 +541,16 @@ class SkillManager:
                 ("Hey, what's up?", "Not much, just learning new things! Ask me anything."),
                 ("Hello, are you there?", "Yes, I'm here! What can I help you with?"),
                 ("Hi, nice to meet you!", "Nice to meet you too! I'm Tabula Rasa, a continual learning AI."),
+            ],
+            'capability_question': [
+                ("What can you do?", "I can solve math problems, answer questions, and learn new skills through continual learning."),
+                ("What are your skills?", "I have skills for addition, multiplication, division, greetings, and explanations. I can learn more!"),
+                ("What do you know?", "I know math operations, can greet users, and answer questions about myself. I'm always learning."),
+                ("Tell me about yourself.", "I'm Tabula Rasa, an AI that learns from scratch — one specialist at a time."),
+                ("What are your capabilities?", "I can do arithmetic, have conversations, and auto-train new specialists for unknown topics."),
+                ("How can you help me?", "Ask me math problems like '12+34=', say hello, or ask about my skills!"),
+                ("What are you good at?", "I'm good at math, greetings, and explaining concepts. I get better every time you ask!"),
+                ("Do you have any skills?", "Yes! Addition, subtraction, multiplication, division, greetings, and more."),
             ],
             'explanation_question': [
                 ("Where are you from?", "I'm from the Tabula Rasa AI research project — a system that learns from scratch, one specialist at a time."),
@@ -591,8 +585,14 @@ class SkillManager:
         if not pairs:
             pairs = [(prompt, f"I'm still learning about that. My suggested skill is '{intent}'.")]
 
+        extra_steps = 0
+        if retrain:
+            # Append current query as new training pair and increase training
+            pairs = pairs + [(prompt, f"I'm learning more about '{prompt}' every time you ask.")]
+            extra_steps = 100
+
         self.training_queue[intent] = True
-        self.training_progress[intent] = {'step': 0, 'total': 500, 'loss': 0, 'status': 'starting'}
+        self.training_progress[intent] = {'step': 0, 'total': 500 + (extra_steps if retrain else 0), 'loss': 0, 'status': 'starting'}
         import threading
         t = threading.Thread(target=self._train_intent_worker, args=(intent, pairs), daemon=True)
         t.start()
@@ -626,7 +626,7 @@ class SkillManager:
             cfg.vocab_size = tok.vocab_size
             cfg.max_seq_len = 64
             cfg.batch_size = len(pairs)
-            cfg.max_steps = 500
+            cfg.max_steps = self.training_progress[intent]['total']
             cfg.learning_rate = 0.001
             cfg.use_reversed = False
             cfg.use_loss_masking = True
