@@ -476,27 +476,18 @@ class SkillManager:
                     'analysis': None,
                 }
 
-            # Trigger auto-training (synchronous, fast)
+            # Trigger auto-training (background thread, ~2-5s on CPU)
             self._auto_train_intent(intent, prompt)
-
-            # Now use the freshly trained model
-            if intent in self.models:
-                model = self.models[intent]
-                tok = self.tokenizers[intent]
-                t0 = time.time()
-                full = model.generate(tok, prompt, max_new_tokens=30, temperature=0.3, top_k=5)
-                elapsed = time.time() - t0
-                return {
-                    'prompt': prompt,
-                    'answer': full,
-                    'knows': True,
-                    'skill': intent,
-                    'time_ms': round(elapsed * 1000),
-                    'status': 'answered',
-                    'confidence': 50.0,
-                    'is_confident': True,
-                    'message': None,
-                }
+            return {
+                'answer': None,
+                'knows': False,
+                'message': f"Training a {intent} specialist... ask again in a moment!",
+                'detected_skill': None,
+                'suggested_skills': [suggested_skill_name] if suggested_skill_name else [],
+                'status': 'training',
+                'time_ms': 0,
+                'analysis': None,
+            }
 
         model = self.models[skill]
         tok = self.tokenizers[skill]
@@ -599,8 +590,10 @@ class SkillManager:
         if not pairs:
             pairs = [(prompt, f"I'm still learning about that. My suggested skill is '{intent}'.")]
 
-        # Train synchronously (fast — ~2s on CPU for small models)
-        self._train_intent_worker(intent, pairs)
+        self.training_queue[intent] = True
+        import threading
+        t = threading.Thread(target=self._train_intent_worker, args=(intent, pairs), daemon=True)
+        t.start()
 
     def _train_intent_worker(self, intent: str, pairs: list):
         """Train a tiny chat specialist on intent-specific data."""
@@ -630,7 +623,7 @@ class SkillManager:
             cfg.vocab_size = tok.vocab_size
             cfg.max_seq_len = 64
             cfg.batch_size = len(pairs)
-            cfg.max_steps = 100
+            cfg.max_steps = 200
             cfg.learning_rate = 0.001
             cfg.use_reversed = False
             cfg.use_loss_masking = True
@@ -696,8 +689,10 @@ class SkillManager:
             print(f"  [*] Auto-trained {intent} specialist ready ({params:,} params)")
         except Exception as e:
             import traceback
+            with open('auto_train_errors.log', 'a') as f:
+                f.write(f"[{intent}] {e}\n")
+                traceback.print_exc(file=f)
             print(f"  [!] Auto-train {intent} failed: {e}")
-            traceback.print_exc()
         finally:
             self.training_queue.pop(intent, None)
 
