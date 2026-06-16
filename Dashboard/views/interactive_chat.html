@@ -108,6 +108,7 @@
             <button id="ask-btn" onclick="sendMsg()">Ask</button>
         </div>
         <div class="status" id="status"></div>
+        <div id="train-status" style="font-size:0.75rem;color:#6b7280;min-height:18px;margin-top:2px;"></div>
     </div>
 
     <script>
@@ -515,6 +516,33 @@
     }
     pollSkills();
     setInterval(pollSkills, 15000);
+
+    // ─── Training progress polling ───
+    async function pollTraining() {
+        try {
+            var r = await fetch(API2 + '/training-progress');
+            var d = await r.json();
+            var prog = d.training || {};
+            var keys = Object.keys(prog);
+            var el = document.getElementById('train-status');
+            if (keys.length === 0) { el.textContent = ''; return; }
+            var parts = [];
+            for (var i = 0; i < keys.length; i++) {
+                var p = prog[keys[i]];
+                if (p.status === 'done') continue;
+                if (p.status === 'training') {
+                    var pct = Math.round(p.step / p.total * 100);
+                    parts.push('Training ' + keys[i] + ': ' + p.step + '/' + p.total + ' steps (' + pct + '%) loss=' + p.loss);
+                } else if (p.status === 'starting') {
+                    parts.push('Starting ' + keys[i] + ' training...');
+                } else if (p.status === 'saving') {
+                    parts.push('Saving ' + keys[i] + ' specialist...');
+                }
+            }
+            el.textContent = parts.join(' | ');
+        } catch(e) {}
+    }
+    setInterval(pollTraining, 2000);
 
     // ─── Init ───
     // Load existing sessions or create first

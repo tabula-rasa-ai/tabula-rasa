@@ -159,6 +159,7 @@ class SkillManager:
         self.tokenizers = {}
         self.device = 'cpu'
         self.training_queue = {}  # intent -> True if training in progress
+        self.training_progress = {}  # intent -> {step, total, loss, status}
         self._load_existing()
 
     def _load_existing(self):
@@ -591,6 +592,7 @@ class SkillManager:
             pairs = [(prompt, f"I'm still learning about that. My suggested skill is '{intent}'.")]
 
         self.training_queue[intent] = True
+        self.training_progress[intent] = {'step': 0, 'total': 200, 'loss': 0, 'status': 'starting'}
         import threading
         t = threading.Thread(target=self._train_intent_worker, args=(intent, pairs), daemon=True)
         t.start()
@@ -655,8 +657,17 @@ class SkillManager:
                     _, loss, _ = model(bx, by)
                     loss.backward()
                     opt.step()
-                if (step + 1) % 25 == 0:
+                if (step + 1) % 25 == 0 or step == 0:
+                    self.training_progress[intent] = {
+                        'step': step + 1, 'total': cfg.max_steps,
+                        'loss': round(loss.item(), 4), 'status': 'training'
+                    }
                     print(f"  [*] {intent} training step {step+1}/{cfg.max_steps}, loss={loss.item():.4f}")
+
+            self.training_progress[intent] = {
+                'step': cfg.max_steps, 'total': cfg.max_steps,
+                'loss': round(loss.item(), 4), 'status': 'saving'
+            }
 
             model.eval()
 
@@ -686,6 +697,10 @@ class SkillManager:
             }
             self.models[intent] = model
             self.tokenizers[intent] = tok
+            self.training_progress[intent] = {
+                'step': cfg.max_steps, 'total': cfg.max_steps,
+                'loss': round(loss.item(), 4), 'status': 'done'
+            }
             params = count_parameters(model)
             print(f"  [*] Auto-trained {intent} specialist ready ({params:,} params)")
         except Exception as e:
@@ -742,6 +757,8 @@ class TabulaRasaHandler(BaseHTTPRequestHandler):
                 self._send_json({'error': str(e)}, 500)
         elif path == '/skills':
             self._send_json({'skills': manager.status_summary})
+        elif path == '/training-progress':
+            self._send_json({'training': manager.training_progress})
         elif path == '/':
             self._send_json({
                 'system': 'Tabula Rasa AI',
