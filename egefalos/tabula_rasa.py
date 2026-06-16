@@ -151,6 +151,19 @@ SPECIALIST_CONFIG = {
     'conversation':         {'temp': 0.0, 'max_tokens': 60, 'max_seq': 128, 'd_model': 64, 'n_layers': 3, 'n_heads': 4, 'd_ff': 128, 'steps': 600},
 }
 
+def scale_config(intent, level=0):
+    """Scale model config by level. Each level increases d_model by 16 and steps by 200."""
+    base = SPECIALIST_CONFIG.get(intent, SPECIALIST_CONFIG['greeting'])
+    if level == 0:
+        return dict(base)
+    scaled = dict(base)
+    scaled['d_model'] = min(base['d_model'] + level * 16, 256)
+    scaled['d_ff'] = scaled['d_model'] * 2
+    scaled['n_heads'] = max(4, scaled['d_model'] // 16)
+    scaled['steps'] = base['steps'] + level * 200
+    scaled['max_seq'] = min(base['max_seq'] + level * 16, 256)
+    return scaled
+
 # Future domains to add:
 #   'biology': {'ops': ['cell', 'dna', 'organism', 'photosynthesis'], 'status': 'queued'}
 #   'spelling': {'ops': ['spell', 'reverse', 'capitalize'], 'status': 'queued'}
@@ -181,6 +194,7 @@ class SkillManager:
         self.device = 'cpu'
         self.training_queue = {}  # intent -> True if training in progress
         self.training_progress = {}  # intent -> {step, total, loss, status}
+        self.skill_levels = {}  # intent -> level (auto-increments on retrain)
         self._load_existing()
 
     def _load_existing(self):
@@ -216,6 +230,11 @@ class SkillManager:
                     tok.max_seq_len = cfg.max_seq_len
                     model = MathTransformer(cfg)
                     model.load_state_dict(state['model_state_dict'])
+                    # Track level from saved checkpoint
+                    level = 0
+                    if mc:
+                        level = mc.get('level', 0)
+                    self.skill_levels[name] = level
                     model.eval()
                     model.to(self.device)
                     self.models[name] = model
@@ -452,7 +471,7 @@ class SkillManager:
                 model = self.models[intent]
                 tok = self.tokenizers[intent]
                 t0 = time.time()
-                _sc = SPECIALIST_CONFIG.get(intent, SPECIALIST_CONFIG['greeting'])
+                _sc = scale_config(intent, self.skill_levels.get(intent, 0))
                 full = model.generate(tok, prompt, max_new_tokens=_sc['max_tokens'], temperature=_sc['temp'], top_k=0)
                 elapsed = time.time() - t0
                 debug(f"ask: {intent} generate -> {full!r} ({elapsed*1000:.0f}ms)")
@@ -500,7 +519,7 @@ class SkillManager:
             model = self.models[skill]
             tok = self.tokenizers[skill]
             t0 = time.time()
-            _sc = SPECIALIST_CONFIG.get(skill, SPECIALIST_CONFIG['greeting'])
+            _sc = scale_config(skill, self.skill_levels.get(skill, 0))
             inp = prompt if prompt.endswith('=') else prompt + '='
             full = model.generate(tok, inp, max_new_tokens=_sc['max_tokens'], temperature=_sc['temp'], top_k=0)
             elapsed = time.time() - t0
@@ -581,7 +600,12 @@ class SkillManager:
             return  # Already training this intent
 
         # Intent-specific training data
-        sc = SPECIALIST_CONFIG.get(intent, SPECIALIST_CONFIG['greeting'])
+        level = self.skill_levels.get(intent, 0)
+        if retrain:
+            level += 1
+        self.skill_levels[intent] = level
+        sc = scale_config(intent, level)
+        debug(f"train: {intent} level={level} config={sc}")
 
         INTENT_DATA = {
             'greeting': [
@@ -748,6 +772,7 @@ class SkillManager:
                     'n_heads': cfg.n_heads,
                     'd_ff': cfg.d_ff,
                     'max_seq_len': cfg.max_seq_len,
+                    'level': self.skill_levels.get(intent, 0),
                 },
             }, save_dir / 'best.pt')
             tok.save(str(save_dir / 'tokenizer.json'))
