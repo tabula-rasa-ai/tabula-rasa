@@ -536,7 +536,12 @@
                 if (p.status === 'done') continue;
                 if (p.status === 'training') {
                     var pct = Math.round(p.step / p.total * 100);
-                    parts.push('Training ' + keys[i] + ': ' + p.step + '/' + p.total + ' steps (' + pct + '%) loss=' + p.loss);
+                    var sps = '';
+                    if (p.t0 && p.step > 0) {
+                        var elapsed = (Date.now() - p.t0 * 1000) / 1000;
+                        if (elapsed > 0) sps = ' ' + (p.step / elapsed).toFixed(1) + ' steps/s';
+                    }
+                    parts.push('Training ' + keys[i] + ': ' + p.step + '/' + p.total + ' (' + pct + '%) loss=' + p.loss + sps + ' CPUx' + (p.cpu || '?'));
                 } else if (p.status === 'starting') {
                     parts.push('Starting ' + keys[i] + ' training...');
                 } else if (p.status === 'saving') {

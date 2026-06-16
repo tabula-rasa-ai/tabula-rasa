@@ -607,6 +607,13 @@ class SkillManager:
         sc = scale_config(intent, level)
         debug(f"train: {intent} level={level} config={sc}")
 
+        # Try to get CPU count
+        try:
+            import os
+            cpu_count = os.cpu_count() or 1
+        except:
+            cpu_count = 1
+
         INTENT_DATA = {
             'greeting': [
                 ("Hello!", "Hi there! I'm Tabula Rasa, a helpful AI assistant."),
@@ -676,7 +683,7 @@ class SkillManager:
         self.training_progress[intent] = {
             'step': 0, 'total': sc['steps'] + (extra_steps if retrain else 0),
             'loss': 0, 'status': 'starting',
-            'config': sc,
+            'config': sc, 'cpu': cpu_count, 't0': time.time(),
         }
         import threading
         t = threading.Thread(target=self._train_intent_worker, args=(intent, pairs), daemon=True)
