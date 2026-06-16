@@ -2,8 +2,8 @@
 import sys, os, json, time, torch
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-sys.path.insert(0, os.path.dirname(__file__))
 
 torch.set_num_threads(4)
 
