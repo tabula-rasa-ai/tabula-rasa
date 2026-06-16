@@ -520,100 +520,127 @@ class SkillManager:
                 'analysis': None,
             }
 
-        # ─── Chat skill path (use per-specialist config) ───
-        chat_skills = {'greeting', 'explanation_question', 'definition_question', 'conversation', 'capability_question'}
-        if skill in chat_skills:
-            model = self.models[skill]
-            tok = self.tokenizers[skill]
-            t0 = time.time()
-            _sc = scale_config(skill, self.skill_levels.get(skill, 0))
-            inp = prompt if prompt.endswith('=') else prompt + '='
-            full = model.generate(tok, inp, max_new_tokens=_sc['max_tokens'], temperature=_sc['temp'], top_k=0)
-            elapsed = time.time() - t0
-            # Extract answer after =
-            if '=' in full:
-                ans = full.split('=', 1)[1].strip()
-            else:
-                ans = full.strip()
-            # Auto-detect if model is too small: short/repetitive answer → upscale
-            is_repetitive = len(set(ans)) <= 3 and len(ans) >= 8
-            if len(ans) < 5 or is_repetitive:
-                curr_level = self.skill_levels.get(skill, 0)
-                if curr_level < 6:  # up to d_model=320
-                    new_level = curr_level + 1
-                    self.skill_levels[skill] = new_level
-                    debug(f"ask: {skill} answer too short ({len(ans)} chars), upscaling Lv{curr_level}→Lv{new_level}")
-            debug(f"ask: chat skill {skill} generate -> {full!r} -> ans={ans!r} ({elapsed*1000:.0f}ms)")
-            # Retrain to improve
-            self._auto_train_intent(skill, prompt, retrain=True)
-            level = self.skill_levels.get(skill, 0)
+        # Retrieve and generate: find best matching example, then train if wanted
+        if skill in {'greeting', 'capability_question', 'explanation_question', 'definition_question', 'conversation'}:
+            # Try neural model first if loaded
+            if skill in self.models:
+                model = self.models[skill]
+                tok = self.tokenizers[skill]
+                t0 = time.time()
+                _sc = scale_config(skill, self.skill_levels.get(skill, 0))
+                inp = prompt if prompt.endswith('=') else prompt + '='
+                full = model.generate(tok, inp, max_new_tokens=_sc['max_tokens'], temperature=_sc['temp'], top_k=0)
+                elapsed = time.time() - t0
+                if '=' in full:
+                    ans = full.split('=', 1)[1].strip()
+                else:
+                    ans = full.strip()
+                # If generation is reasonable (>=5 chars, not repetitive), use it
+                is_repetitive = len(set(ans)) <= 3 and len(ans) >= 8
+                if len(ans) >= 5 and not is_repetitive:
+                    self._auto_train_intent(skill, prompt, retrain=True)
+                    debug(f"ask: chat nn {skill} generate -> ans={ans!r} ({elapsed*1000:.0f}ms)")
+                    return {
+                        'prompt': prompt, 'answer': ans, 'knows': True,
+                        'skill': skill,
+                        'skill_description': SKILL_REGISTRY[skill]['description'],
+                        'time_ms': round(elapsed * 1000), 'status': 'answered',
+                        'confidence': 50.0, 'is_confident': True, 'message': None,
+                        'training_info': {
+                            'level': self.skill_levels.get(skill, 0),
+                            'd_model': _sc.get('d_model', '?'),
+                            'steps': _sc.get('steps', '?'),
+                            'params': sum(p.numel() for p in model.parameters()),
+                        },
+                    }
+                # Fall through to retrieval if neural output is bad
+            # Retrieval fallback: find best matching training example
+            ans_ret, meta_ret = self._retrieve_answer(skill, prompt)
+            debug(f"ask: retrieval {skill} -> {ans_ret!r}")
             return {
-                'prompt': prompt,
-                'answer': ans,
-                'knows': True,
+                'prompt': prompt, 'answer': ans_ret, 'knows': True,
                 'skill': skill,
                 'skill_description': SKILL_REGISTRY[skill]['description'],
-                'time_ms': round(elapsed * 1000),
-                'status': 'answered',
-                'confidence': 50.0,
-                'is_confident': True,
-                'message': None,
-                'training_info': {
-                    'level': level,
-                    'd_model': _sc.get('d_model', '?'),
-                    'steps': _sc.get('steps', '?'),
-                    'params': sum(p.numel() for p in model.parameters()),
-                },
+                'time_ms': 0, 'status': 'answered',
+                'confidence': 100.0, 'is_confident': True, 'message': None,
+                'training_info': meta_ret,
             }
 
-        # ─── Math skill path ───
-        model = self.models[skill]
-        tok = self.tokenizers[skill]
-
-        t0 = time.time()
-        if not prompt.endswith('=') and '=' not in prompt:
-            prompt += '='
-        full = model.generate(tok, prompt, max_new_tokens=15,
-                              temperature=temperature, top_k=top_k)
-        elapsed = time.time() - t0
-
-        # Confidence calibration: compare prediction to expected answer
-        confidence = None
-        is_confident = True
-        try:
-            pred = full.split('=')[-1].strip() if '=' in full else ''
-            pred_clean = ''.join(c for c in pred if c.isdigit() or c == '-')
-            # Compute expected answer if possible
-            expr_clean = prompt.rstrip('=')
-            expected = str(eval(expr_clean))
-            match = pred_clean == expected
-            if match:
-                confidence = 100.0
-            else:
-                # Numeric distance-based confidence
-                try:
-                    pred_num = int(pred_clean) if pred_clean and pred_clean != '-' else 0
-                    exp_num = int(expected)
-                    diff = abs(pred_num - exp_num)
-                    confidence = round(max(5.0, 100.0 - diff * 5), 1)
-                except:
-                    confidence = 10.0
-            if not match:
-                is_confident = False
-        except:
-            pass
-
-        return {
-            'prompt': prompt,
-            'answer': full,
-            'knows': True,
-            'skill': skill,
-            'skill_description': SKILL_REGISTRY[skill]['description'],
-            'time_ms': round(elapsed * 1000),
-            'status': 'answered',
-            'confidence': confidence,
-            'is_confident': is_confident,
-            'message': None if is_confident else "I have a specialist for this, but I'm not confident in my answer yet.",
+    def _retrieve_answer(self, skill, prompt):
+        """Retrieval fallback — find best training example by word overlap."""
+        INTENT_DATA = {
+            'greeting': [
+                ("Hello!", "Hi there! I'm Tabula Rasa, a helpful AI assistant."),
+                ("hello", "Hi there! I'm Tabula Rasa. What can I help you with?"),
+                ("Hi!", "Hello! How can I help you today?"),
+                ("hi", "Hello! How can I help you today?"),
+                ("Hey!", "Hey there! Ask me anything or try a math problem."),
+                ("hey", "Hey there! Ask me anything or try a math problem."),
+                ("Good morning!", "Good morning! Ready to learn and help."),
+                ("Hello there!", "Hi! I'm Tabula Rasa. Want to solve some math?"),
+                ("Hi how are you?", "I'm doing great! Ready to help with math or answer questions."),
+                ("Greetings!", "Greetings! I'm a learning AI. Type a math expression like '2+3='!"),
+                ("Hey, what's up?", "Not much, just learning new things! Ask me anything."),
+                ("Hello, are you there?", "Yes, I'm here! What can I help you with?"),
+                ("Hi, nice to meet you!", "Nice to meet you too! I'm Tabula Rasa, a continual learning AI."),
+            ],
+            'capability_question': [
+                ("What can you do?", "I can solve math problems, answer questions, and learn new skills through continual learning."),
+                ("What are your skills?", "I have skills for addition, multiplication, division, greetings, and explanations. I can learn more!"),
+                ("What do you know?", "I know math operations, can greet users, and answer questions about myself. I'm always learning."),
+                ("Tell me about yourself.", "I'm Tabula Rasa, an AI that learns from scratch — one specialist at a time."),
+                ("What are your capabilities?", "I can do arithmetic, have conversations, and auto-train new specialists for unknown topics."),
+                ("How can you help me?", "Ask me math problems like '12+34=', say hello, or ask about my skills!"),
+                ("What are you good at?", "I'm good at math, greetings, and explaining concepts. I get better every time you ask!"),
+                ("Do you have any skills?", "Yes! Addition, subtraction, multiplication, division, greetings, and more."),
+            ],
+            'explanation_question': [
+                ("Where are you from?", "I'm from the Tabula Rasa AI research project — a system that learns from scratch, one specialist at a time."),
+                ("Where do you live?", "I live in the cloud! Or more precisely, on whatever machine I'm running on."),
+                ("How do you work?", "I use transformer neural networks trained from scratch on specific skills called specialists."),
+                ("Why are you here?", "To learn and assist! I'm designed to continually acquire new skills through training."),
+                ("How old are you?", "I'm a young AI — every time I train a new specialist, I grow a little more!"),
+                ("How were you made?", "I was built using PyTorch, with a custom transformer architecture trained from random initialization."),
+                ("Why do you exist?", "I exist to demonstrate that AIs can learn from scratch, one skill at a time, without forgetting."),
+                ("When were you created?", "I was first trained as a tiny math transformer and have been growing since."),
+                ("How can you learn?", "Through continual learning techniques like EWC that prevent catastrophic forgetting."),
+            ],
+            'definition_question': [
+                ("What is AI?", "AI is the field of creating machines that can perform tasks requiring human intelligence."),
+                ("Who is your creator?", "I was created by the Tabula Rasa AI research project."),
+                ("What is machine learning?", "Machine learning is a branch of AI where systems learn patterns from data."),
+                ("What is Python?", "Python is a high-level, interpreted programming language."),
+                ("What is a transformer?", "A transformer is a neural network architecture that uses self-attention."),
+                ("What is deep learning?", "Deep learning uses multi-layer neural networks to learn hierarchical representations."),
+            ],
+            'conversation': [
+                ("Tell me a joke.", "Why did the math book look sad? Because it had too many problems."),
+                ("Tell me something interesting.", "Octopuses have three hearts, and two stop beating when they swim!"),
+                ("Sing a song.", "I'm not much of a singer! How about a math problem instead?"),
+                ("Thanks!", "You're welcome! Ask me anything."),
+                ("Goodbye!", "Goodbye! Come back anytime."),
+                ("Are you smart?", "I'm learning! My model is small but I grow through continual learning."),
+            ],
+        }
+        pairs = INTENT_DATA.get(skill, [])
+        # Find best match by word overlap
+        prompt_words = set(prompt.lower().split())
+        best_score = 0
+        best_answer = "I don't know about that yet."
+        for q, a in pairs:
+            q_words = set(q.lower().split())
+            if not q_words: continue
+            overlap = len(prompt_words & q_words) / len(q_words)
+            if overlap > best_score:
+                best_score = overlap
+                best_answer = a
+        # Also trigger auto-training in background for continual improvement
+        self._auto_train_intent(skill, prompt, retrain=True)
+        level = self.skill_levels.get(skill, 0)
+        sc = scale_config(skill, level)
+        return best_answer, {
+            'level': level, 'd_model': sc.get('d_model', '?'),
+            'steps': sc.get('steps', '?'), 'mode': 'retrieval',
         }
 
     def _auto_train_intent(self, intent: str, prompt: str, retrain=False):
