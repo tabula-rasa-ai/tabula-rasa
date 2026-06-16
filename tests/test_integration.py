@@ -404,7 +404,7 @@ class TestEndToEndQuickTraining:
 
         cwd = Path(__file__).resolve().parent.parent
         result = subprocess.run(
-            [sys.executable, "train_specialist.py", "add", "--steps", "50", "--batch", "32"],
+            [sys.executable, "scripts/train_specialist.py", "add", "--steps", "50", "--batch", "32"],
             capture_output=True,
             text=True,
             timeout=300,
@@ -473,7 +473,7 @@ class TestEndToEndQuickTraining:
         result = subprocess.run(
             [
                 sys.executable,
-                "train_specialist.py",
+                "scripts/train_specialist.py",
                 "add",
                 "--steps",
                 "50",
