@@ -29,7 +29,7 @@ echo.
 
 :: ─── Start API Server (Port 8000) ───
 echo [*] Starting API Server (port 8000)...
-start "API Server (8000)" /MIN cmd /c "cls & title API Server (8000) & python api_server.py"
+start "API Server (8000)" /MIN cmd /c "cls & title API Server (8000) & python scripts\api_server.py"
 echo  [+] Window opened (minimized).
 echo.
 

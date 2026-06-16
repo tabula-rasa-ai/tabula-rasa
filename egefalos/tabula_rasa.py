@@ -103,6 +103,31 @@ SKILL_REGISTRY = {
         'status': 'queued',
         'dir': 'specialists/dialectics/general',
     },
+    # Auto-trainable conversational skills
+    'greeting': {
+        'ops': ['hello', 'hi', 'hey', 'greetings'],
+        'description': 'Can greet users and respond to greetings',
+        'status': 'queued',
+        'dir': 'specialists/greeting',
+    },
+    'explanation_question': {
+        'ops': ['where', 'why', 'how', 'when'],
+        'description': 'Can answer explanation questions about the AI',
+        'status': 'queued',
+        'dir': 'specialists/explanation_question',
+    },
+    'definition_question': {
+        'ops': ['what is', 'who is', 'define'],
+        'description': 'Can answer definition questions',
+        'status': 'queued',
+        'dir': 'specialists/definition_question',
+    },
+    'conversation': {
+        'ops': ['tell me', 'joke', 'story', 'sing'],
+        'description': 'Can engage in general conversation',
+        'status': 'queued',
+        'dir': 'specialists/conversation',
+    },
 }
 
 # Future domains to add:
@@ -143,9 +168,18 @@ class SkillManager:
             if ckpt_path:
                 try:
                     tok_path = Path(info['dir']) / 'tokenizer.json'
-                    if not tok_path.exists():
-                        tok_path = Path('specialists/math/general/tokenizer.json')
-                    tok = MathTokenizer.load(str(tok_path))
+                    # Try BPE tokenizer first for chat skills, fall back to MathTokenizer
+                    tok = None
+                    try:
+                        from tabula_rasa.bpe_tokenizer import BPETokenizer
+                        if tok_path.exists():
+                            tok = BPETokenizer.load(str(tok_path))
+                    except Exception:
+                        pass
+                    if tok is None:
+                        if not tok_path.exists():
+                            tok_path = Path('specialists/math/general/tokenizer.json')
+                        tok = MathTokenizer.load(str(tok_path))
                     cfg = Config()
                     cfg.vocab_size = tok.vocab_size
                     tok.max_seq_len = cfg.max_seq_len
