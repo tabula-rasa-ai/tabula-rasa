@@ -19,7 +19,6 @@ data/
 exports/
 memory/
 self_train/
-scripts/
 
 # Large files
 *.zip
@@ -66,3 +65,15 @@ experiments/ewc_test/
 # Experiment results
 experiments/*.json
 .pytest_cache/
+
+# Generated data / artifacts
+chat_data.jsonl
+dpo_pairs_synthetic.jsonl
+verified_monologue.txt
+todo.md
+_check.js
+
+# Coverage
+.coverage
+coverage.json
+htmlcov/
