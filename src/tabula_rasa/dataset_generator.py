@@ -259,22 +259,44 @@ class AutoDatasetGenerator:
         if not self.manager: return []
         
         pairs = []
-        datasets_dir = Path('datasets')
-        if not datasets_dir.exists(): return []
-
-        for ds_file in datasets_dir.glob('*.json'):
-            if ds_file.stem == self.intent: continue
+        
+        # Priority 1: Knowledge base (bundled real-world Q&A, highest quality)
+        kb_path = Path('knowledge_base.json')
+        if kb_path.exists():
             try:
-                data = json.loads(ds_file.read_text(encoding='utf-8'))
-                for q, a in data:
-                    if len(a) <= 5: continue
-                    overlap = self._calculate_semantic_score(self.seed[0], q)
-                    if overlap >= 0.20:
-                        pairs.append((q, a, 2))  # Difficulty 2
-            except Exception:
-                continue
+                kb_data = json.loads(kb_path.read_text(encoding='utf-8'))
+                # First check our own intent category
+                if self.intent in kb_data:
+                    for q, a in kb_data[self.intent]:
+                        overlap = self._calculate_semantic_score(self.seed[0], q)
+                        if overlap >= 0.20:
+                            pairs.append((q, a, 1))  # Difficulty 1 (high quality, low difficulty)
+                # Then check other intent categories
+                for cat, entries in kb_data.items():
+                    if cat == self.intent: continue
+                    for q, a in entries:
+                        overlap = self._calculate_semantic_score(self.seed[0], q)
+                        if overlap >= 0.20:
+                            pairs.append((q, a, 2))  # Difficulty 2
+            except Exception as e:
+                print(f'  [*] Knowledge base load failed: {e}')
+        
+        # Priority 2: Existing datasets (lower quality, might be user-created)
+        datasets_dir = Path('datasets')
+        if datasets_dir.exists():
+            for ds_file in datasets_dir.glob('*.json'):
+                if ds_file.stem == self.intent: continue
+                try:
+                    data = json.loads(ds_file.read_text(encoding='utf-8'))
+                    for q, a in data:
+                        if len(a) <= 5: continue
+                        overlap = self._calculate_semantic_score(self.seed[0], q)
+                        if overlap >= 0.20:
+                            pairs.append((q, a, 3))  # Difficulty 3 (lower quality)
+                except Exception:
+                    continue
 
-        pairs.sort(key=lambda x: -x[2])  # Sort by overlap score
+        pairs.sort(key=lambda x: x[2])  # Sort by difficulty (lowest first = best matches)
         return pairs[:max(0, self.max_pairs - len(self.pairs) - 1)]
 
     # ─── Generation Pipeline ───────────────────────────────────
