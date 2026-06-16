@@ -64,6 +64,15 @@
         .notif.show { opacity: 1; }
         .empty-state { flex: 1; display: flex; align-items: center; justify-content: center; color: #4b5563; font-size: 0.9rem; text-align: center; padding: 40px; }
         .empty-state p { max-width: 300px; line-height: 1.6; }
+        .ds-bar { display: flex; align-items: center; gap: 8px; padding: 6px 10px; margin: 4px 0; background: #1f2937; border-radius: 6px; cursor: pointer; font-size: 0.8rem; user-select: none; border: 1px solid #374151; }
+        .ds-bar:hover { border-color: #3b82f6; }
+        .ds-panel { overflow: hidden; max-height: 0; transition: max-height .3s ease; background: #1f2937; border-radius: 6px; margin-bottom: 6px; border: 1px solid #374151; }
+        .ds-panel.open { max-height: 400px; overflow-y: auto; }
+        .ds-item { display: flex; align-items: center; gap: 8px; padding: 6px 10px; font-size: 0.78rem; border-bottom: 1px solid rgba(255,255,255,0.04); }
+        .ds-item:last-child { border-bottom: none; }
+        .ds-item .ds-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .ds-item .ds-pairs { color: #9ca3af; min-width: 50px; text-align: right; }
+        .ds-item .ds-status { min-width: 16px; }
     </style>
 </head>
 <body>
@@ -91,6 +100,13 @@
                 Corrections: <span class="corr-num" id="corr-c">0</span>
             </div>
         </div>
+
+        <div class="ds-bar" id="ds-bar" onclick="toggleDatasets()">
+            <span>&#x1F4CB; Datasets</span>
+            <span id="ds-summary" style="color:#9ca3af;font-size:0.75rem;">loading...</span>
+            <span id="ds-arrow" style="color:#6b7280;font-size:0.75rem;">&#x25BC;</span>
+        </div>
+        <div class="ds-panel" id="ds-panel"></div>
 
         <div class="chat" id="chat"></div>
 
@@ -572,6 +588,45 @@
         } catch(e) {}
     }
     setInterval(pollTraining, 2000);
+
+    // ─── Datasets panel ───
+    var dsOpen = false;
+    function toggleDatasets() {
+        dsOpen = !dsOpen;
+        document.getElementById('ds-panel').className = 'ds-panel' + (dsOpen ? ' open' : '');
+        document.getElementById('ds-arrow').innerHTML = dsOpen ? '&#x25B2;' : '&#x25BC;';
+        if (dsOpen) pollDatasets();
+    }
+    async function pollDatasets() {
+        try {
+            var r = await fetch(API2 + '/datasets');
+            var d = await r.json();
+            var datasets = d.datasets || {};
+            var keys = Object.keys(datasets);
+            var total = keys.length;
+            var trained = keys.filter(function(k) { return datasets[k].trained; }).length;
+            var training = keys.filter(function(k) { return datasets[k].training; }).length;
+            var totalPairs = keys.reduce(function(s, k) { return s + (datasets[k].pairs || 0); }, 0);
+            document.getElementById('ds-summary').textContent = total + ' files, ' + totalPairs + ' pairs, ' + trained + ' ready' + (training ? ', ' + training + ' training' : '');
+            // Render panel
+            var html = '';
+            keys.sort();
+            for (var i = 0; i < keys.length; i++) {
+                var ds = datasets[keys[i]];
+                var icon = ds.trained ? '&#x2705;' : (ds.training ? '&#x1F504;' : (ds.has_real_answers ? '&#x1F4D6;' : '&#x1F4C4;'));
+                var statusText = ds.trained ? 'ready' : (ds.training ? 'training...' : (ds.has_real_answers ? ds.pairs + ' pairs' : 'new'));
+                html += '<div class="ds-item">'
+                     + '<span class="ds-status">' + icon + '</span>'
+                     + '<span class="ds-name">' + keys[i] + '</span>'
+                     + '<span class="ds-pairs">' + ds.pairs + ' pr' + (ds.params > 0 ? ' | ' + Math.round(ds.params/1000) + 'K' : '') + '</span>'
+                     + '<span style="color:' + (ds.trained ? '#22c55e' : (ds.training ? '#3b82f6' : '#9ca3af')) + ';font-size:0.7rem;">' + statusText + '</span>'
+                     + '</div>';
+            }
+            document.getElementById('ds-panel').innerHTML = html;
+        } catch(e) { document.getElementById('ds-summary').textContent = 'offline'; }
+    }
+    pollDatasets();
+    setInterval(pollDatasets, 10000);
 
     // ─── Init ───
     // Load existing sessions or create first
