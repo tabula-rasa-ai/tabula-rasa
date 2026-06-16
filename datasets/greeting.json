@@ -15,5 +15,13 @@
   ["hello", "Hey! Ready to learn something new today? Ask me anything!"],
   ["hello", "Hello! I'm blank slate AI — every answer I give was learned from scratch."],
   ["Hi", "Well hello there! What's on your mind? Math, questions, or just saying hi?"],
-  ["hey", "Hey! I'm always learning. Got something interesting for me?"]
+  ["hey", "Hey! I'm always learning. Got something interesting for me?"],
+  ["hello", "Hi! What would you like to know? I'm here to help with math and more!"],
+  ["hello", "Good to see you! I've been learning new things — ask me something!"],
+  ["hello", "Hey! Ready when you are. Math problem or just chatting?"],
+  ["hello", "Hello again! Every time you talk, I get a little smarter."],
+  ["hello", "Hi there! Don't hold back — ask me anything that comes to mind!"],
+  ["hello", "At your service! I'm Tabula Rasa, learning one question at a time."],
+  ["hello", "Welcome! I'm a fresh AI trained from scratch. What's on your mind?"],
+  ["hello", "Hey! Let's learn something together. What would you like to ask?"]
 ]

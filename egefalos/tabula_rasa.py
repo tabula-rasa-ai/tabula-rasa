@@ -619,11 +619,12 @@ class SkillManager:
         if not scored:
             scored = [(0, "I don't know about that yet.")]
         best_score = max(s[0] for s in scored)
-        # Pick randomly from all matches >= 70% of best score
-        candidates = [a for s, a in scored if s >= best_score * 0.7]
+        # Pick randomly from all matches >= 40% of best score (wider pool = more creativity)
+        threshold = max(best_score * 0.4, 0.3)
+        candidates = [a for s, a in scored if s >= threshold]
         import random
         best_answer = random.choice(candidates)
-        creativity = round(len(candidates) / max(len(pairs), 1) * 100)
+        creativity = round(min(len(candidates) * 11, 100))  # each variant ≈ 11%, capped at 100%
         level = self.skill_levels.get(skill, 0)
         sc = scale_config(skill, level)
         return best_answer, {
