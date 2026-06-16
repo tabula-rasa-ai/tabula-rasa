@@ -597,6 +597,7 @@ class SkillManager:
 
     def _train_intent_worker(self, intent: str, pairs: list):
         """Train a tiny chat specialist on intent-specific data."""
+        import torch
         try:
             from tabula_rasa.bpe_tokenizer import BPETokenizer
             from tabula_rasa.model import MathTransformer, count_parameters
