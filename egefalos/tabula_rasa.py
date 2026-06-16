@@ -501,7 +501,9 @@ class SkillManager:
                 intent = 'definition_question'
             elif 'what can you' in prompt_lower or 'what do you' in prompt_lower or prompt_lower.startswith('do you') or prompt_lower.startswith('can you') or prompt_lower.startswith('are you'):
                 intent = 'capability_question'
-            elif prompt_lower.startswith('how') or prompt_lower.startswith('why') or prompt_lower.startswith('when') or prompt_lower.startswith('where'):
+            elif 'how are you' in prompt_lower:
+                intent = 'conversation'
+            elif prompt_lower.startswith('how do') or prompt_lower.startswith('how does') or prompt_lower.startswith('how can') or prompt_lower.startswith('how was') or prompt_lower.startswith('how come') or prompt_lower.startswith('why do') or prompt_lower.startswith('why does') or prompt_lower.startswith('when do') or prompt_lower.startswith('when does') or prompt_lower.startswith('when did') or prompt_lower.startswith('where do') or prompt_lower.startswith('where does') or prompt_lower.startswith('where is'):
                 intent = 'explanation_question'
             elif '?' in prompt:
                 intent = 'question'
