@@ -532,8 +532,11 @@ class SkillManager:
         INTENT_DATA = {
             'greeting': [
                 ("Hello!", "Hi there! I'm Tabula Rasa, a helpful AI assistant."),
+                ("hello", "Hi there! I'm Tabula Rasa. What can I help you with?"),
                 ("Hi!", "Hello! How can I help you today?"),
+                ("hi", "Hello! How can I help you today?"),
                 ("Hey!", "Hey there! Ask me anything or try a math problem."),
+                ("hey", "Hey there! Ask me anything or try a math problem."),
                 ("Good morning!", "Good morning! Ready to learn and help."),
                 ("Hello there!", "Hi! I'm Tabula Rasa. Want to solve some math?"),
                 ("Hi how are you?", "I'm doing great! Ready to help with math or answer questions."),
@@ -619,10 +622,10 @@ class SkillManager:
 
             # Tiny config for fast training
             cfg = Config()
-            cfg.d_model = 32
-            cfg.n_layers = 2
-            cfg.n_heads = 2
-            cfg.d_ff = 64
+            cfg.d_model = 64
+            cfg.n_layers = 3
+            cfg.n_heads = 4
+            cfg.d_ff = 128
             cfg.vocab_size = tok.vocab_size
             cfg.max_seq_len = 64
             cfg.batch_size = len(pairs)
