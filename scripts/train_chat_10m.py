@@ -2,7 +2,7 @@
 Uses base character-level tokenizer (no BPE merges — skips slow learning phase).
 """
 import os, sys, time, json, torch
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from tabula_rasa.bpe_tokenizer import BPETokenizer
 from tabula_rasa.chat_dataset import encode_chat_sample

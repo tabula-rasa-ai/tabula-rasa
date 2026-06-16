@@ -24,7 +24,7 @@ from typing import Any
 import torch
 
 # Ensure src/ is on path
-sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from tabula_rasa.config import Config
 from tabula_rasa.model import MathTransformer, count_parameters

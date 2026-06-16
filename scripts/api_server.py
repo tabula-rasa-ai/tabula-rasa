@@ -3,7 +3,7 @@
 import os
 import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 import json
 import math
 import mimetypes
@@ -1190,7 +1190,7 @@ def run_mcts_search(problem: str, sims: int = 32) -> dict:
     import sys as _sys
     _p = Path(__file__).resolve().parent
     if str(_p) not in _sys.path: _sys.path.insert(0, str(_p))
-    if str(_p / "src") not in _sys.path: _sys.path.insert(0, str(_p / "src"))
+    if str(_p / ".." / "src") not in _sys.path: _sys.path.insert(0, str(_p / ".." / "src"))
     try:
         from egefalos.mcts import MicroMCTS
         from egefalos.math_gym_env import MathGymEnv

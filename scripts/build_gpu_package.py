@@ -56,7 +56,7 @@ except Exception:
 
 # Set up project
 os.chdir('/content/tabula-rasa')
-sys.path.insert(0, 'src')
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 print('\\nTabula Rasa GPU deployment ready!')
 print(f'  CUDA: {__import__(\"torch\").cuda.is_available()}')

@@ -30,7 +30,7 @@ from torch import optim
 from torch.utils.data import DataLoader, Dataset
 
 # Ensure src/ is on the path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from tabula_rasa.bpe_tokenizer import BPETokenizer
 from tabula_rasa.chat_dataset import ChatDataset, encode_chat_sample, evaluate_chat

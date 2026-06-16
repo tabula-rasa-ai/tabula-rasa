@@ -1,6 +1,6 @@
 """Learn BPE merges from chat text and train a chat specialist with subword tokens."""
 import os, sys, time, torch
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from tabula_rasa.bpe_tokenizer import BPETokenizer
 from tabula_rasa.chat_dataset import ChatDataset, encode_chat_sample
