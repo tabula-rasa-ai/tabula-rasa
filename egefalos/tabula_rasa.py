@@ -227,6 +227,8 @@ class SkillManager:
         self.training_queue = {}  # intent -> True if training in progress
         self.training_progress = {}  # intent -> {step, total, loss, status}
         self.skill_levels = {}  # intent -> level (auto-increments on retrain)
+        self.pending_question = None  # {prompt, intent, timestamp} — last unanswered question
+        self.last_answer = None  # {answer, prompt, skill} — last answer given
         self._load_existing()
 
     def _load_existing(self):
@@ -367,6 +369,21 @@ class SkillManager:
         else:
             skill, confidence = detect_skill(prompt)
         debug(f"ask: prompt={prompt!r} detect_skill={skill!r} conf={confidence}")
+
+        # Conversational learning: if user follows up with an answer to a pending question
+        if self.pending_question:
+            result = self.learn_from_followup(prompt)
+            if result.get('learned'):
+                self.last_answer = result
+                return {
+                    'prompt': prompt, 'answer': None, 'knows': True,
+                    'skill': result['intent'],
+                    'skill_description': SKILL_REGISTRY.get(result['intent'], {}).get('description', ''),
+                    'time_ms': 0, 'status': 'learning',
+                    'confidence': 100.0, 'is_confident': True,
+                    'message': f"Thanks! I've learned that {result['question']} = {result['answer']}",
+                    'training_info': None,
+                }
 
         # If detected skill is not loaded, don't fall back to math for chat skills — auto-train instead
         if skill is not None and skill not in self.models:
@@ -561,6 +578,7 @@ class SkillManager:
 
             # Trigger auto-training (background thread, ~2-5s on CPU)
             self._auto_train_intent(intent, prompt)
+            self.pending_question = {'prompt': prompt, 'intent': intent, 'timestamp': time.time()}
             return {
                 'answer': None,
                 'knows': False,
@@ -666,6 +684,66 @@ class SkillManager:
             'steps': sc.get('steps', '?'), 'mode': 'retrieval',
             'creativity': creativity,
         }, best_score
+
+    def learn_from_followup(self, prompt: str) -> dict:
+        """Detect if user is providing the answer to a previous unanswered question.
+        
+        When a user asks something the system doesn't know, the system marks
+        the question as 'pending'. If the user's next message is a statement
+        (not a question), treat it as the answer, save to dataset, and retrain.
+        """
+        # Only learn if there's a pending question from the last unanswered ask
+        if not self.pending_question:
+            return {'learned': False, 'reason': 'no_pending'}
+
+        # Check if this looks like a statement (answer), not a question
+        has_question_mark = '?' in prompt
+        has_question_words = any(
+            prompt.lower().startswith(w) for w in
+            ['what', 'who', 'when', 'where', 'why', 'how', 'is ', 'are ', 'do ', 'can ']
+        )
+        is_question = has_question_mark or has_question_words
+        if is_question:
+            return {'learned': False, 'reason': 'follow_up_is_question'}
+
+        # Looks like an answer — capture it
+        if len(prompt.strip().split()) < 2:
+            return {'learned': False, 'reason': 'too_short'}
+
+        pending = self.pending_question
+        intent = pending['intent']
+        question = pending['prompt']
+
+        # Save the correction to persistent memory
+        try:
+            from egefalos.memory import save_correction
+            save_correction(question, prompt.strip(), skill=intent)
+        except Exception:
+            pass
+
+        # Append to dataset file
+        import json
+        from pathlib import Path
+        dataset_path = Path(f"datasets/{intent}.json")
+        pairs = load_dataset(intent)
+        pairs = pairs + [(question, prompt.strip())]
+        dataset_path.parent.mkdir(parents=True, exist_ok=True)
+        dataset_path.write_text(json.dumps(pairs, indent=2, ensure_ascii=False), encoding="utf-8")
+
+        debug(f"learn: user taught {intent} -> {question!r} = {prompt!r} ({len(pairs)} pairs)")
+
+        # Trigger retrain
+        if intent not in self.training_queue:
+            self._auto_train_intent(intent, question)
+
+        self.pending_question = None  # Clear pending
+        return {
+            'learned': True,
+            'question': question,
+            'answer': prompt.strip(),
+            'intent': intent,
+            'total_pairs': len(pairs),
+        }
 
     def _auto_train_intent(self, intent: str, prompt: str, retrain=False):
         """Auto-train a specialist for an intent type in background."""
@@ -997,6 +1075,33 @@ class TabulaRasaHandler(BaseHTTPRequestHandler):
             try:
                 result = manager.ask(prompt.strip(), temperature, top_k, forced_skill)
                 self._send_json(result)
+            except Exception as e:
+                self._send_json({'error': str(e)}, 500)
+        elif path == '/learn':
+            if not data or 'question' not in data or 'answer' not in data:
+                self._send_json({'error': 'Missing \"question\" and \"answer\"'}, 400)
+                return
+            try:
+                # Explicit teaching: user provides a Q&A pair
+                question = data['question'].strip()
+                answer = data['answer'].strip()
+                intent = data.get('skill', None)
+                if not intent:
+                    intent, _ = detect_skill(question)
+                if not intent:
+                    intent = 'definition_question'
+                # Save to dataset
+                import json as _json
+                from pathlib import Path
+                ds_path = Path(f"datasets/{intent}.json")
+                pairs = load_dataset(intent) if ds_path.exists() else []
+                pairs = pairs + [(question, answer)]
+                ds_path.parent.mkdir(parents=True, exist_ok=True)
+                ds_path.write_text(_json.dumps(pairs, indent=2, ensure_ascii=False), encoding="utf-8")
+                # Trigger retrain
+                if intent not in manager.training_queue:
+                    manager._auto_train_intent(intent, question)
+                self._send_json({'learned': True, 'question': question, 'answer': answer, 'intent': intent, 'total_pairs': len(pairs)})
             except Exception as e:
                 self._send_json({'error': str(e)}, 500)
         elif path == '/session-memory':
