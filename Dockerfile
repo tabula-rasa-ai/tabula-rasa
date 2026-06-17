@@ -6,11 +6,8 @@ WORKDIR /app
 RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
 
 # Install project dependencies
-COPY pyproject.toml requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Install optional extras
-RUN pip install --no-cache-dir "psutil>=5.0"
+COPY pyproject.toml requirements-lock.txt ./
+RUN pip install --no-cache-dir -r requirements-lock.txt
 
 # ── Final stage (smaller image) ─────────────────────────────
 FROM python:3.11-slim
@@ -21,19 +18,13 @@ WORKDIR /app
 COPY --from=base /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=base /usr/local/bin /usr/local/bin
 
-# Project source
+# Install the package itself
 COPY src/ src/
+COPY pyproject.toml requirements-lock.txt ./
+RUN pip install --no-cache-dir -e .
 
-# Configuration
-COPY config.py .
-
-# Core scripts
-COPY api_server.py .
-COPY train_specialist.py .
-COPY auto_train.py .
-
-# Egefalos package (sleep cycle, hippocampus, socratic, router, etc.)
-COPY egefalos/ egefalos/
+# Scripts (CLI tools, training, etc.)
+COPY scripts/ scripts/
 
 # Dashboard static files
 COPY Dashboard/ Dashboard/
@@ -43,4 +34,4 @@ RUN mkdir -p specialists checkpoints data exports memory
 
 EXPOSE 8000 8002
 
-CMD ["python", "api_server.py"]
+CMD ["tabula-rasa", "serve"]
