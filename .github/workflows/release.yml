@@ -8,8 +8,6 @@ jobs:
   pypi:
     name: Publish to PyPI
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write
 
     steps:
       - uses: actions/checkout@v4
@@ -26,6 +24,8 @@ jobs:
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
 
   ghcr:
     name: Publish Docker image
@@ -48,4 +48,4 @@ jobs:
         with:
           context: .
           push: true
-          tags: ghcr.io/${{ github.repository }}:latest,ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+          tags: ghcr.io/${{ lower(github.repository_owner) }}/${{ github.event.repository.name }}:latest,ghcr.io/${{ lower(github.repository_owner) }}/${{ github.event.repository.name }}:${{ github.ref_name }}
