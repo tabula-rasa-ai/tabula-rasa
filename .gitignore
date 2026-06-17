@@ -67,7 +67,9 @@ tabula_rasa_gpu.zip
 experiments/*.pt
 experiments/*.log
 experiments/*.json
+experiments/*.png
 experiments/ewc_test/
+experiments/figures/
 
 # Generated data
 data/*.pt
