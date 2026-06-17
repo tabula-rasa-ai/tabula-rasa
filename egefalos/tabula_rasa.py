@@ -389,6 +389,9 @@ class SkillManager:
         from egefalos.task_queue import TaskQueue
         self._task_queue = TaskQueue(num_workers=1)
         self._task_queue.register("train_intent")(self._train_intent_worker_task)
+        # ── Replay Buffer & PII Scrubbing ──
+        from egefalos.replay_buffer import ReplayBuffer
+        self.replay_buffer = ReplayBuffer(max_size=200)
         self._load_existing()
 
     def _load_existing(self):
@@ -717,6 +720,13 @@ class SkillManager:
         """Route a question to the right skill.
         If `skill` is provided and loaded, force-use that specialist.
         """
+        # ── PII Scrubbing ────────────────────────────────────────
+        from egefalos.pii_scrubber import scrub_pii
+        clean_prompt = scrub_pii(prompt)
+        if clean_prompt != prompt:
+            debug(f"ask: PII detected and scrubbed in prompt")
+            prompt = clean_prompt  # Use scrubbed version downstream
+        # ─────────────────────────────────────────────────────────
         force_skill = skill if (skill and skill in self.models) else None
         if force_skill:
             skill = force_skill
@@ -1220,6 +1230,11 @@ class SkillManager:
         import json
         dataset_path = Path(f"datasets/{intent}.json")
 
+        # Pre-populate replay buffer from existing dataset
+        if pairs and intent not in self.replay_buffer.buffer:
+            self.replay_buffer.load_from_dataset(intent, pairs)
+            debug(f"replay: pre-populated {intent} buffer with {len(pairs)} pairs")
+
         # Check if user's question is already in the dataset
         existing_questions = {q.lower().strip() for q, a in pairs}
         is_novel = prompt.lower().strip() not in existing_questions
@@ -1314,6 +1329,18 @@ class SkillManager:
         """
         import torch
         debug(f"train: worker starting intent={intent!r} pairs={len(pairs)}")
+        # ── Replay Buffer: mix new pairs with old data ───────────
+        mixed_pairs = self.replay_buffer.mix(intent, pairs, replay_ratio=0.5)
+        if len(mixed_pairs) > len(pairs):
+            debug(
+                f"train: replay mixed {len(mixed_pairs)} pairs "
+                f"({len(pairs)} new + {len(mixed_pairs)-len(pairs)} replayed)"
+            )
+            pairs = mixed_pairs
+        # Store new pairs in replay buffer for future training runs
+        for q, a in pairs:
+            self.replay_buffer.add(intent, q, a)
+        # ──────────────────────────────────────────────────────────
         try:
             prog = self.training_progress.get(intent, {})
             _sc = prog.get('config', {})
