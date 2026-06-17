@@ -470,7 +470,8 @@ def _run_captum_analysis(
     cfg.n_layers = n_layers
     cfg.n_heads = n_heads
     cfg.d_ff = d_ff
-    cfg.vocab_size = tokenizer.vocab_size
+    # Use checkpoint's actual vocab size, not tokenizer's (checkpoint may be older)
+    cfg.vocab_size = sd["token_embedding.weight"].shape[0]
     cfg.max_seq_len = 32
 
     model = MathTransformer(cfg)
