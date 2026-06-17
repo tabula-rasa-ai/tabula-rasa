@@ -46,7 +46,7 @@ def run_one(
     if pe != 'rope':
         cmd.extend(['--pos-encoding', pe])
     if scratchpad:
-        cmd.append('--scratchpad')
+        pass  # scratchpad is ON by default, no CLI flag
 
     t0 = time.time()
     result = subprocess.run(cmd, cwd=str(PROJECT), capture_output=True, text=True, timeout=7200)

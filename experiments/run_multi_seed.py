@@ -47,7 +47,7 @@ def run_one(op: str, seed: int, steps: int, scratchpad: bool, quick: bool) -> di
     if quick:
         cmd.append('--quick')
     if scratchpad:
-        cmd.append('--scratchpad')
+        pass  # scratchpad is ON by default in train_specialist.py, no CLI flag
 
     t0 = time.time()
     result = subprocess.run(cmd, cwd=str(PROJECT), capture_output=True, text=True, timeout=7200)
