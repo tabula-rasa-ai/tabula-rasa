@@ -25,6 +25,9 @@ from pathlib import Path
 from socketserver import ThreadingMixIn
 from urllib.parse import urlparse
 
+# SSE client registry: list of (queue, last_event_id) for streaming
+SSE_CLIENTS: list[list] = []  # [[queue, last_id], ...]
+
 
 class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
     """Multi-threaded HTTP server — handles concurrent requests."""
@@ -347,6 +350,58 @@ class RequestHandler(BaseHTTPRequestHandler):
         except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
             pass  # browser closed tab mid-response — harmless
 
+    def _handle_sse(self):
+        """Server-Sent Events endpoint — streams training progress."""
+        import queue
+        q: queue.Queue = queue.Queue()
+        client = [q, 0]
+        SSE_CLIENTS.append(client)
+        try:
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Connection", "keep-alive")
+            self.end_headers()
+            # Send initial keepalive
+            self.wfile.write(b": connected\n\n")
+            self.wfile.flush()
+            while True:
+                try:
+                    data = q.get(timeout=30)
+                    if data is None:  # shutdown signal
+                        break
+                    msg = f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
+                    self.wfile.write(msg.encode())
+                    self.wfile.flush()
+                except queue.Empty:
+                    # Send keepalive comment every 30s
+                    self.wfile.write(b": keepalive\n\n")
+                    self.wfile.flush()
+        except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError, OSError):
+            pass
+        finally:
+            if client in SSE_CLIENTS:
+                SSE_CLIENTS.remove(client)
+
+
+def broadcast_sse(event: str | dict) -> None:
+    """Broadcast an event to all connected SSE clients.
+
+    Args:
+        event: Event data (dict is JSON-serialized, str sent as-is).
+    """
+    dead = []
+    for client in SSE_CLIENTS:
+        try:
+            client[0].put_nowait(event)
+            client[1] += 1
+        except Exception:
+            dead.append(client)
+    for c in dead:
+        if c in SSE_CLIENTS:
+            SSE_CLIENTS.remove(c)
+
     def do_OPTIONS(self):
         self.send_response(204)
         self.send_header("Access-Control-Allow-Origin", "*")
@@ -357,6 +412,11 @@ class RequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
+
+        # ── SSE streaming endpoint ──
+        if path == "/events":
+            self._handle_sse()
+            return
 
         # ── API endpoints ──
         if path == "/training-progress":

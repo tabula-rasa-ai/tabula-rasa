@@ -511,6 +511,64 @@ def _validate_config(cfg, op):
     return warnings
 
 
+def sample_replay_from_hippocampus(
+    num_samples: int,
+    tokenizer,
+    max_seq_len: int,
+    tier: str = 'longterm',
+) -> tuple[torch.Tensor, torch.Tensor] | None:
+    """Sample replay experiences from hippocampus DB and tokenize them.
+
+    Queries the hippocampus for consolidated long-term memories, tokenizes
+    and pads them into batched tensors suitable for feeding through the model.
+
+    Returns:
+        (input_ids, targets) tensors of shape (batch, max_seq_len) or None
+        if no experiences are available.
+    """
+    try:
+        from egefalos.hippocampus import get_old_memories
+    except ImportError:
+        return None
+
+    experiences = get_old_memories(limit=num_samples, tier=tier, use_per=True)
+    if not experiences:
+        return None
+
+    input_ids_list = []
+    targets_list = []
+    pad_id = tokenizer.pad_id
+
+    for exp in experiences:
+        text = exp.get('input_text', '') or ''
+        try:
+            ids = tokenizer.encode(text, add_special_tokens=True)
+        except Exception:
+            continue
+        if len(ids) > max_seq_len:
+            ids = ids[:max_seq_len]
+
+        # Targets: mask prompt tokens (first 2/3), keep answer tokens
+        split_point = max(1, len(ids) * 2 // 3)
+        targets = [-100] * split_point + ids[split_point:]
+
+        # Pad
+        pad_len = max_seq_len - len(ids)
+        padded_ids = ids + [pad_id] * pad_len
+        padded_targets = targets + [-100] * pad_len
+
+        input_ids_list.append(padded_ids[:max_seq_len])
+        targets_list.append(padded_targets[:max_seq_len])
+
+    if not input_ids_list:
+        return None
+
+    return (
+        torch.tensor(input_ids_list, dtype=torch.long),
+        torch.tensor(targets_list, dtype=torch.long),
+    )
+
+
 def _estimate_time(steps, device_str):
     """Rough time estimate based on hardware."""
     if "cuda" in device_str:
@@ -608,6 +666,10 @@ def train_specialist(
     use_ewc=False,
     ewc_lambda=1000.0,
     ewc_gamma=0.9,
+    use_ewc_replay=False,
+    ewc_replay_interval=500,
+    ewc_replay_lambda=0.5,
+    ewc_replay_samples=32,
     use_expert_ewc=False,
     use_fisher_archive=False,
     use_amp=False,
@@ -1055,6 +1117,35 @@ def train_specialist(
                     total_loss = loss_for_backward + ewc_penalty / grad_accum_steps
                 else:
                     total_loss = loss_for_backward
+
+                # ── EWC + Experience Replay ──
+                if use_ewc_replay and global_step > 0 and global_step % ewc_replay_interval == 0:
+                    replay_batch = sample_replay_from_hippocampus(
+                        ewc_replay_samples, tok, cfg.max_seq_len,
+                    )
+                    if replay_batch is not None:
+                        replay_x, replay_y = replay_batch
+                        replay_x = replay_x.to(device)
+                        replay_y = replay_y.to(device)
+                        if scaler is not None:
+                            with autocast():
+                                _, replay_loss, _ = model(replay_x, replay_y)
+                        else:
+                            _, replay_loss, _ = model(replay_x, replay_y)
+                        replay_penalty = ewc.compute_ewc_penalty(
+                            lambda_ewc=ewc_lambda
+                        ) if ewc is not None else torch.tensor(0.0, device=device)
+                        total_loss = (
+                            loss_for_backward
+                            + ewc_replay_lambda * replay_loss / grad_accum_steps
+                            + replay_penalty / grad_accum_steps
+                        )
+                        if global_step % cfg.log_every == 0:
+                            logger.info(
+                                f"  EWC Replay at step {global_step}: "
+                                f"replay_loss={replay_loss.item():.4f}, "
+                                f"replay_penalty={replay_penalty.item():.4f}"
+                            )
 
                 if scaler is not None:
                     scaler.scale(total_loss).backward()
@@ -1611,6 +1702,23 @@ Examples:
              "Fixes 3-task norm shrinkage (see Ablation 4)."
     )
     parser.add_argument(
+        "--ewc-replay", action="store_true",
+        help="Enable EWC + Experience Replay: samples hippocampus memories and adds "
+             "replay loss + EWC penalty to the main loss every N steps."
+    )
+    parser.add_argument(
+        "--ewc-replay-interval", type=int, default=500,
+        help="Steps between EWC replay batches (default: 500)"
+    )
+    parser.add_argument(
+        "--ewc-replay-lambda", type=float, default=0.5,
+        help="Weight for replay loss in EWC replay (default: 0.5)"
+    )
+    parser.add_argument(
+        "--ewc-replay-samples", type=int, default=32,
+        help="Number of replay samples from hippocampus per batch (default: 32)"
+    )
+    parser.add_argument(
         "--amp", action="store_true", help="Enable mixed precision (AMP) training (requires CUDA)"
     )
     parser.add_argument(
@@ -1788,6 +1896,10 @@ Examples:
                 ewc_gamma=args.ewc_gamma,
                 use_expert_ewc=args.expert_ewc,
                 use_fisher_archive=args.fisher_archive,
+                use_ewc_replay=args.ewc_replay,
+                ewc_replay_interval=args.ewc_replay_interval,
+                ewc_replay_lambda=args.ewc_replay_lambda,
+                ewc_replay_samples=args.ewc_replay_samples,
                 use_amp=args.amp,
                 gradient_accumulation_steps=args.grad_accum,
                 use_lora=args.lora,
@@ -1892,6 +2004,10 @@ Examples:
         ewc_gamma=args.ewc_gamma,
         use_expert_ewc=args.expert_ewc,
         use_fisher_archive=args.fisher_archive,
+        use_ewc_replay=args.ewc_replay,
+        ewc_replay_interval=args.ewc_replay_interval,
+        ewc_replay_lambda=args.ewc_replay_lambda,
+        ewc_replay_samples=args.ewc_replay_samples,
         use_amp=args.amp,
         gradient_accumulation_steps=args.grad_accum,
         use_lora=args.lora,

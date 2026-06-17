@@ -46,7 +46,7 @@ class Config:
     # Architecture variants
     activation: str = "swiglu"  # relu | gelu | swiglu
     norm_type: str = "rmsnorm"  # rmsnorm | layernorm
-    pos_encoding: str = "rope"  # learned | rope | none
+    pos_encoding: str = "rope"  # learned | rope | alibi_arithmetic | none
 
     # Mixture of Experts (MoE) — replaces FFN with expert routing
     use_moe: bool = False         # Enable MoE layers
@@ -97,6 +97,11 @@ class Config:
     grad_clip_norm: float = 1.0  # Max gradient norm (0=no clipping)
     use_value_head: bool = False  # AlphaZero-style value head (-1 to +1 intuition)
     alphazero_loss_weight: float = 0.5  # Weight for value loss when use_value_head=True
+
+    # ── Token Difficulty Weighting ───────────────────────────
+    use_difficulty_weighting: bool = False  # Weight carry/operator tokens higher
+    difficulty_carry_mult: float = 2.0     # Loss multiplier for carry/borrow tokens
+    difficulty_op_mult: float = 1.5        # Loss multiplier for operator tokens
 
     # ── PPO / RL ──────────────────────────
     use_rl: bool = False  # Enable PPO reinforcement learning training

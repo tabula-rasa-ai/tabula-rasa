@@ -5,12 +5,15 @@ During sleep:
 2. Compute Fisher information on replay data
 3. Merge into running EWC total
 4. Train with EWC penalty to consolidate without forgetting
+5. Cluster similar experiences and generate summaries
 """
 import sys
 from pathlib import Path
 # Ensure project root is on the path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import math
+import re
 import torch
 import torch.optim as optim
 from torch.utils.data import TensorDataset, DataLoader
@@ -18,12 +21,288 @@ from pathlib import Path
 from typing import Optional
 import argparse
 import time
+import numpy as np
 
 from tabula_rasa.model import MathTransformer
 from tabula_rasa.config import Config
 from tabula_rasa.tokenizer import MathTokenizer
 from egefalos.online_ewc import OnlineEWC
-from egefalos.hippocampus import get_unconsolidated, get_stats, mark_consolidated, decay_memories, get_old_memories
+from egefalos.hippocampus import (
+    get_unconsolidated, get_stats, mark_consolidated, decay_memories,
+    get_old_memories, store_experience, get_db,
+)
+
+
+# ─── Memory Clustering / Summarization ─────────────────────────────────
+
+
+def _tokenize_text(text: str) -> list[str]:
+    """Simple whitespace+punctuation tokenizer for TF-IDF bag-of-words."""
+    return re.findall(r'[a-zA-Z0-9]+|[^\w\s]', text.lower())
+
+
+def _build_term_freq(texts: list[str]) -> tuple[np.ndarray, list[str]]:
+    """Build a term-frequency matrix (tf-idf-like) from a list of texts.
+
+    Returns:
+        matrix: (n_docs, n_terms) float32 array of TF-IDF values.
+        vocab:  list of unique term strings.
+    """
+    tokenized = [_tokenize_text(t) for t in texts]
+    # Build vocabulary
+    vocab_set: set[str] = set()
+    for tokens in tokenized:
+        vocab_set.update(tokens)
+    vocab = sorted(vocab_set)
+    if not vocab:
+        return np.zeros((len(texts), 0), dtype=np.float32), vocab
+
+    # Document frequency
+    df = {term: 0 for term in vocab}
+    for tokens in tokenized:
+        seen: set[str] = set()
+        for token in tokens:
+            if token in seen:
+                continue
+            seen.add(token)
+            df[token] += 1
+
+    n_docs = len(texts)
+    idf = {term: math.log(1.0 + n_docs / (1.0 + dfreq))
+           for term, dfreq in df.items()}
+
+    matrix = np.zeros((n_docs, len(vocab)), dtype=np.float32)
+    for i, tokens in enumerate(tokenized):
+        tf_raw = len(tokens)
+        if tf_raw == 0:
+            continue
+        term_counts: dict[str, int] = {}
+        for token in tokens:
+            term_counts[token] = term_counts.get(token, 0) + 1
+        for j, term in enumerate(vocab):
+            tf = term_counts.get(term, 0) / tf_raw
+            matrix[i, j] = tf * idf[term]
+
+    return matrix, vocab
+
+
+def _tfidf_similarity(texts: list[str]) -> np.ndarray:
+    """Compute pairwise cosine similarity matrix for a list of texts.
+
+    Uses a lightweight TF-IDF-ish representation (no scikit-learn dependency).
+
+    Returns:
+        (n_docs, n_docs) float32 similarity matrix (diagonal = 1.0).
+    """
+    n = len(texts)
+    if n == 0:
+        return np.zeros((0, 0), dtype=np.float32)
+    if n == 1:
+        return np.ones((1, 1), dtype=np.float32)
+
+    matrix, _ = _build_term_freq(texts)  # (n_docs, n_terms)
+    if matrix.shape[1] == 0:
+        # No terms — return identity
+        return np.eye(n, dtype=np.float32)
+
+    # L2-normalise rows
+    norms = np.linalg.norm(matrix, axis=1, keepdims=True)
+    norms = np.where(norms == 0, 1.0, norms)  # avoid div-by-zero
+    matrix_normed = matrix / norms  # (n_docs, n_terms)
+
+    # Cosine similarity = dot product of L2-normalised rows
+    return np.dot(matrix_normed, matrix_normed.T)  # (n_docs, n_docs)
+
+
+def _summarize_cluster(experiences: list[dict]) -> str:
+    """Generate a summary string for a cluster of similar experiences.
+
+    Strategy: pick the most common output_text among the cluster as the
+    representative summary. If there's a tie, concatenate the two most
+    common outputs separated by ' | '.
+
+    Args:
+        experiences: List of experience dicts, each with 'input_text' and
+                     'output_text' keys.
+
+    Returns:
+        A single summary string.
+    """
+    if not experiences:
+        return ""
+
+    # Count output_text frequencies
+    output_counts: dict[str, int] = {}
+    for exp in experiences:
+        ot = (exp.get('output_text') or '').strip()
+        if ot:
+            output_counts[ot] = output_counts.get(ot, 0) + 1
+
+    if not output_counts:
+        # Fall back to most common input prefix
+        inputs = [e.get('input_text', '') for e in experiences]
+        return max(set(inputs), key=inputs.count) if inputs else ""
+
+    # Sort by frequency
+    sorted_outputs = sorted(output_counts.items(), key=lambda x: -x[1])
+    if len(sorted_outputs) == 0:
+        return ""
+    if len(sorted_outputs) == 1 or sorted_outputs[0][1] > sorted_outputs[1][1]:
+        return sorted_outputs[0][0]
+    # Tie — join the top two
+    return f"{sorted_outputs[0][0]} | {sorted_outputs[1][0]}"
+
+
+def cluster_and_summarize(
+    similarity_threshold: float = 0.5,
+    max_age_days: int = 30,
+    max_cluster_size: int = 20,
+) -> dict:
+    """Cluster similar experiences in the hippocampus and generate summaries.
+
+    Workflow:
+    1. Fetch all active + longterm experiences from hippocampus.
+    2. Compute pairwise TF-IDF cosine similarity.
+    3. Group experiences with similarity > threshold into clusters.
+    4. For each cluster of 5+ members, generate a summary by taking the
+       most common output_text.
+    5. Mark summarised experiences as 'consolidated'.
+    6. Store the summary as a new 'core' tier entry.
+    7. Prune: delete experiences older than *max_age_days* in 'active'
+       tier that have been consolidated.
+
+    Args:
+        similarity_threshold: Cosine similarity threshold for clustering
+                              (default: 0.5).
+        max_age_days: Delete consolidated active experiences older than
+                      this many days (default: 30).
+        max_cluster_size: Maximum experiences to consider per cluster
+                          (default: 20).
+
+    Returns:
+        dict with keys:
+            - clusters_found: int
+            - experiences_summarized: int
+            - summaries_stored: int
+            - pruned_deleted: int
+    """
+    conn = get_db()
+    result = {
+        'clusters_found': 0,
+        'experiences_summarized': 0,
+        'summaries_stored': 0,
+        'pruned_deleted': 0,
+    }
+
+    # Fetch all active + longterm (not yet consolidated > active filter)
+    rows = conn.execute("""
+        SELECT id, input_text, output_text, tier, timestamp
+        FROM experiences
+        WHERE tier IN ('active', 'longterm')
+          AND consolidated = 0
+        ORDER BY timestamp DESC
+    """).fetchall()
+
+    if not rows:
+        print("  [Cluster] No unconsolidated experiences to cluster.")
+        return result
+
+    records = [dict(r) for r in rows]
+    texts = [r['input_text'] for r in records]
+    n = len(records)
+
+    # Compute similarity matrix
+    print(f"  [Cluster] Computing similarity for {n} experiences...")
+    sim = _tfidf_similarity(texts)
+
+    # Greedy clustering: iterate, find largest cluster from each seed
+    assigned = set()
+    clusters: list[list[int]] = []
+
+    for i in range(n):
+        if i in assigned:
+            continue
+        # Find all unassigned indices with similarity > threshold
+        members = [i]
+        assigned.add(i)
+        for j in range(i + 1, n):
+            if j in assigned:
+                continue
+            if sim[i, j] > similarity_threshold:
+                members.append(j)
+                assigned.add(j)
+        if len(members) >= 5:
+            clusters.append(members)
+
+    result['clusters_found'] = len(clusters)
+    if not clusters:
+        print("  [Cluster] No clusters of 5+ similar experiences found.")
+        return result
+
+    print(f"  [Cluster] Found {len(clusters)} clusters (>=5 similar experiences each).")
+
+    cutoff_ts = time.time() - (max_age_days * 86400)
+    summarized_ids: list[int] = []
+    stored_summaries = 0
+
+    for idx, cluster_indices in enumerate(clusters):
+        cluster_exp = [records[i] for i in cluster_indices]
+        # Limit cluster size
+        if len(cluster_exp) > max_cluster_size:
+            cluster_exp = cluster_exp[:max_cluster_size]
+
+        # Generate summary
+        summary = _summarize_cluster(cluster_exp)
+        if not summary:
+            continue
+
+        # Collect IDs to mark consolidated
+        cluster_ids = [records[i]['id'] for i in cluster_indices]
+        summarized_ids.extend(cluster_ids)
+
+        # Find the most common input_text pattern as representative
+        input_texts = [e['input_text'] for e in cluster_exp]
+        rep_input = max(set(input_texts), key=input_texts.count) if input_texts else ""
+
+        # Store as 'core' tier entry
+        conn.execute("""
+            INSERT INTO experiences
+                (timestamp, input_text, output_text, prediction_error,
+                 skill, is_correction, tier, consolidated)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            time.time(),
+            f"[cluster] {rep_input[:80]}" if rep_input else f"[cluster {idx}]",
+            summary,
+            0.0,
+            'core',
+            0,
+            'longterm',
+            1,
+        ))
+        stored_summaries += 1
+        result['experiences_summarized'] += len(cluster_ids)
+
+    conn.commit()
+    result['summaries_stored'] = stored_summaries
+
+    # Mark summarised experiences as consolidated
+    if summarized_ids:
+        mark_consolidated(list(set(summarized_ids)))
+
+    # Prune: delete consolidated active experiences older than max_age_days
+    deleted = conn.execute("""
+        DELETE FROM experiences
+        WHERE tier = 'active'
+          AND consolidated = 1
+          AND timestamp < ?
+    """, (cutoff_ts,)).rowcount
+    conn.commit()
+    result['pruned_deleted'] = deleted
+
+    print(f"  [Cluster] Summary: {result['experiences_summarized']} experiences → "
+          f"{stored_summaries} core summaries, {deleted} pruned.")
+    return result
 
 
 def consolidate_sleep_cycle(
@@ -226,6 +505,15 @@ def consolidate_sleep_cycle(
     decay_result = decay_memories(min_access=3, max_age_days=7,
                                   demote_working=True, cleanup_active=True)
     print(f'  Synaptic decay: {decay_result}')
+
+    # Phase 5: Memory clustering and summarization
+    print("  [Sleep] Phase 5: Clustering and summarizing similar experiences...")
+    cluster_result = cluster_and_summarize(
+        similarity_threshold=0.5,
+        max_age_days=30,
+        max_cluster_size=20,
+    )
+    print(f'  [Sleep] Clustering result: {cluster_result}')
 
     print(f"  [Sleep] Consolidation complete.")
     print(f"  [Sleep] Saved to {output_dir}")

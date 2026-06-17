@@ -59,6 +59,21 @@ def _make_activation(name: str = "swiglu") -> callable[[torch.Tensor], torch.Ten
     return F.silu  # swiglu (default)
 
 
+def _compute_alibi_slopes(n_heads: int) -> torch.Tensor:
+    """Compute ALiBi head-specific slopes: geometric sequence 2^(-8/n * k).
+
+    Args:
+        n_heads: Number of attention heads.
+
+    Returns:
+        Tensor of shape ``(n_heads,)`` with slopes in descending order.
+    """
+    def get_slopes(n):
+        start = 2 ** (-8 / n)
+        return torch.tensor([start ** k for k in range(n)])
+    return get_slopes(n_heads)
+
+
 def _rotate_half(x: torch.Tensor) -> torch.Tensor:
     """Rotate the last dimension in two halves for RoPE.
 
@@ -187,6 +202,9 @@ class Attention(nn.Module):
             self.rope = RotaryEmbedding(self.head_dim, max(512, config.max_seq_len * 2))
         elif self.pos_type == "learned":
             self.pos_embed = LearnedPositionEmbedding(config.max_seq_len, config.d_model)
+        elif self.pos_type == "alibi_arithmetic":
+            # ALiBi-style slopes for decimal-place alignment
+            self.register_buffer("alibi_slopes", _compute_alibi_slopes(self.n_heads))
         self.dropout = nn.Dropout(config.dropout)
 
     def forward(
@@ -194,6 +212,7 @@ class Attention(nn.Module):
         x: torch.Tensor,
         mask: torch.Tensor | None = None,
         past_kv: tuple[torch.Tensor, torch.Tensor] | None = None,
+        arithmetic_bias: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, tuple[torch.Tensor, torch.Tensor]]:
         """Apply multi-head self-attention.
 
@@ -203,6 +222,8 @@ class Attention(nn.Module):
                 ``None`` — causal mask is built automatically).
             past_kv: Optional ``(k, v)`` tuple from previous generation
                 steps for KV-cached decoding.
+            arithmetic_bias: optional bias tensor ``(batch, 1, q_len, kv_len)``
+                for arithmetic position encoding (alibi_arithmetic mode).
 
         Returns:
             Tuple ``(output, current_kv)`` where ``output`` has shape
@@ -253,14 +274,34 @@ class Attention(nn.Module):
 
         # SDPA: is_causal=True when no explicit mask and no KV cache
         use_causal = mask is None and past_kv is None
-        out = F.scaled_dot_product_attention(
-            q,
-            k,
-            v,
-            attn_mask=attn_mask,
-            dropout_p=self.dropout.p if self.training else 0.0,
-            is_causal=use_causal,
-        )
+        if arithmetic_bias is not None and self.pos_type == "alibi_arithmetic":
+            # Expand per-head: (B, 1, Q, KV) → (B, n_heads, Q, KV)
+            h_bias = arithmetic_bias.expand(-1, self.n_heads, -1, -1)
+            # Apply as attention bias (added to scores before softmax)
+            attn_mask_final = h_bias
+            if mask is not None:
+                attn_mask_final = attn_mask_final.masked_fill(~mask.unsqueeze(1), float('-inf'))
+            elif past_kv is None:
+                # Build causal mask
+                q_len = seq_len
+                total_len = q_len
+                causal = torch.tril(torch.ones(q_len, total_len, device=x.device))
+                attn_mask_final = attn_mask_final.masked_fill(causal.unsqueeze(0).unsqueeze(0) == 0, float('-inf'))
+            out = F.scaled_dot_product_attention(
+                q, k, v,
+                attn_mask=attn_mask_final,
+                dropout_p=self.dropout.p if self.training else 0.0,
+                is_causal=False,
+            )
+        else:
+            out = F.scaled_dot_product_attention(
+                q,
+                k,
+                v,
+                attn_mask=attn_mask,
+                dropout_p=self.dropout.p if self.training else 0.0,
+                is_causal=use_causal,
+            )
         out = out.transpose(1, 2).contiguous().view(batch, seq_len, -1)
         return self.wo(out), current_kv
 
@@ -409,6 +450,7 @@ class TransformerBlock(nn.Module):
         x: torch.Tensor,
         mask: torch.Tensor | None = None,
         past_kv: tuple[torch.Tensor, torch.Tensor] | None = None,
+        arithmetic_bias: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, tuple[torch.Tensor, torch.Tensor]]:
         """Apply self-attention and feed-forward with residual connections.
 
@@ -416,11 +458,12 @@ class TransformerBlock(nn.Module):
             x: Input tensor of shape ``(batch, seq_len, d_model)``.
             mask: Optional attention mask.
             past_kv: Optional ``(k, v)`` tuple from previous generation steps.
+            arithmetic_bias: Optional bias for arithmetic position encoding.
 
         Returns:
             Tuple ``(output, current_kv)``.
         """
-        attn_out, current_kv = self.attention(self.attention_norm(x), mask, past_kv=past_kv)
+        attn_out, current_kv = self.attention(self.attention_norm(x), mask, past_kv=past_kv, arithmetic_bias=arithmetic_bias)
         x = x + self.dropout(attn_out)
         x = x + self.dropout(self.feed_forward(self.ffn_norm(x)))
         return x, current_kv
@@ -508,6 +551,108 @@ class MathTransformer(nn.Module):
         mask = torch.tril(torch.ones(seq_len, seq_len, device=device))
         return mask.view(1, 1, seq_len, seq_len)
 
+    def _compute_place_values(self, input_ids: torch.Tensor) -> torch.Tensor:
+        """Compute decimal place values for each token in a batch.
+
+        For a tokenizer where ids 0-9 are digits, ids 10-13 are operators,
+        and id 14 is '=', finds digit runs and assigns place values
+        (0=ones, 1=tens, etc.) reading right-to-left within each operand.
+
+        Args:
+            input_ids: Token IDs (batch, seq_len).
+
+        Returns:
+            Place values (batch, seq_len) where -1=operator, -2=equals, -3=other.
+        """
+        batch, seq_len = input_ids.shape
+        device = input_ids.device
+        places = torch.full_like(input_ids, -3, dtype=torch.long)
+        for b in range(batch):
+            ids = input_ids[b]
+            eq_pos = (ids == 14).nonzero(as_tuple=True)[0]
+            eq = eq_pos[0].item() if len(eq_pos) > 0 else seq_len
+            # Operand side (before '=' or end): assign place values right-to-left
+            place = 0
+            for i in range(eq - 1, -1, -1):
+                tid = ids[i].item()
+                if tid <= 9:  # digit
+                    places[b, i] = place
+                    place += 1
+                elif tid in (10, 11, 12, 13):  # operator
+                    places[b, i] = -1
+                    place = 0
+                elif tid == 14:  # '='
+                    places[b, i] = -2
+            # Output side (after '='): left-to-right, ones first
+            place = 0
+            for i in range(eq + 1, seq_len):
+                tid = ids[i].item()
+                if tid <= 9:
+                    places[b, i] = place
+                    place += 1
+                else:
+                    break
+        return places
+
+    def _compute_arithmetic_bias(self, input_ids: torch.Tensor) -> torch.Tensor | None:
+        """Compute ALiBi-style arithmetic bias: same-place digits attend strongly.
+
+        Bias = -|place(i) - place(j)| as (B, 1, S, S). Head-specific slopes
+        are applied in Attention.forward().
+
+        Args:
+            input_ids: Token IDs (batch, seq_len).
+
+        Returns:
+            Bias tensor (B, 1, S, S) or None.
+        """
+        if self.config.pos_encoding != "alibi_arithmetic":
+            return None
+        places = self._compute_place_values(input_ids)
+        p_i = places.unsqueeze(2)
+        p_j = places.unsqueeze(1)
+        diff = torch.abs(p_i - p_j).float()
+        return -diff.unsqueeze(1)
+
+    def _compute_token_weights(self, targets: torch.Tensor) -> torch.Tensor:
+        """Compute per-token loss weights for difficulty weighting.
+
+        Carry/borrow tokens (ids 10-29) and operator tokens (40-44) get
+        higher loss weight. Tokens after '=' in output region get 1.5x.
+
+        Args:
+            targets: Target token IDs (batch, seq_len).
+
+        Returns:
+            Weight tensor (batch, seq_len).
+        """
+        weights = torch.ones_like(targets, dtype=torch.float)
+        cfg = self.config
+        if not getattr(cfg, "use_difficulty_weighting", False):
+            return weights
+        carry_mult = getattr(cfg, "difficulty_carry_mult", 2.0)
+        op_mult = getattr(cfg, "difficulty_op_mult", 1.5)
+
+        # Carry/borrow combined tokens (ids 10-29)
+        carry_mask = (targets >= 10) & (targets <= 29)
+        weights = torch.where(carry_mask, weights * carry_mult, weights)
+
+        # Operator tokens (+ - * / =)
+        op_mask = (targets >= 40) & (targets <= 44)
+        weights = torch.where(op_mask, weights * op_mult, weights)
+
+        # Output digit tokens (0-9 after '='): find '=' (id 44) in each row
+        eq_mask = targets == 44
+        for b in range(targets.size(0)):
+            eq_positions = (eq_mask[b]).nonzero(as_tuple=True)[0]
+            if len(eq_positions) > 0:
+                eq_pos = eq_positions[0].item()
+                post_eq = (targets[b, eq_pos + 1:] >= 30) & (targets[b, eq_pos + 1:] <= 39)
+                weights[b, eq_pos + 1:] = torch.where(
+                    post_eq, weights[b, eq_pos + 1:] * 1.5, weights[b, eq_pos + 1:]
+                )
+        return weights
+
     def forward(
         self, input_ids: torch.Tensor, targets: torch.Tensor | None = None, use_cache: bool = True
     ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor | None]:
@@ -531,13 +676,15 @@ class MathTransformer(nn.Module):
         batch, seq_len = input_ids.shape
         device = input_ids.device
 
+        arithmetic_bias = self._compute_arithmetic_bias(input_ids)
+
         x = self.token_embedding(input_ids)
         # Pass mask=None so Attention uses is_causal=True via SDPA.
         # Passing a non-None mask sets use_causal=False in Attention.forward(),
         # which disables causal masking entirely during training.
         kv_caches: list[tuple[torch.Tensor, torch.Tensor]] = []
         for layer in self.layers:
-            x, layer_kv = layer(x, mask=None)
+            x, layer_kv = layer(x, mask=None, arithmetic_bias=arithmetic_bias)
             kv_caches.append(layer_kv)
 
         x = self.norm(x)
@@ -550,12 +697,20 @@ class MathTransformer(nn.Module):
 
         loss: torch.Tensor | None = None
         if targets is not None:
+            # Per-token difficulty weighting
+            token_weights = self._compute_token_weights(targets)
+            # Apply weights: scale per-token loss before reduction
             loss = F.cross_entropy(
                 logits.view(-1, logits.size(-1)),
                 targets.reshape(-1),
                 ignore_index=-100,
                 label_smoothing=getattr(self.config, "label_smoothing", 0.0),
+                reduction='none',
             )
+            # Reshape weights to match loss, zero out ignored positions
+            w = token_weights.reshape(-1)
+            w[targets.reshape(-1) == -100] = 0.0
+            loss = (loss * w).sum() / (w.sum() + 1e-8)
 
         return logits, loss, value
 
@@ -581,12 +736,14 @@ class MathTransformer(nn.Module):
         batch, seq_len = input_ids.shape
         device = input_ids.device
 
+        arithmetic_bias = self._compute_arithmetic_bias(input_ids)
+
         x = self.token_embedding(input_ids)
 
         new_kvs: list[tuple[torch.Tensor, torch.Tensor]] = []
         for i, layer in enumerate(self.layers):
             past = past_kv_caches[i] if past_kv_caches else None
-            x, kv = layer(x, mask=None, past_kv=past)
+            x, kv = layer(x, mask=None, past_kv=past, arithmetic_bias=arithmetic_bias if past_kv_caches is None else None)
             new_kvs.append(kv)
 
         x = self.norm(x)

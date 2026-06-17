@@ -18,6 +18,7 @@ How it works:
 import os
 import sys
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 import argparse
 import json
@@ -31,6 +32,10 @@ import torch
 from tabula_rasa.config import Config
 from tabula_rasa.model import MathTransformer, count_parameters
 from tabula_rasa.tokenizer import MathTokenizer
+from egefalos.hard_negative_mining import (
+    evaluate_find_failures,
+    generate_hard_negatives,
+)
 from train_specialist import (
     _INTERRUPTED,
     OP_NAMES,
@@ -203,6 +208,23 @@ def auto_train(ops=None, target=50.0, budget=50000, rounds=5, deep=False, test_h
 
         print(f"\n  Weakest: {OP_NAMES[weakest_op]} at {weakest_acc:.1f}%")
         print(f"  Gap to target: {target - weakest_acc:.1f}%")
+
+        # ── Hard-Negative Mining ─────────────────────────────────
+        # Find specific failing problems and generate edge-case variants
+        hard_negatives = []
+        try:
+            model, cfg, _ = _load_specialist(weakest_op, tok)
+            if model is not None:
+                failures = evaluate_find_failures(model, tok, cfg, weakest_op, num=50)
+                if failures:
+                    hard_negatives = generate_hard_negatives(failures, max_variants=3)
+                    if hard_negatives:
+                        print(f"  Hard negatives: {len(failures)} failures → {len(hard_negatives)} edge-case variants")
+                        # Display a sample
+                        for hn in hard_negatives[:3]:
+                            print(f"    Variant: {hn}")
+        except Exception as e:
+            print(f"  [HardNegative] Skipped: {e}")
 
         # Decide training budget for this operation
         remaining_budget = budget - total_steps_used
