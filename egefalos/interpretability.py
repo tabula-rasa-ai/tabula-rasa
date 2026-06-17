@@ -144,13 +144,15 @@ def analyze_prediction(
     lig = LayerIntegratedGradients(forward_fn, embedding_layer)
 
     # Compute attributions
-    attributions, _ = lig.attribute(
+    result = lig.attribute(
         inputs=input_tensor,
         baselines=ref_tensor,
         target=None,
         n_steps=50,
         return_convergence_delta=True,
     )
+    attributions = result[0] if isinstance(result, tuple) else result
+    _delta = result[1] if len(result) >= 2 else None
 
     # attributions shape: (1, seq_len, d_model) — sum over embedding dim
     scores = attributions.squeeze(0).sum(dim=-1)  # (seq_len,)
