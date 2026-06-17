@@ -1,17 +1,15 @@
 """
 Captum-based interpretability for Tabula Rasa's MathTransformer.
-
 Provides:
 - analyze_prediction(): token-level attribution using LayerIntegratedGradients
 - visualize_attention(): extract attention weights per layer/head
 - generate_html_report(): HTML visualization with colored token highlights
 """
-
 from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import torch
 import torch.nn as nn
@@ -27,65 +25,33 @@ try:
 except ImportError:
     captum = None  # type: ignore[assignment]
 
-# ── Helpers ─────────────────────────────────────────────────────
-
+#  Helpers 
 
 def _get_embedding_layer(model: nn.Module) -> nn.Embedding:
     """Return the token embedding layer from a MathTransformer."""
     return model.token_embedding
 
-
 def _construct_input_ref(
+    model: nn.Module,
     token_ids: list[int],
     ref_token_id: int = 0,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """Build input and reference tensors for integrated gradients.
-
-    Args:
-        token_ids: List of input token IDs.
-        ref_token_id: Token ID to use as baseline (default 0 = <PAD>).
-
-    Returns:
-        (input_tensor, ref_tensor) each of shape (1, seq_len).
-    """
-    inp = torch.tensor([token_ids], dtype=torch.long)
+    """Build input and reference tensors for integrated gradients."""
+    device = next(model.parameters()).device
+    inp = torch.tensor([token_ids], dtype=torch.long, device=device)
     ref = torch.full_like(inp, ref_token_id)
     return inp, ref
-
 
 def _forward_wrapper(
     model: nn.Module,
     target_id: int | None = None,
-) -> callable:
-    """Wrap model.forward so it returns logits for a single target position.
-
-    Args:
-        model: A MathTransformer instance.
-        target_id: If set, return logit for this token ID at the last position.
-                   If None, return the logit for the argmax at the last position.
-
-    Returns:
-        A function(input_embeds) -> torch.Tensor scalar suitable for Captum.
-    """
-
-    def wrapped(input_embeds: torch.Tensor) -> torch.Tensor:
-        # Captum may pass token IDs (Long) or embedding vectors (Float)
-        # depending on version and attribute_to_layer_input setting.
-        # Handle both: embed if Long, otherwise use as-is.
-        if input_embeds.dtype == torch.long or not input_embeds.is_floating_point():
-            # Token IDs — embed them
-            x = model.token_embedding(input_embeds)
-            batch, seq_len, _ = x.shape
-        elif input_embeds.dim() == 2:
-            # Float embedding for single position: (batch, d_model) -> (batch, 1, d_model)
-            batch, d_model = input_embeds.shape
-            seq_len = 1
-            x = input_embeds.unsqueeze(1)
-        else:
-            # Float embedding for full sequence: (batch, seq_len, d_model)
-            batch, seq_len, d_model = input_embeds.shape
-            x = input_embeds
-
+) -> Callable:
+    """Wrap model.forward so it returns logits for a single target position."""
+    def wrapped(input_ids: torch.Tensor) -> torch.Tensor:
+        # Captum passes the original token IDs here. 
+        # We MUST call the embedding layer so Captum's hook can intercept it!
+        x = model.token_embedding(input_ids)
+        
         # Pass through each transformer block
         for layer in model.layers:
             x, _ = layer(x)
@@ -100,15 +66,14 @@ def _forward_wrapper(
 
         if target_id is not None:
             return last_logits[:, target_id].sum().view(-1)
+        
         # Default: argmax
         pred_id = last_logits.argmax(dim=-1)
         return last_logits.gather(1, pred_id.unsqueeze(1)).sum().view(-1)
 
     return wrapped
 
-
-# ── Public API ──────────────────────────────────────────────────
-
+#  Public API 
 
 def analyze_prediction(
     model: nn.Module,
@@ -116,23 +81,7 @@ def analyze_prediction(
     prompt: str,
     target_id: int | None = None,
 ) -> dict:
-    """Analyze which input tokens most influence the model's prediction.
-
-    Uses Captum's LayerIntegratedGradients on the token embedding layer.
-
-    Args:
-        model: A MathTransformer model (loaded and in eval mode).
-        tokenizer: A MathTokenizer instance.
-        prompt: Input string (e.g. '12+34=').
-        target_id: Optional target token ID to score against. If None,
-                   uses the model's argmax prediction at the last position.
-
-    Returns:
-        Dict with keys:
-            - 'tokens': list of token strings
-            - 'attributions': list of {token, score, abs_score} dicts
-            - 'scores_raw': raw attribution scores tensor
-    """
+    """Analyze which input tokens most influence the model's prediction."""
     if captum is None:
         return {
             "tokens": list(prompt),
@@ -144,7 +93,7 @@ def analyze_prediction(
     # Tokenize
     token_ids = tokenizer.encode(prompt, add_special_tokens=True)
     input_tensor, ref_tensor = _construct_input_ref(
-        token_ids, ref_token_id=tokenizer.pad_id
+        model, token_ids, ref_token_id=tokenizer.pad_id
     )
 
     # Build forward function
@@ -165,7 +114,7 @@ def analyze_prediction(
     attributions = result[0] if isinstance(result, tuple) else result
     _delta = result[1] if len(result) >= 2 else None
 
-    # attributions shape: (1, seq_len, d_model) — sum over embedding dim
+    # attributions shape: (1, seq_len, d_model)  sum over embedding dim
     scores = attributions.squeeze(0).sum(dim=-1)  # (seq_len,)
     scores = scores.detach().cpu()
 
@@ -190,49 +139,31 @@ def analyze_prediction(
         "input_ids": token_ids,
     }
 
-
 def visualize_attention(
     model: nn.Module,
     tokenizer: Any,
     prompt: str,
 ) -> dict:
-    """Extract attention weights from every layer and head.
-
-    For each transformer block, runs a forward pass and captures the
-    attention scores before softmax, then returns per-layer/per-head matrices.
-
-    Args:
-        model: A MathTransformer model in eval mode.
-        tokenizer: A MathTokenizer instance.
-        prompt: Input string.
-
-    Returns:
-        Dict of {layer_idx: {head_idx: attention_matrix (list of lists)}}
-        where attention_matrix[q][k] = weight from query pos q to key pos k.
-    """
+    """Extract attention weights from every layer and head."""
     from tabula_rasa.model import _apply_pos_encoding  # safe import now
 
     token_ids = tokenizer.encode(prompt, add_special_tokens=True)
-    x = torch.tensor([token_ids], dtype=torch.long)
+    device = next(model.parameters()).device
+    x = torch.tensor([token_ids], dtype=torch.long, device=device)
     batch, seq_len = x.shape
-
-    # Embed
-    embeds = model.token_embedding(x)
 
     # Hook: capture attention weights from each layer
     attn_store: dict[int, list[torch.Tensor]] = {}
 
-    def _save_attn(layer_idx: int) -> callable:
+    def _save_attn(layer_idx: int) -> Callable:
         def hook(module, inputs, output):
-            # output is (attended, kv_cache)
-            # Recompute attention weights manually
             hidden = inputs[0]  # (batch, seq_len, d_model)
             b, sl, _ = hidden.shape
-            # Store q, k for this forward to compute weights
+            
             q = module.wq(hidden).view(b, sl, module.n_heads, module.head_dim).transpose(1, 2)
             k = module.wk(hidden).view(b, sl, module.n_heads, module.head_dim).transpose(1, 2)
 
-            if module.pos_type == "rope":
+            if getattr(module, "pos_type", None) == "rope":
                 cos, sin = module.rope(sl, hidden.device)
                 cos = cos.view(1, 1, sl, module.head_dim)
                 sin = sin.view(1, 1, sl, module.head_dim)
@@ -240,6 +171,7 @@ def visualize_attention(
 
             scale = module.head_dim ** -0.5
             attn_scores = torch.matmul(q, k.transpose(-2, -1)) * scale
+            
             # Causal mask
             causal = torch.tril(torch.ones(sl, sl, device=hidden.device)).view(1, 1, sl, sl)
             attn_scores = attn_scores.masked_fill(causal == 0, float("-inf"))
@@ -266,9 +198,8 @@ def visualize_attention(
     for layer_idx, attn_list in attn_store.items():
         if not attn_list:
             continue
-        # Take the last captured attention (there should be one)
         attn = attn_list[-1]  # (1, n_heads, seq_len, seq_len)
-        n_heads = attn.size(1)
+        n_heads = attn.size(1) 
         head_dict: dict[str, list[list[float]]] = {}
         for h in range(n_heads):
             mat = attn[0, h].tolist()  # (seq_len, seq_len)
@@ -281,20 +212,8 @@ def visualize_attention(
 
     return result
 
-
 def generate_html_report(analysis: dict) -> str:
-    """Generate an HTML visualization of token attributions.
-
-    Tokens with higher absolute attribution scores are highlighted more
-    intensely (green for positive influence, red for negative influence).
-
-    Args:
-        analysis: Dict from analyze_prediction() containing 'tokens'
-                  and 'attributions'.
-
-    Returns:
-        HTML string with colored token highlights.
-    """
+    """Generate an HTML visualization of token attributions."""
     tokens = analysis.get("tokens", [])
     attributions = analysis.get("attributions", [])
 
@@ -308,8 +227,7 @@ def generate_html_report(analysis: dict) -> str:
 
     # Build HTML
     html_parts = [
-        '<div style="font-family: monospace; padding: 16px; background: #0f172a; border-radius: 8px; '
-        'line-height: 2.5;">'
+        '<div style="font-family: monospace; padding: 16px; background: #0f172a; border-radius: 8px; line-height: 2.5;">'
     ]
 
     for i, token_str in enumerate(tokens):
@@ -318,7 +236,6 @@ def generate_html_report(analysis: dict) -> str:
 
         if score > 0:
             # Green: positive influence
-            intensity = int(55 + 200 * norm_intensity)
             bg = f"rgba(34, 197, 94, {0.15 + 0.6 * norm_intensity:.2f})"
             border = f"rgba(34, 197, 94, {0.4 + 0.6 * norm_intensity:.2f})"
         elif score < 0:
@@ -336,7 +253,7 @@ def generate_html_report(analysis: dict) -> str:
         html_parts.append(
             f'<span style="background:{bg}; border:1px solid {border}; '
             f'border-radius:4px; padding:4px 8px; margin:2px; '
-            f'color:#f1f5f9; display:inline-block; '
+            f'color:#f1f5f9; display:inline-block;" '
             f'title="{token_str}: {score:.4f}">'
             f'{display_token}'
             f'<span style="font-size:0.65em; color:#94a3b8; margin-left:4px;">'
@@ -347,8 +264,7 @@ def generate_html_report(analysis: dict) -> str:
 
     # Add a legend
     html_parts.append(
-        '<div style="margin-top: 12px; font-size: 0.8em; color: #94a3b8; '
-        'font-family: sans-serif;">'
+        '<div style="margin-top: 12px; font-size: 0.8em; color: #94a3b8; font-family: sans-serif;">'
         '<span style="display:inline-block; width:12px; height:12px; '
         'background:rgba(34,197,94,0.5); border-radius:2px; margin-right:4px;"></span> '
         'Positive influence &nbsp;&nbsp;'
