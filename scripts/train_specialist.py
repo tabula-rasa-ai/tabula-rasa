@@ -631,6 +631,7 @@ def train_specialist(
     use_auto_scale=False,
     use_progressive_scratchpad=False,
     progressive_interval=500,
+    use_moe=False,
 ):
     """Train a specialist for one arithmetic operation.
 
@@ -696,6 +697,11 @@ def train_specialist(
     if use_progressive_scratchpad:
         cfg.use_progressive_scratchpad = True
         cfg.progressive_interval = progressive_interval
+    if use_moe:
+        cfg.use_moe = True
+        moe_overhead = cfg.num_experts * (cfg.d_model * cfg.d_ff * 3)
+        extra_m = moe_overhead / 1e6
+        print(f"  *** MoE: enabled (experts={cfg.num_experts}, top-{cfg.top_k}, ~{extra_m:.1f}M extra params) ***")
     if test_hard:
         cfg.test_hard = True
 
@@ -1581,6 +1587,11 @@ Examples:
         help="Use deeper model: d=64 L=8 ff=256 (better for algorithms)",
     )
     parser.add_argument(
+        "--moe",
+        action="store_true",
+        help="Enable Mixture of Experts (MoE) — replaces FFN with 4 expert top-2 routing",
+    )
+    parser.add_argument(
         "--ewc",
         action="store_true",
         help="Enable Online EWC for continual learning (preserves prior tasks)",
@@ -1798,6 +1809,7 @@ Examples:
                 use_auto_scale=args.auto,
                 use_progressive_scratchpad=args.progressive,
                 progressive_interval=args.progressive_interval,
+                use_moe=args.moe,
             )
             results[op_name] = "OK" if model is not None else "FAILED"
         print(f"\n  Results: {results}")
@@ -1901,4 +1913,5 @@ Examples:
         use_auto_scale=args.auto,
         use_progressive_scratchpad=args.progressive,
         progressive_interval=args.progressive_interval,
+        use_moe=args.moe,
     )
