@@ -69,13 +69,20 @@ def _forward_wrapper(
     """
 
     def wrapped(input_embeds: torch.Tensor) -> torch.Tensor:
-        # input_embeds: (batch, d_model) or (batch, seq_len, d_model)
-        # Captum passes single positions (2D) during integrated gradients
-        if input_embeds.dim() == 2:
+        # Captum may pass token IDs (Long) or embedding vectors (Float)
+        # depending on version and attribute_to_layer_input setting.
+        # Handle both: embed if Long, otherwise use as-is.
+        if input_embeds.dtype == torch.long or not input_embeds.is_floating_point():
+            # Token IDs — embed them
+            x = model.token_embedding(input_embeds)
+            batch, seq_len, _ = x.shape
+        elif input_embeds.dim() == 2:
+            # Float embedding for single position: (batch, d_model) -> (batch, 1, d_model)
             batch, d_model = input_embeds.shape
             seq_len = 1
-            x = input_embeds.unsqueeze(1)  # (batch, 1, d_model)
+            x = input_embeds.unsqueeze(1)
         else:
+            # Float embedding for full sequence: (batch, seq_len, d_model)
             batch, seq_len, d_model = input_embeds.shape
             x = input_embeds
 
@@ -92,10 +99,10 @@ def _forward_wrapper(
         last_logits = logits[:, -1, :]  # (batch, vocab_size)
 
         if target_id is not None:
-            return last_logits[:, target_id].sum()
+            return last_logits[:, target_id].sum().view(-1)
         # Default: argmax
         pred_id = last_logits.argmax(dim=-1)
-        return last_logits.gather(1, pred_id.unsqueeze(1)).sum()
+        return last_logits.gather(1, pred_id.unsqueeze(1)).sum().view(-1)
 
     return wrapped
 
