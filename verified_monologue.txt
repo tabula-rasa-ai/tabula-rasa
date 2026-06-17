@@ -1,0 +1,10 @@
+therefore the sum of two positive numbers is always positive
+therefore if all humans are mortal and socrates is human then socrates is mortal
+therefore 12 + 34 equals 46 which is correct
+the logical conclusion follows from the premises given
+therefore a implies b and b implies c means a implies c
+the correct answer to 5 + 5 is 10
+therefore the distributive property holds a times b plus c equals a times b plus a times c
+the pythagorean theorem states that a squared plus b squared equals c squared
+therefore if the ground is wet it may have rained but correlation is not causation
+the model has learned that addition is commutative a plus b equals b plus a

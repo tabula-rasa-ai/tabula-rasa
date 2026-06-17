@@ -1,0 +1,15 @@
+Model: 203,456 params
+Scratchpad validation:
+  76-9=67 | prompt='67-9' | sp='1706' -> 67 ✓
+  3-1=2 | prompt='3-1' | sp='02' -> 2 ✓
+  94-8=86 | prompt='49-8' | sp='1608' -> 86 ✓
+  76-3=73 | prompt='67-3' | sp='0307' -> 73 ✓
+  12-3=9 | prompt='21-3' | sp='1900' -> 9 ✓
+  12-2=10 | prompt='21-2' | sp='0001' -> 10 ✓
+  80-8=72 | prompt='08-8' | sp='1207' -> 72 ✓
+  36-33=3 | prompt='63-33' | sp='0300' -> 3 ✓
+  91-2=89 | prompt='19-2' | sp='1908' -> 89 ✓
+  80-5=75 | prompt='08-5' | sp='1507' -> 75 ✓
+All scratchpad correct: True
+
+Training 300 steps...

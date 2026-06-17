@@ -72,7 +72,7 @@ class TestQuickTraining:
         model, tok, cfg = trained_model
         # Verify model can still generate
         model.eval()
-        output = model.generate(tok, "2+2=", max_new_tokens=5, temperature=0.0)
+        output = model.generate(tok, "2+2=", max_new_tokens=5, temperature=0.0, clean_output=False)
         assert isinstance(output, str)
         assert len(output) > 0
 

@@ -23,7 +23,7 @@ echo.
 
 :: ─── Start Tabula Rasa AI (Port 8002) ───
 echo [*] Starting Tabula Rasa AI (port 8002)...
-start "Tabula Rasa AI (8002)" /MIN cmd /c "cls & title Tabula Rasa AI (8002) & python -c "from egefalos.tabula_rasa import main; main()""
+start "Tabula Rasa AI (8002)" /MIN cmd /c "cls & title Tabula Rasa AI (8002) & tabula-rasa serve"
 echo  [+] Window opened (minimized).
 echo.
 

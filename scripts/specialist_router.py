@@ -37,7 +37,7 @@ from tabula_rasa.model import MathTransformer, count_parameters
 from tabula_rasa.tokenizer import MathTokenizer
 
 # Neural router (Neocortex)
-from egefalos.router_model import RouterModel, RouterConfig, INTENT_NAMES, vector_to_intents
+from tabula_rasa.router.router_model import RouterModel, RouterConfig, INTENT_NAMES, vector_to_intents
 
 # Remote chat server config (GPU machine or local)
 REMOTE_CHAT_URL = os.environ.get("CHAT_SERVER_URL", "http://127.0.0.1:8201")

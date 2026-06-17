@@ -1,0 +1,67 @@
+
+============================================================
+  Training Addition Specialist (+)
+============================================================
+  Device: CPU (no CUDA detected)
+  Curriculum: 4 phases
+    Phase 1: 5000 steps at max_digits=1
+    Phase 2: 10000 steps at max_digits=2
+    Phase 3: 10000 steps at max_digits=3
+    Phase 4: 5000 steps at max_digits=4
+  Building dataset (5000 samples, max_digits=1)...   Created 5000 add samples (carry: 2500)
+done in 0.3s
+  Params: 1,060,992 | d=128 L=4 ff=512 heads=4
+  Optimizer: adamw  |  LR schedule: cosine  |  Grad clip: 1.0
+  Reversed: True  |  Loss masking: True  |  Scratchpad: True
+  Estimated time: ~10.0 hours
+=== Addition Specialist — 2026-06-13 19:28 ===
+  Device: CPU | Params: 1,060,992
+  Steps: 0 -> 30000 | Batch: 32 | LR: 0.001
+  Reversed: True | Loss masking: True | Scratchpad: True
+  Activation: relu | Norm: rmsnorm | Pos: rope
+
+  Training from step 0 to 30000...
+  Curriculum: phase 1/4 (max_digits=1)
+  Press Ctrl+C to save and exit gracefully.
+
+  Step    500/30000 | loss=0.0179 | lr=0.001000 | 2.7 st/s | ETA: 182m P1
+  Step   1000/30000 | loss=0.0016 | lr=0.000999 | 2.8 st/s | ETA: 173m P1
+    Eval step 1000: 5.0% (best: 5.0%) | 1d:87% 2d:0% 3d:0% 4d:0% [360s]
+  Step   1500/30000 | loss=0.0002 | lr=0.000997 | 3.0 st/s | ETA: 161m P1
+  Step   2000/30000 | loss=0.0001 | lr=0.000994 | 3.0 st/s | ETA: 153m P1
+    Eval step 2000: 6.0% (best: 6.0%) | 1d:100% 2d:0% 3d:0% 4d:0% [659s]
+  Step   2500/30000 | loss=0.0001 | lr=0.000989 | 3.1 st/s | ETA: 148m P1
+  Step   3000/30000 | loss=0.0001 | lr=0.000982 | 3.1 st/s | ETA: 143m P1
+    Eval step 3000: 5.0% (best: 6.0%) | 1d:100% 2d:0% 3d:0% 4d:0% [959s]
+  Step   3500/30000 | loss=0.0000 | lr=0.000975 | 3.2 st/s | ETA: 140m P1
+  Step   4000/30000 | loss=0.0000 | lr=0.000966 | 3.2 st/s | ETA: 136m P1
+    Eval step 4000: 8.0% (best: 8.0%) | 1d:93% 2d:0% 3d:0% 4d:0% [1260s]
+  Step   4500/30000 | loss=0.0000 | lr=0.000955 | 3.2 st/s | ETA: 133m P1
+  Step   5000/30000 | loss=0.0000 | lr=0.000944 | 3.2 st/s | ETA: 130m P1
+    Eval step 5000: 3.0% (best: 8.0%) | 1d:100% 2d:0% 3d:0% 4d:0% [1564s]
+
+  >>> Curriculum phase 2/4: max_digits=2 (10000 steps) <<<
+
+  Created 5000 add samples (carry: 2500)
+  Dataset rebuilt: 5000 samples in 0.3s
+  Step   5500/30000 | loss=0.5541 | lr=0.000931 | 3.3 st/s | ETA: 125m P2
+  Step   6000/30000 | loss=0.1307 | lr=0.000917 | 3.3 st/s | ETA: 120m P2
+    Eval step 6000: 1.0% (best: 8.0%) | 1d:20% 2d:0% 3d:0% 4d:0% [1799s]
+  Step   6500/30000 | loss=0.1898 | lr=0.000901 | 3.4 st/s | ETA: 115m P2
+  Step   7000/30000 | loss=0.0598 | lr=0.000885 | 3.4 st/s | ETA: 113m P2
+    Eval step 7000: 1.0% (best: 8.0%) | 1d:0% 2d:0% 3d:0% 4d:0% [2079s]
+  Step   7500/30000 | loss=0.0357 | lr=0.000867 | 3.4 st/s | ETA: 112m P2
+  Step   8000/30000 | loss=0.0502 | lr=0.000849 | 3.3 st/s | ETA: 110m P2
+    Eval step 8000: 0.0% (best: 8.0%) | 1d:7% 2d:0% 3d:0% 4d:0% [2396s]
+  Step   8500/30000 | loss=0.1929 | lr=0.000829 | 3.3 st/s | ETA: 107m P2
+  Step   9000/30000 | loss=0.0667 | lr=0.000809 | 3.3 st/s | ETA: 105m P2
+    Eval step 9000: 0.0% (best: 8.0%) | 1d:13% 2d:0% 3d:0% 4d:0% [2720s]
+  Step   9500/30000 | loss=0.1170 | lr=0.000787 | 3.2 st/s | ETA: 106m P2
+  Step  10000/30000 | loss=0.0078 | lr=0.000765 | 3.2 st/s | ETA: 104m P2
+    Eval step 10000: 0.0% (best: 8.0%) | 1d:13% 2d:7% 3d:0% 4d:0% [3136s]
+  [!] Early stop at step 10000 — no improvement for 6 evals (best: 8.0%)
+
+  Saving checkpoint at step 10000...
+  Checkpoint saved. Resume with: python3 train_specialist.py add --resume
+
+  Done! 3140s (52.3 min) | Best: 8.0% | Steps: 10000

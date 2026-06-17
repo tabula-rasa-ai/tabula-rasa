@@ -1,0 +1,11 @@
+{
+  "baseline_accuracy": 0.0,
+  "socratic_accuracy": 0.0,
+  "improvement": 0.0,
+  "n_problems": 200,
+  "n_socratic_rounds": 5,
+  "n_socratic_problems": 100,
+  "n_training_examples": 0,
+  "timestamp": "2026-06-14 01:44:32",
+  "device": "cpu"
+}

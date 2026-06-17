@@ -3,10 +3,15 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![Tests](https://github.com/Matrix-Research-Ai/tabula-rasa/actions/workflows/test.yml/badge.svg)](https://github.com/Matrix-Research-Ai/tabula-rasa/actions/workflows/test.yml)
+[![Coverage](https://img.shields.io/badge/coverage-passing-brightgreen)](tests/)
+[![PyPI](https://img.shields.io/badge/pypi-v1.3.0-orange)](https://pypi.org/project/tabula-rasa/)
+[![Python Versions](https://img.shields.io/badge/python-3.9%20%7C%203.10%20%7C%203.11%20%7C%203.12-blue)](pyproject.toml)
+[![Telegram](https://img.shields.io/badge/Telegram-%40TabulaRasaAi-blue)](https://t.me/TabulaRasaAi)
 
 A transformer trained from a **blank slate** — no pretraining, no transfer learning,
-just gradient descent from random initialization. Proves that a 1M-parameter
-model can learn arithmetic from scratch, and **auto-trains new specialists** for
+just gradient descent from random initialization. Proves that a **1M-parameter
+model can learn arithmetic from scratch** (100% on 1-digit addition in ~3,000 steps
+on CPU, no pretraining), and **auto-trains new specialists** for
 unknown questions on-the-fly.
 
 ---
@@ -28,7 +33,7 @@ python3 scripts/train_specialist.py add --quick
 
 # 4. Start the AI (port 8002) + Dashboard (port 8000)
 python3 scripts/api_server.py        # Dashboard on port 8000
-python3 -c "from egefalos.tabula_rasa import main; main()"   # AI on port 8002
+tabula-rasa serve                    # AI on port 8002
 
 # 5. Open http://localhost:8000 in your browser
 ```
@@ -89,7 +94,7 @@ start_tabula_rasa.bat
 
 # Option B: Launch manually
 python3 scripts/api_server.py                    # Dashboard on port 8000
-python3 -c "from egefalos.tabula_rasa import main; main()"  # AI on port 8002
+tabula-rasa serve                                # AI on port 8002
 ```
 
 ### Train Math Specialists
@@ -192,7 +197,6 @@ graph TD
 ```
 tabula-rasa/
   train.py                   # Main math training entry point
-  serve.py                   # Legacy server
   start_tabula_rasa.bat      # One-click launcher (Windows)
 
   scripts/
@@ -231,21 +235,42 @@ tabula-rasa/
 | Operation | 1-digit | 2-digit | 3-digit | 4-digit |
 |-----------|---------|---------|---------|---------|
 | Addition | 100% | 58-76% | ~50% | ~51% |
-| Subtraction | ~50% | ~20% | ~10% | ~5% |
-| Multiplication | ~30% | ~10% | ~5% | ~3% |
+| Subtraction | ~50%* | ~20% | ~10% | ~5% |
+| Multiplication | ~30%** | ~10% | ~5% | ~3% |
+
+*\*Scratchpad borrow fix applied June 2026 — retraining expected to improve 1-digit sub significantly.*  
+*\*\*Distribution scratchpad (partial products) added July 2026 — see below.*
+
+### Key Findings
+
+| Finding | Impact |
+|---------|--------|
+| Digit reversal is critical | Without it, Causal-Carry Mismatch prevents multi-digit carry propagation |
+| Loss masking provides 2x convergence speed | ~70% of gradient was wasted on prompt tokens before this fix |
+| ReLU is competitive with SwiGLU | At 1M parameters, no significant difference |
+| Auto-training from scratch works | For conversational intents; retrieval fallback ensures correctness during training |
+
+### Scratchpads
+
+| Operation | Format | Description |
+|-----------|--------|-------------|
+| Addition | `{carry}{digit}` fused per column | Combined carry-digit tokens (`00`-`19`) |
+| Subtraction | `{borrow}{digit}` fused per column | Same format, borrow replaces carry |
+| Multiplication | `<STEP>` separated partial products | `12*4=48<STEP>12*30=360<STEP>48+360=408<END>408` |
 
 ---
 
-## Key Findings
+## Phase 3: Socratic Self-Improvement (in progress)
 
-- **Digit reversal is critical** — without it, the Causal-Carry Mismatch prevents
-  multi-digit carry propagation.
-- **Loss masking provides 2x convergence speed** — ~70% of gradient was wasted
-  on prompt tokens before this fix.
-- **ReLU is competitive with SwiGLU** at 1M parameters.
-- **Auto-training from scratch** works for conversational intents but quality
-  improves with model size — retrieval fallback ensures correct answers while
-  neural model continues training.
+The current Phase-3 focus is the **Socratic critique loop** — a deterministic
+critic that identifies arithmetic errors column-by-column and constructs
+hints, which the model uses to revise its answer. This runs fully on CPU
+and doesn't require a separate verifier model.
+
+See `egefalos/socratic_critique.py` and `egefalos/socratic_trainer.py`.
+
+*(Language AlphaZero, Code AlphaZero, and multi-specialist orchestration are
+scaffolded but not yet producing results — shipping Socratic first.)*
 
 ---
 
@@ -267,6 +292,15 @@ curl http://localhost:8000/health
 ```
 
 ---
+
+## Security
+
+> **API servers (ports 8000/8002) have no authentication, no CORS restrictions,
+> and no rate limiting. They are designed for local development only.**
+> Do not expose them to the public internet without adding API-key middleware.
+
+See [SECURITY.md](SECURITY.md) for details on code sandbox risks and
+recommended hardening.
 
 ## Community
 

@@ -26,6 +26,7 @@ classifiers = [
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Scientific/Engineering :: Artificial Intelligence :: Machine Learning",
 ]
@@ -43,14 +44,16 @@ Repository = "https://github.com/Matrix-Research-Ai/tabula-rasa"
 Documentation = "https://github.com/Matrix-Research-Ai/tabula-rasa"
 Telegram = "https://t.me/TabulaRasaAi"
 
+[project.scripts]
+tabula-rasa = "tabula_rasa.__main__:main"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
+    "hypothesis>=6.0",
     "mypy>=1.0",
-    "black>=24.0",
-    "isort>=5.0",
-    "flake8>=7.0",
+    "ruff>=0.4.0",
 ]
 dashboard = [
     "streamlit>=1.28.0",
@@ -71,10 +74,20 @@ tabula_rasa = ["py.typed"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
-addopts = "-v --tb=short"
+addopts = "-v --tb=short --cov=tabula_rasa.config --cov=tabula_rasa.model --cov=tabula_rasa.tokenizer --cov=tabula_rasa.dataset --cov=tabula_rasa.eval --cov=tabula_rasa.rope --cov=tabula_rasa.norms --cov=tabula_rasa.attention --cov=tabula_rasa.ffn --cov=tabula_rasa.transformer_block --cov=tabula_rasa.experiments --cov=tabula_rasa.generate --cov=tabula_rasa.lora --cov=tabula_rasa.training.mult_scratchpad"
 
 [tool.mypy]
 python_version = "3.9"
 strict = true
 ignore_missing_imports = true
 warn_unused_ignores = true
+
+[tool.ruff]
+target-version = "py39"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W"]
+
+[tool.ruff.format]
+quote-style = "single"

@@ -1,125 +1,118 @@
-"""Egefalos (εγκέφαλος) — The Brain Module.
+"""
+Egefalos (εγκέφαλος) — The Brain Module.
 
-Greek for "brain." Contains all cognitive architecture files:
-hippocampus, neocortex, sleep cycle, Socratic engine, memory,
-and the Tabula Rasa AI consciousness.
+Compatibility shim for backward-compatible imports. All code has moved to
+`tabula_rasa.{server,cl,memory,router,reasoning,training,cognitive}`.
 
-|All files in this package import from tabula_rasa package
-for core components (model.py, config.py, tokenizer.py).
-
-Exposed modules:
-  language_az:   LanguageAlphaZero (Policy/Value heads, self-play)
-  mcts:          Entropy-triggered Micro-MCTS for CPU-survival
-  grammar_engine: CFG-based grammar rules + Z3 logic integration
-  semantic_game: Semantic Reconstruction Game (Speaker/Listener arena)
-  code_sandbox:   Python sandboxed execution environment (ast + subprocess)
-  code_specialist: CodeAlphaZero (3-stage self-play programming)
-  code_curriculum: Developmental curriculum + Pythagorean Code Review
-  hippocampus:   Fast short-term memory (surprise-based storage)
-  neocortex:     Slow consolidation via EWC + experience replay
-  sleep_cycle:   Nightly self-improvement daemon
-  pythagoras:    Nightly examination of conscience
-  logic_verifier: Z3-based logical verification
-  memory:        Persistent correction memory
-  socratic_stage1/2/3: Socratic dialectical engine
-  graduation_daemon: 6-stage cognitive syllabus orchestrator
-  pattern_specialist: Stage 2: string patterns, palindromes, sequences
-  taxonomy_specialist: Stage 3: Is-A logic, set theory, Z3 taxonomy
-  state_specialist:   Stage 4: English-to-code state tracking via sandbox
-  grammar_specialist: Stage 5: AST-like grammar game, CFG evaluation
-  router:             Neural Router: dispatch prompts to correct specialist
-  piaget:        Piaget-inspired developmental stages
-  tabula_rasa:   Core AI consciousness
+Uses a MetaPathFinder to intercept `egefalos.X` imports and redirect them.
 """
 
-import sys, os
-# Add parent directory to path so imports work
-_parent = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if _parent not in sys.path:
-    sys.path.insert(0, _parent)
+import importlib
+import sys
+from importlib.abc import MetaPathFinder
+from importlib.machinery import ModuleSpec
 
-# Expose new AlphaZero language modules
-from .language_az import (
-    LanguageAlphaZero,
-    ConceptNode,
-    concept_to_string,
-    string_to_concept,
-    concept_graph_equal,
-    generate_training_concepts,
-    language_self_play_session,
-)
-from .mcts import (
-    micro_mcts_search,
-    create_mcts_fn,
-)
-from .grammar_engine import (
-    grammar_score,
-    create_grammar_rules,
-    check_subject_verb_agreement,
-    check_sentence_structure,
-    score_long_distance_structure,
-)
-from .semantic_game import (
-    SemanticGameRunner,
-    alphazero_gymnasium_session,
-)
+# Module name -> new package path
+_MODULE_REDIRECT = {
+    'tabula_rasa':              'tabula_rasa.server.ai_server',
+    'online_ewc':               'tabula_rasa.cl.online_ewc',
+    'expert_ewc':               'tabula_rasa.cl.expert_ewc',
+    'mas':                      'tabula_rasa.cl.mas',
+    'ogd':                      'tabula_rasa.cl.ogd',
+    'lwf_gem':                  'tabula_rasa.cl.lwf_gem',
+    'hippocampus':              'tabula_rasa.memory.hippocampus',
+    'sleep_cycle':              'tabula_rasa.memory.sleep_cycle',
+    'replay_buffer':            'tabula_rasa.memory.replay_buffer',
+    'memory':                   'tabula_rasa.memory.memory',
+    'router_model':             'tabula_rasa.router.router_model',
+    'router':                   'tabula_rasa.router.router',
+    'router_dataset':           'tabula_rasa.router.router_dataset',
+    'router_hippocampus':       'tabula_rasa.router.router_hippocampus',
+    'router_sleep_cycle':       'tabula_rasa.router.router_sleep_cycle',
+    'task_queue':               'tabula_rasa.training.task_queue',
+    'bm25_retrieval':           'tabula_rasa.training.bm25_retrieval',
+    'pii_scrubber':             'tabula_rasa.training.pii_scrubber',
+    'hard_negative_mining':     'tabula_rasa.training.hard_negative_mining',
+    'mult_scratchpad':          'tabula_rasa.training.mult_scratchpad',
+    'ppo_trainer':              'tabula_rasa.training.ppo_trainer',
+    'self_improve':             'tabula_rasa.training.self_improve',
+    'specialist_consolidation': 'tabula_rasa.training.specialist_consolidation',
+    'socratic_trainer':         'tabula_rasa.reasoning.socratic_trainer',
+    'socratic_stage1':          'tabula_rasa.reasoning.socratic_stage1',
+    'socratic_stage2':          'tabula_rasa.reasoning.socratic_stage2',
+    'socratic_stage3':          'tabula_rasa.reasoning.socratic_stage3',
+    'socratic_critique':        'tabula_rasa.reasoning.socratic_critique',
+    'tool_use':                 'tabula_rasa.reasoning.tool_use',
+    'mcts':                     'tabula_rasa.reasoning.mcts',
+    'math_gym_env':             'tabula_rasa.reasoning.math_gym_env',
+    'micro_orchestrator':       'tabula_rasa.reasoning.micro_orchestrator',
+    'code_sandbox':             'tabula_rasa.cognitive.code_sandbox',
+    'code_specialist':          'tabula_rasa.cognitive.code_specialist',
+    'code_curriculum':          'tabula_rasa.cognitive.code_curriculum',
+    'language_az':              'tabula_rasa.cognitive.language_az',
+    'grammar_engine':           'tabula_rasa.cognitive.grammar_engine',
+    'grammar_specialist':       'tabula_rasa.cognitive.grammar_specialist',
+    'pattern_specialist':       'tabula_rasa.cognitive.pattern_specialist',
+    'taxonomy_specialist':      'tabula_rasa.cognitive.taxonomy_specialist',
+    'state_specialist':         'tabula_rasa.cognitive.state_specialist',
+    'semantic_game':            'tabula_rasa.cognitive.semantic_game',
+    'pythagoras':               'tabula_rasa.cognitive.pythagoras',
+    'neocortex':                'tabula_rasa.cognitive.neocortex',
+    'logic_verifier':           'tabula_rasa.cognitive.logic_verifier',
+    'graduation_daemon':        'tabula_rasa.cognitive.graduation_daemon',
+    'p2p_daemon':               'tabula_rasa.cognitive.p2p_daemon',
+    'interpret':                'tabula_rasa.cognitive.interpret',
+    'interpretability':         'tabula_rasa.cognitive.interpretability',
+    'math_call':                'tabula_rasa.cognitive.math_call',
+}
 
-# Code AlphaZero modules
-from .code_sandbox import (
-    PythonEnvironment,
-    check_syntax,
-    has_dangerous_imports,
-)
-from .code_specialist import (
-    CodeAlphaZero,
-    DevelopmentStage,
-    ALGORITHM_PROBLEMS,
-    PYTHON_PROGRAMS,
-)
-from .code_curriculum import (
-    full_code_training_session,
-    pythagorean_code_review,
-    run_syntax_session,
-    run_fuzzing_session,
-    run_algorithm_session,
-)
+# Reverse map: attribute name → (module name, new_path) for from egefalos import X
+_ATTR_MAP = {}
+for mod_key, new_path in _MODULE_REDIRECT.items():
+    try:
+        mod = importlib.import_module(new_path)
+        for attr_name in dir(mod):
+            if not attr_name.startswith('_'):
+                _ATTR_MAP[attr_name] = (mod_key, new_path)
+    except ImportError:
+        pass
 
-# 6-Stage Cognitive Syllabus modules
-from .graduation_daemon import (
-    CognitiveStage,
-    STAGE_NAMES,
-    STAGE_DIRS,
-    daemon_cycle,
-    run_graduation_check,
-    spawn_stage,
-    freeze_weights,
-    evaluate_held_out_test,
-    load_graduation_state,
-    save_graduation_state,
-)
-from .pattern_specialist import (
-    generate_pattern_problem,
-    train_pattern_specialist,
-    evaluate_patterns,
-)
-from .taxonomy_specialist import (
-    generate_taxonomy_problem,
-    train_taxonomy_specialist,
-    evaluate_taxonomy,
-)
-from .state_specialist import (
-    StateGame,
-    generate_state_problem,
-    train_state_specialist,
-    evaluate_state,
-)
-from .grammar_specialist import (
-    generate_grammar_problem,
-    train_grammar_specialist,
-    evaluate_grammar,
-)
-from .router import (
-    Router,
-    route,
-    route_and_answer,
-)
+
+class _EgefalosRedirectFinder(MetaPathFinder):
+    """Intercepts `egefalos.X` imports and redirects to `tabula_rasa.CATEGORY.X`."""
+
+    def find_spec(self, fullname, path, target=None):
+        if not fullname.startswith('egefalos.'):
+            return None
+
+        # egefalos.X → redirect to new path
+        submod = fullname[len('egefalos.'):]
+        if submod in _MODULE_REDIRECT:
+            new_path = _MODULE_REDIRECT[submod]
+            try:
+                real = importlib.import_module(new_path)
+                sys.modules[fullname] = real
+                return ModuleSpec(fullname, None, origin=f'redirect:{new_path}')
+            except ImportError:
+                return None
+
+        return None
+
+
+# Register only once
+_installed = False
+if not _installed:
+    sys.meta_path.insert(0, _EgefalosRedirectFinder())
+    _installed = True
+
+
+def __getattr__(name):
+    """Fallback for `from egefalos import X` (attribute-level access)."""
+    if name in _ATTR_MAP:
+        mod_key, new_path = _ATTR_MAP[name]
+        mod = importlib.import_module(new_path)
+        return getattr(mod, name)
+    raise AttributeError(f"module 'egefalos' has no attribute '{name}'")
+
+
+__all__ = list(_MODULE_REDIRECT.keys())

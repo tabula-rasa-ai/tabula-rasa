@@ -56,8 +56,8 @@ def setup_logging(level: str = "INFO", log_file: str | None = None):
     )
 
 
-from egefalos.online_ewc import OnlineEWC
-from egefalos.expert_ewc import ExpertEWC
+from tabula_rasa.cl.online_ewc import OnlineEWC
+from tabula_rasa.cl.expert_ewc import ExpertEWC
 from tabula_rasa.config import Config
 from tabula_rasa.lora import (
     apply_lora_to_model,
@@ -133,6 +133,12 @@ def generate_problem(
         cot_trace = generate_cot_trace(op, a, b, ans, reversed_digits=reversed)
         return f"{a_str}{OPS[op]}{b_str}", cot_trace
 
+    if op == "mul" and scratchpad:
+        # Multiplication scratchpad: partial products + sum
+        from tabula_rasa.training.mult_scratchpad import generate_mult_scratchpad
+        sp, _ = generate_mult_scratchpad(a, b)
+        return f"{a}{OPS[op]}{b}", sp
+
     if reversed and op in ("add", "sub"):
         a_str = str(a)[::-1]
         b_str = str(b)[::-1]
@@ -187,7 +193,7 @@ class SpecialistDataset(Dataset):
                 cfg.min_digits,
                 cfg.max_digits,
                 reversed=(cfg.use_reversed and op in ("add", "sub")),
-                scratchpad=(cfg.use_scratchpad and op in ("add", "sub")),
+                scratchpad=(cfg.use_scratchpad and op in ("add", "sub", "mul")),
                 cot=(cfg.cot_scratchpad and op in ("add", "sub")),
             )
             ids = tokenizer.encode(f"{expr}={ans}", add_special_tokens=True)
@@ -367,7 +373,7 @@ def evaluate(model, tokenizer, cfg: Config, op: str, num=0, min_digits=0, max_di
             min_d,
             max_d,
             reversed=(cfg.use_reversed and op in ("add", "sub")),
-            scratchpad=(cfg.use_scratchpad and op in ("add", "sub")),
+            scratchpad=(cfg.use_scratchpad and op in ("add", "sub", "mul")),
             cot=(cfg.cot_scratchpad and op in ("add", "sub")),
         )
         prompt = f"{expr}="
@@ -381,6 +387,13 @@ def evaluate(model, tokenizer, cfg: Config, op: str, num=0, min_digits=0, max_di
         if cfg.cot_scratchpad and op in ("add", "sub"):
             pred = parse_cot_answer(out)
             true_answer = str(ans_raw).split("<END>")[-1].strip() if "<END>" in ans_raw else ans_raw
+            if pred == true_answer:
+                correct += 1
+        elif cfg.use_scratchpad and op == "mul":
+            # Mul scratchpad: extract answer after <END>
+            from tabula_rasa.training.mult_scratchpad import parse_mult_scratchpad
+            pred = parse_mult_scratchpad(out)
+            true_answer = parse_mult_scratchpad(ans_raw)
             if pred == true_answer:
                 correct += 1
         elif cfg.use_scratchpad and op in ("add", "sub"):
@@ -417,7 +430,7 @@ def evaluate_per_digit(model, tokenizer, cfg: Config, op: str, per_digit_samples
                 d,
                 d,
                 reversed=(cfg.use_reversed and op in ("add", "sub")),
-                scratchpad=(cfg.use_scratchpad and op in ("add", "sub")),
+                scratchpad=(cfg.use_scratchpad and op in ("add", "sub", "mul")),
                 cot=(cfg.cot_scratchpad and op in ("add", "sub")),
             )
             prompt = f"{expr}="
@@ -431,6 +444,12 @@ def evaluate_per_digit(model, tokenizer, cfg: Config, op: str, per_digit_samples
             if cfg.cot_scratchpad and op in ("add", "sub"):
                 pred = parse_cot_answer(out)
                 true_answer = str(ans_raw).split("<END>")[-1].strip() if "<END>" in ans_raw else ans_raw
+                if pred == true_answer:
+                    correct += 1
+            elif cfg.use_scratchpad and op == "mul":
+                from tabula_rasa.training.mult_scratchpad import parse_mult_scratchpad
+                pred = parse_mult_scratchpad(out)
+                true_answer = parse_mult_scratchpad(ans_raw)
                 if pred == true_answer:
                     correct += 1
             elif cfg.use_scratchpad and op in ("add", "sub"):
@@ -527,7 +546,7 @@ def sample_replay_from_hippocampus(
         if no experiences are available.
     """
     try:
-        from egefalos.hippocampus import get_old_memories
+        from tabula_rasa.memory.hippocampus import get_old_memories
     except ImportError:
         return None
 
@@ -1375,7 +1394,7 @@ def train_specialist(
         print(f"  {socratic_problems} problems, {socratic_steps} training steps")
         print(f'{"="*60}')
         try:
-            from egefalos.socratic_trainer import SocraticSelfTrainer
+            from tabula_rasa.reasoning.socratic_trainer import SocraticSelfTrainer
 
             socratic_op = OPS.get(op, "+")
             trainer = SocraticSelfTrainer(
@@ -1420,8 +1439,8 @@ def train_specialist(
         print(f"  Reinforcement Learning Phase (PPO)")
         print(f'{"="*60}')
         try:
-            from egefalos.math_gym_env import MathGymEnv
-            from egefalos.ppo_trainer import PPOTrainer
+            from tabula_rasa.reasoning.math_gym_env import MathGymEnv
+            from tabula_rasa.training.ppo_trainer import PPOTrainer
 
             # Enable value head for PPO
             cfg.use_value_head = True
@@ -1492,7 +1511,7 @@ def train_specialist(
         print(f"  Stage 3: Dialectical Self-Play (Arithmetic Debate)")
         print(f'{"="*60}')
         try:
-            from egefalos.socratic_stage3 import run_arithmetic_session
+            from tabula_rasa.reasoning.socratic_stage3 import run_arithmetic_session
             session_result = run_arithmetic_session(
                 model, tok, cfg,
                 num_problems=cfg.stage3_problems,
@@ -1513,7 +1532,7 @@ def train_specialist(
         print(f"  Generator vs Critic debate: {dialectic_problems} problems, {dialectic_steps} steps")
         print(f'{"="*60}')
         try:
-            from egefalos.socratic_stage2 import GeneratorCritic, generate_training_data
+            from tabula_rasa.reasoning.socratic_stage2 import GeneratorCritic, generate_training_data
             from torch.utils.data import Dataset, DataLoader
 
             # Use the trained model as both generator and critic

@@ -1,0 +1,42 @@
+{
+  "config": {
+    "num_problems": 10,
+    "quick_mode": true,
+    "train_steps": 3000,
+    "model": {
+      "d_model": 64,
+      "n_layers": 2,
+      "use_value_head": true
+    }
+  },
+  "results": {
+    "Greedy": {
+      "accuracy": 0.0,
+      "accuracy_pct": "0.0%",
+      "avg_time_per_problem_s": 0.0253,
+      "avg_tokens": 14.0,
+      "total_wall_time_s": 0.25
+    },
+    "Micro-MCTS(16)": {
+      "accuracy": 0.0,
+      "accuracy_pct": "0.0%",
+      "avg_time_per_problem_s": 1.3778,
+      "avg_tokens": 7.0,
+      "total_wall_time_s": 13.78
+    },
+    "MCTS(32)": {
+      "accuracy": 0.0,
+      "accuracy_pct": "0.0%",
+      "avg_time_per_problem_s": 4.2112,
+      "avg_tokens": 7.0,
+      "total_wall_time_s": 42.11
+    },
+    "MCTS(64)": {
+      "accuracy": 0.0,
+      "accuracy_pct": "0.0%",
+      "avg_time_per_problem_s": 9.6843,
+      "avg_tokens": 7.0,
+      "total_wall_time_s": 96.84
+    }
+  }
+}

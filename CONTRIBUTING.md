@@ -25,17 +25,20 @@ This project is governed by the [Contributor Covenant](CODE_OF_CONDUCT.md). All 
 
 ```bash
 # Clone the repo
-git clone https://github.com/tabula-rasa-ai/tabula-rasa.git
+git clone https://github.com/Matrix-Research-Ai/tabula-rasa.git
 cd tabula-rasa
 
-# Install dependencies
-pip install torch numpy tqdm
+# Install (editable, with dev deps)
+pip install -e ".[dev]"
 
 # Train a specialist (smoke test — ~2 minutes on CPU)
-python train_specialist.py add --quick
+python3 scripts/train_specialist.py add --quick
+
+# Or via the CLI
+tabula-rasa train add --quick
 
 # Start the dashboard
-python api_server.py
+python3 scripts/api_server.py
 # Open http://localhost:8000
 ```
 

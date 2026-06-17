@@ -1,0 +1,133 @@
+============================================================
+  ABLATION 3: LAMBDA EWC SENSITIVITY SWEEP
+  Testing λ = [100, 250, 500, 1000, 2000]
+  Each run starts from model.pt with fresh Fisher (no cross-contamination)
+============================================================
+  Each run starts from clean best.pt with fresh Fisher (no cross-contamination)
+  Model loaded from: specialists\math\add\best_original.pt
+
+============================================================
+  LAMBDA = 100
+============================================================
+  Addition baseline (max_digits=1): 97.0%
+  Computing Fisher matrix from scratch...
+  EWC ready: 39 fisher params, λ=100
+
+  Training subtraction WITH EWC (λ=100)...
+  Created 2500 sub samples (carry: 0)
+  Epoch 1: add=100.0% sub=100.0% [44s]
+  Epoch 3: add=76.0% sub=82.0% [119s]
+  Epoch 5: add=80.0% sub=88.0% [204s]
+  Epoch 7: add=96.0% sub=100.0% [291s]
+  Epoch 9: add=100.0% sub=100.0% [371s]
+  Epoch 11: add=94.0% sub=90.0% [433s]
+  Epoch 13: add=100.0% sub=96.0% [498s]
+  Epoch 15: add=92.0% sub=96.0% [566s]
+  Epoch 17: add=96.0% sub=92.0% [632s]
+  Epoch 19: add=96.0% sub=100.0% [700s]
+
+  λ=100: add=97.0% → 96.0% (drop=+1.0pp), sub=95.0%
+
+============================================================
+  LAMBDA = 250
+============================================================
+  Addition baseline (max_digits=1): 98.0%
+  Computing Fisher matrix from scratch...
+  EWC ready: 39 fisher params, λ=250
+
+  Training subtraction WITH EWC (λ=250)...
+  Created 2500 sub samples (carry: 0)
+  Epoch 1: add=94.0% sub=98.0% [34s]
+  Epoch 3: add=98.0% sub=94.0% [95s]
+  Epoch 5: add=94.0% sub=96.0% [153s]
+  Epoch 7: add=98.0% sub=100.0% [216s]
+  Epoch 9: add=100.0% sub=100.0% [280s]
+  Epoch 11: add=100.0% sub=100.0% [353s]
+  Epoch 13: add=100.0% sub=100.0% [415s]
+  Epoch 15: add=100.0% sub=100.0% [480s]
+  Epoch 17: add=96.0% sub=96.0% [544s]
+  Epoch 19: add=100.0% sub=100.0% [608s]
+
+  λ=250: add=98.0% → 97.0% (drop=+1.0pp), sub=100.0%
+
+============================================================
+  LAMBDA = 500
+============================================================
+  Addition baseline (max_digits=1): 97.0%
+  Computing Fisher matrix from scratch...
+  EWC ready: 39 fisher params, λ=500
+
+  Training subtraction WITH EWC (λ=500)...
+  Created 2500 sub samples (carry: 0)
+  Epoch 1: add=100.0% sub=100.0% [34s]
+  Epoch 3: add=94.0% sub=82.0% [94s]
+  Epoch 5: add=96.0% sub=98.0% [152s]
+  Epoch 7: add=100.0% sub=96.0% [210s]
+  Epoch 9: add=100.0% sub=94.0% [274s]
+  Epoch 11: add=100.0% sub=96.0% [338s]
+  Epoch 13: add=100.0% sub=100.0% [403s]
+  Epoch 15: add=98.0% sub=98.0% [467s]
+  Epoch 17: add=100.0% sub=100.0% [531s]
+  Epoch 19: add=100.0% sub=100.0% [592s]
+
+  λ=500: add=97.0% → 100.0% (drop=-3.0pp), sub=100.0%
+
+============================================================
+  LAMBDA = 1000
+============================================================
+  Addition baseline (max_digits=1): 95.0%
+  Computing Fisher matrix from scratch...
+  EWC ready: 39 fisher params, λ=1000
+
+  Training subtraction WITH EWC (λ=1000)...
+  Created 2500 sub samples (carry: 0)
+  Epoch 1: add=100.0% sub=98.0% [33s]
+  Epoch 3: add=96.0% sub=90.0% [98s]
+  Epoch 5: add=94.0% sub=100.0% [160s]
+  Epoch 7: add=96.0% sub=98.0% [202s]
+  Epoch 9: add=98.0% sub=100.0% [229s]
+  Epoch 11: add=100.0% sub=98.0% [255s]
+  Epoch 13: add=100.0% sub=100.0% [280s]
+  Epoch 15: add=100.0% sub=100.0% [304s]
+  Epoch 17: add=100.0% sub=100.0% [329s]
+  Epoch 19: add=100.0% sub=100.0% [353s]
+
+  λ=1000: add=95.0% → 100.0% (drop=-5.0pp), sub=100.0%
+
+============================================================
+  LAMBDA = 2000
+============================================================
+  Addition baseline (max_digits=1): 98.0%
+  Computing Fisher matrix from scratch...
+  EWC ready: 39 fisher params, λ=2000
+
+  Training subtraction WITH EWC (λ=2000)...
+  Created 2500 sub samples (carry: 0)
+  Epoch 1: add=100.0% sub=98.0% [13s]
+  Epoch 3: add=94.0% sub=92.0% [38s]
+  Epoch 5: add=96.0% sub=98.0% [62s]
+  Epoch 7: add=92.0% sub=94.0% [87s]
+  Epoch 9: add=92.0% sub=96.0% [111s]
+  Epoch 11: add=100.0% sub=88.0% [135s]
+  Epoch 13: add=98.0% sub=98.0% [160s]
+  Epoch 15: add=96.0% sub=98.0% [184s]
+  Epoch 17: add=96.0% sub=100.0% [209s]
+  Epoch 19: add=96.0% sub=100.0% [235s]
+
+  λ=2000: add=98.0% → 100.0% (drop=-2.0pp), sub=100.0%
+
+
+============================================================
+  LAMBDA SWEEP SUMMARY
+============================================================
+       λ |  Add Baseline |  Add Final |    Drop |  Sub Final
+  -------+---------------+------------+---------+-----------
+     100 |         97.0% |      96.0% |  +1.0pp |      95.0%
+     250 |         98.0% |      97.0% |  +1.0pp |     100.0%
+     500 |         97.0% |     100.0% |  -3.0pp |     100.0%
+    1000 |         95.0% |     100.0% |  -5.0pp |     100.0%
+    2000 |         98.0% |     100.0% |  -2.0pp |     100.0%
+
+  Best λ by combined accuracy: 500 (add=100.0% + sub=100.0% = 200.0%)
+
+  Results: experiments\ablation_lambda_sweep_results.json

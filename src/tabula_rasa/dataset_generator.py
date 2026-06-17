@@ -165,7 +165,7 @@ class AutoDatasetGenerator:
 
     def mine_hippocampus(self) -> List[Tuple[str, str, int]]:
         try:
-            from egefalos.hippocampus import get_recent, get_old_memories
+            from tabula_rasa.memory.hippocampus import get_recent, get_old_memories
             db_path = Path('memory/hippocampus.db')
             if not db_path.exists(): return []
 
@@ -214,7 +214,7 @@ class AutoDatasetGenerator:
             if skill_name not in self.manager.tokenizers: continue
             tok = self.manager.tokenizers[skill_name]
             try:
-                from egefalos.tabula_rasa import scale_config
+                from tabula_rasa.server.ai_server import scale_config
                 sc = scale_config(skill_name, self.manager.skill_levels.get(skill_name, 0))
                 full = model.generate(
                     tok, question_with_eq,

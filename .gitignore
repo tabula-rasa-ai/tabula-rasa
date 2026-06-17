@@ -1,92 +1,63 @@
-# Python
-__pycache__/
-*.py[cod]
-*.so
-*.egg-info/
-dist/
-build/
-.eggs/
+# Runtime state — never commit
+auto_train_history.json
+experiments.json
+registry.json
+chain_log.txt
+ablation_batch.log
+coverage.json
 
-# Virtual environment
-venv/
-.venv/
-env/
-
-# Training artifacts
-checkpoints/
-specialists/
-data/
-exports/
-memory/
-self_train/
-
-# Large files
-*.zip
-*.pt
-
-# Logs
-*.log
+# Runtime logs
+debug_tabula.log
+auto_train_errors.log
+server_debug.log
 startup_debug.log
+training.log
+training_specialist.log
+error.log
+ablation*.log
 
-# Config backups
-config.py.bak
+# Checkpoints & specialists
+specialists/**/checkpoint.pt
+specialists/**/best.pt
+specialists/**/best_lora.pt
+specialists/**/final.pt
+specialists/**/ewc_fisher.pt
+specialists/**/training.log
+specialists/**/tokenizer.json
+specialists/**/*.pt
+!specialists/*/.gitkeep
+
+# Memory & hippocampus
+egefalos/memory/
+memory/
+
+# Generated artifacts
+paper.html
+exports/
+dist/
+*.egg-info/
+__pycache__/
+*.pyc
+*.pyo
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment
+.env
+.venv/
+venv/
 
 # OS
 .DS_Store
 Thumbs.db
 
-# IDE
-.vscode/
-.idea/
+# Deployment zips
+tabula_rasa_gpu.zip
+*.zip
 
-# Project specific
-auto_train_history.json
-experiments.json
-registry.json
-training.log
-error.log
-
-# Temporary
-ablation_batch.log
-
-# Generated paper files
-paper.html
-paper_draft.md
-paper.tex
-
-# Release scripts
-create_release.py
-upload_assets.py
-
-# Experiment checkpoints
-experiments/ewc_*.pt
-experiments/ewc_test/
-
-# Experiment results
-experiments/*.json
-.pytest_cache/
-
-# Generated data / artifacts
-chat_data.jsonl
-dpo_pairs_synthetic.jsonl
-verified_monologue.txt
-todo.md
-_check.js
-
-# Coverage
-.coverage
-coverage.json
-htmlcov/
-
-# Cache
+# HuggingFace cache
 .cache/
-
-# Test scripts
-test_retrain*.py
-test_borrow*.py
-test_borrow*.txt
-run_ai_server_old.py
-start_server.py
-kill_ports.ps1
-fix_api_ports.py
-nul

@@ -55,7 +55,7 @@ class Config:
     # Architecture variants
     activation: str = "swiglu"  # relu | gelu | swiglu
     norm_type: str = "rmsnorm"  # rmsnorm | layernorm
-    pos_encoding: str = "rope"  # learned | rope | alibi_arithmetic | none
+    pos_encoding: str = "rope"  # learned | rope | alibi_arithmetic | abacus | none
 
     # Mixture of Experts (MoE) — replaces FFN with expert routing
     use_moe: bool = False         # Enable MoE layers

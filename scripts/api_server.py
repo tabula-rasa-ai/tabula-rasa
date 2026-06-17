@@ -391,7 +391,7 @@ def run_ewc_stress_test() -> dict:
         return {"status": "error", "message": f"No tokenizer in {op_dir}"}
 
     try:
-        from egefalos.online_ewc import OnlineEWC
+        from tabula_rasa.cl.online_ewc import OnlineEWC
 
         tok = MathTokenizer.load(str(tok_path))
         cfg = Config()
@@ -1193,8 +1193,8 @@ def run_mcts_search(problem: str, sims: int = 32) -> dict:
     if str(_p) not in _sys.path: _sys.path.insert(0, str(_p))
     if str(_p / ".." / "src") not in _sys.path: _sys.path.insert(0, str(_p / ".." / "src"))
     try:
-        from egefalos.mcts import MicroMCTS
-        from egefalos.math_gym_env import MathGymEnv
+        from tabula_rasa.reasoning.mcts import MicroMCTS
+        from tabula_rasa.reasoning.math_gym_env import MathGymEnv
         from tabula_rasa.tokenizer import MathTokenizer
         from tabula_rasa.config import Config
         from tabula_rasa.model import MathTransformer
