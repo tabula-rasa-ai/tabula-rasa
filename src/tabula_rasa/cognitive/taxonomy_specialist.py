@@ -16,19 +16,15 @@ Tokenizer: a-z + A-Z + basic punctuation
 Graduation: Z3 verifies 1,000 generated taxonomies with 0 contradictions
 """
 
-import json
 import random
 import re
-from pathlib import Path
 
 import torch
-import torch.nn.functional as F
 from torch.optim import AdamW
 
-from tabula_rasa.model import MathTransformer, count_parameters
 from tabula_rasa.config import Config
+from tabula_rasa.model import MathTransformer, count_parameters
 from tabula_rasa.tokenizer import MathTokenizer
-
 
 # ═════════════════════════════════════════════════════════════════════
 # TAXONOMY KNOWLEDGE BASE
@@ -227,9 +223,9 @@ def verify_taxonomy_with_z3(taxonomy_text: str) -> dict:
             if category in REVERSE_TAXONOMY or category in TAXONOMY_TREE:
                 # This is a known category
                 result = verifier.verify_trld(
-                    f'[PREMISE: All fruits are food] '
-                    f'[PREMISE: All apples are fruit] '
-                    f'[CONCLUSION: An apple is food]'
+                    '[PREMISE: All fruits are food] '
+                    '[PREMISE: All apples are fruit] '
+                    '[CONCLUSION: An apple is food]'
                 )
                 return result if result else {'valid': None, 'reason': 'Z3 check attempted'}
 

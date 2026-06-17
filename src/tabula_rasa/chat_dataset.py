@@ -15,7 +15,6 @@ from typing import Optional
 
 import torch
 
-
 CHAT_PAIRS = [
     ("Hello!", "Hi there! I'm Tabula Rasa, a helpful AI assistant."),
     ("How are you?", "I'm an AI, so I don't have feelings, but I'm fully operational and ready to help!"),

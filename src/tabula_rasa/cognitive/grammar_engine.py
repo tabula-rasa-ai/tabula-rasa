@@ -16,7 +16,6 @@ scale, acting as the "environment" that rewards grammatical correctness.
 
 import re
 
-
 # ═════════════════════════════════════════════════════════════════════
 # CFG SKELETON — Context-Free Grammar for sentence structure
 # ═════════════════════════════════════════════════════════════════════
@@ -80,7 +79,7 @@ POS_TAGS = {
     'curious': 'ADJ', 'wise': 'ADJ', 'creative': 'ADJ', 'rational': 'ADJ',
     'absolute': 'ADJ', 'good': 'ADJ', 'ripe': 'ADJ', 'eager': 'ADJ',
     'heavy': 'ADJ', 'light': 'ADJ', 'fast': 'ADJ', 'cold': 'ADJ', 'warm': 'ADJ',
-    'deep': 'ADJ', 'big': 'ADJ', 'small': 'ADJ', 'large': 'ADJ', 'tiny': 'ADJ',
+    'deep': 'ADJ', 'big': 'ADJ', 'large': 'ADJ', 'tiny': 'ADJ',
     'beautiful': 'ADJ', 'ugly': 'ADJ', 'happy': 'ADJ', 'sad': 'ADJ',
 
     # Common verbs

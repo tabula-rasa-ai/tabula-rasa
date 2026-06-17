@@ -14,9 +14,7 @@ the model outputs the solution as "x=N" where N is the answer digit.
 
 from __future__ import annotations
 
-import json
 import random
-from pathlib import Path
 from typing import ClassVar
 
 from tabula_rasa.tokenizer import MathTokenizer
@@ -234,7 +232,7 @@ if __name__ == "__main__":
 
     # Test dataset
     ds = AlgebraDataset(num_samples=10, problem_type="mix")
-    print(f"\nAlgebraDataset samples:")
+    print("\nAlgebraDataset samples:")
     for i in range(8):
         p, a = ds[i]
         print(f"  {p:>12} -> {a}")

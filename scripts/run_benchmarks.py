@@ -17,9 +17,7 @@ import argparse
 import json
 import sys
 import time
-from collections import OrderedDict
 from pathlib import Path
-from typing import Any
 
 import torch
 
@@ -264,7 +262,7 @@ def main():
 
     # ── Evaluation benchmarks ──
     if args.eval or (not args.throughput and not args.quick):
-        print(f"\n  Evaluation benchmarks...")
+        print("\n  Evaluation benchmarks...")
         eval_results = bench_evals()
         print(f"\n  {'='*40}")
         for op, data in eval_results.items():

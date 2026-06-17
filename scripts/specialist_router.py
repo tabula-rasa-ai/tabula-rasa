@@ -25,8 +25,8 @@ import sys
 import time
 import urllib.request
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from socketserver import ThreadingMixIn
 from pathlib import Path
+from socketserver import ThreadingMixIn
 from urllib.parse import urlparse
 
 import torch
@@ -34,10 +34,14 @@ import torch
 from tabula_rasa.bpe_tokenizer import BPETokenizer
 from tabula_rasa.config import Config
 from tabula_rasa.model import MathTransformer, count_parameters
-from tabula_rasa.tokenizer import MathTokenizer
 
 # Neural router (Neocortex)
-from tabula_rasa.router.router_model import RouterModel, RouterConfig, INTENT_NAMES, vector_to_intents
+from tabula_rasa.router.router_model import (
+    INTENT_NAMES,
+    RouterModel,
+    vector_to_intents,
+)
+from tabula_rasa.tokenizer import MathTokenizer
 
 # Remote chat server config (GPU machine or local)
 REMOTE_CHAT_URL = os.environ.get("CHAT_SERVER_URL", "http://127.0.0.1:8201")
@@ -68,7 +72,7 @@ def detect_intent(prompt: str) -> str:
         # Map router intents to routing labels
         mapping = {"MATH": "math", "CODE": "code", "MEMORY": "memory", "CHAT": "chat"}
         return mapping.get(intent, "chat")
-    
+
     # Regex fallback
     p = prompt.rstrip("=").strip()
     if MATH_RE.search(p):
@@ -310,7 +314,7 @@ class RemoteChatManager:
             # Test connection
             try:
                 urllib.request.urlopen(f"{self.url}/", timeout=3)
-                print(f"  [*] Remote chat: connected")
+                print("  [*] Remote chat: connected")
                 self._connected = True
             except Exception as e:
                 print(f"  [!] Remote chat: {e}")
@@ -415,7 +419,7 @@ class NeuralRouterManager:
         # Predict
         logits = self.model(input_ids)
         result = vector_to_intents(
-            logits[0], 
+            logits[0],
             multi_label=self.model.config.multi_label,
             threshold=threshold,
         )
@@ -563,7 +567,7 @@ class RouterHandler(BaseHTTPRequestHandler):
 
                 # Use neural router to detect intent
                 intent = detect_intent(question)
-                
+
                 # Math queries go to math specialist
                 if intent == "math" and math_manager and math_manager.loaded_ops:
                     result = math_manager.generate(question, temperature, top_k, max_new_tokens)
@@ -575,7 +579,7 @@ class RouterHandler(BaseHTTPRequestHandler):
                         "time_ms": result.get("time_ms", 0),
                     })
                     return
-                
+
                 # Chat queries go to remote LLM or local chat specialist
                 if remote_chat and remote_chat.loaded:
                     result = remote_chat.generate(question, temperature, top_k, max_new_tokens)

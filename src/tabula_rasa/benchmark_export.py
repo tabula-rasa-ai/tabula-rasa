@@ -232,7 +232,7 @@ def full_export(model: Any, tokenizer: Any, output_dir: str | Path = "exports",
     print(f"  Generated {len(problems)} problems")
 
     # Evaluate
-    print(f"  Evaluating model...")
+    print("  Evaluating model...")
     t0 = time.time()
     results = evaluate_proofgrid(model, tokenizer, problems, verbose=False)
     elapsed = time.time() - t0
@@ -240,7 +240,7 @@ def full_export(model: Any, tokenizer: Any, output_dir: str | Path = "exports",
     print(f"  Accuracy: {correct}/{len(results)} = {correct/max(len(results),1)*100:.1f}% ({elapsed:.1f}s)")
 
     # Export
-    print(f"\n  Exporting...")
+    print("\n  Exporting...")
     exports = {}
 
     pg_path = output_dir / "proofgrid_results.json"

@@ -5,7 +5,6 @@ then generates similar edge cases to compose a targeted curriculum.
 """
 
 import random
-from typing import Optional
 
 
 def evaluate_find_failures(model, tokenizer, cfg, op: str, num: int = 100) -> list[str]:
@@ -32,8 +31,7 @@ def evaluate_find_failures(model, tokenizer, cfg, op: str, num: int = 100) -> li
 
 def _basic_failure_scan(model, tokenizer, cfg, op: str, num: int) -> list[str]:
     """Basic failure scanner when evaluate_detailed is not available."""
-    import torch
-    from train_specialist import generate_problem, OPS
+    from train_specialist import OPS
 
     failures = []
     op_fn = OPS[op]

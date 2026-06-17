@@ -129,7 +129,7 @@ def task_arithmetic_merge(
 def evaluate_merged(model: MathTransformer, tokenizer: MathTokenizer, ops: list[str],
                     num: int = 100) -> dict:
     """Evaluate the merged model on multiple operations."""
-    from train_specialist import generate_problem, parse_scratchpad_answer, parse_cot_answer
+    from train_specialist import generate_problem, parse_cot_answer
 
     model.eval()
     results = {}
@@ -205,7 +205,7 @@ def main():
 
     if not args.eval_only:
         print(f"\n{'='*60}")
-        print(f"  Task Arithmetic Merge")
+        print("  Task Arithmetic Merge")
         print(f"  Operations: {', '.join(args.ops)}")
         print(f"  Lambdas:    {lambdas}")
         print(f"  TIES top-k: {args.ties or 'disabled'}")
@@ -241,7 +241,7 @@ def main():
         merged_model.load_state_dict(ckpt["model_state_dict"], strict=False)
         merged_model.to(device)
 
-        print(f"\n  Evaluating merged model...")
+        print("\n  Evaluating merged model...")
         results = evaluate_merged(merged_model, tok, args.ops, num=50)
         for op, acc in results.items():
             print(f"    {op}: {acc:.1f}%")

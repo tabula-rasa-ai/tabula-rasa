@@ -1,6 +1,7 @@
-import fitz
-import os
 import glob
+import os
+
+import fitz
 
 research_dir = r"C:\Users\Admin\tabula-rasa\Research"
 print(f"Research dir exists: {os.path.isdir(research_dir)}")

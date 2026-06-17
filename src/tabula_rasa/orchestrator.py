@@ -23,13 +23,10 @@ Usage:
 from __future__ import annotations
 
 import json
-import math as _math
-import random
 import re
 import time
 import urllib.request
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, Callable
 
 
@@ -368,7 +365,7 @@ class PreparedSlateOrchestrator:
                     # Keep as best-so-far if we haven't found anything better
                     if best is None or result.confidence > best.confidence:
                         best = result
-            except Exception as e:
+            except Exception:
                 continue
 
         if best is None:
@@ -466,7 +463,7 @@ def run_server(port: int = 8400, **orchestrator_kwargs: Any) -> None:
 
     server = ThreadedServer(("0.0.0.0", port), Handler)
     print(f"[Orchestrator] Server on http://localhost:{port}")
-    print(f"[Orchestrator] Endpoints: /health, /answer, /stats")
+    print("[Orchestrator] Endpoints: /health, /answer, /stats")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

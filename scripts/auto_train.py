@@ -28,14 +28,14 @@ import time
 from pathlib import Path
 
 import torch
-
-from tabula_rasa.config import Config
-from tabula_rasa.model import MathTransformer, count_parameters
-from tabula_rasa.tokenizer import MathTokenizer
 from egefalos.hard_negative_mining import (
     evaluate_find_failures,
     generate_hard_negatives,
 )
+
+from tabula_rasa.config import Config
+from tabula_rasa.model import MathTransformer
+from tabula_rasa.tokenizer import MathTokenizer
 from train_specialist import (
     _INTERRUPTED,
     OP_NAMES,
@@ -165,7 +165,6 @@ def auto_train(ops=None, target=50.0, budget=50000, rounds=5, deep=False, test_h
         deep: Use deeper model architecture
         test_hard: Test on max_digits+1
     """
-    from train_specialist import _INTERRUPTED
 
     if ops is None:
         ops = list(OPS.keys())
@@ -183,7 +182,7 @@ def auto_train(ops=None, target=50.0, budget=50000, rounds=5, deep=False, test_h
 
     for round_num in range(1, rounds + 1):
         if _INTERRUPTED:
-            print(f"\n  Interrupted by user. Stopping.")
+            print("\n  Interrupted by user. Stopping.")
             break
 
         if total_steps_used >= budget:
@@ -199,7 +198,7 @@ def auto_train(ops=None, target=50.0, budget=50000, rounds=5, deep=False, test_h
         weak_ops = {op: acc for op, acc in accuracies.items() if acc < target}
 
         if not weak_ops:
-            print(f"\n  ALL OPERATIONS AT OR ABOVE TARGET!")
+            print("\n  ALL OPERATIONS AT OR ABOVE TARGET!")
             break
 
         # Sort by ascending accuracy — train weakest first
@@ -248,7 +247,7 @@ def auto_train(ops=None, target=50.0, budget=50000, rounds=5, deep=False, test_h
             # Check if checkpoint architecture matches current config
             matches = _checkpoint_matches_config(weakest_op, Config())
             if not matches:
-                print(f"  [!] Checkpoint architecture mismatch — starting fresh")
+                print("  [!] Checkpoint architecture mismatch — starting fresh")
                 resume = False
             else:
                 resume = weakest_acc > 5  # Only resume if it learned something
@@ -287,7 +286,7 @@ def auto_train(ops=None, target=50.0, budget=50000, rounds=5, deep=False, test_h
 
     # ── Final evaluation ──
     print(f"\n{"="*60}")
-    print(f"  FINAL ACCURACIES")
+    print("  FINAL ACCURACIES")
     print(f"{"="*60}\n")
 
     final_acc = quick_eval_all(ops, tok)
@@ -300,7 +299,7 @@ def auto_train(ops=None, target=50.0, budget=50000, rounds=5, deep=False, test_h
 
     # Print training history
     if history:
-        print(f"\n  Training History:")
+        print("\n  Training History:")
         for h in history:
             op_name = OP_NAMES[h["trained_op"]]
             print(

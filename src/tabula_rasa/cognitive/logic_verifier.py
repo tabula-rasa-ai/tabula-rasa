@@ -21,7 +21,7 @@ Usage:
     v.score_debate_argument("All humans are mortal and Socrates is human therefore...")
 """
 
-import re, sys
+import re
 
 try:
     from z3 import *
@@ -714,6 +714,6 @@ if __name__ == '__main__':
 
     print(f'\n  Stats: {v.get_stats()}')
     print(f'\n{"=" * 60}')
-    print(f'  TRLD is now the primary mode. The free-text heuristic')
-    print(f'  (the "Honest Caveat") now auto-detects TRLD and upgrades.')
+    print('  TRLD is now the primary mode. The free-text heuristic')
+    print('  (the "Honest Caveat") now auto-detects TRLD and upgrades.')
     print(f'{"=" * 60}')

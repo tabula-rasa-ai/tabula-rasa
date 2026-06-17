@@ -16,8 +16,6 @@ Usage:
 """
 
 import argparse
-import os
-import signal
 import subprocess
 import sys
 import time
@@ -150,9 +148,9 @@ def main():
         print(f"  ║  LLM          : http://localhost:{args.port_llm:<4}           ║")
     print("  ║                                            ║")
     print("  ║  Endpoints:                                ║")
-    print(f"  ║    POST /ask   — prepared slate            ║")
-    print(f"  ║    POST /generate — raw model               ║")
-    print(f"  ║    POST /train  — fine-tune                 ║")
+    print("  ║    POST /ask   — prepared slate            ║")
+    print("  ║    POST /generate — raw model               ║")
+    print("  ║    POST /train  — fine-tune                 ║")
     print("  ║                                            ║")
     print("  ║  Press Ctrl+C to stop all services.        ║")
     print("  ╚══════════════════════════════════════════════╝")

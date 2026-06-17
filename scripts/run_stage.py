@@ -115,9 +115,9 @@ def main():
     batch = args.batch
     lr = args.lr
 
-    print(f"\n  ╔══════════════════════════════════════════╗")
+    print("\n  ╔══════════════════════════════════════════╗")
     print(f'  ║  STAGE {stage}: {info["name"]:<23s}║')
-    print(f"  ╚══════════════════════════════════════════╝")
+    print("  ╚══════════════════════════════════════════╝")
     print(f"  Steps: {steps} | Batch: {batch} | LR: {lr}")
     print(f'  Specialist: {info["specialist"]}')
     print(f'  Directory: {info["dir"]}')

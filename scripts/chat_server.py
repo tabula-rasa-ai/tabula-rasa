@@ -6,8 +6,11 @@ Usage:
     pip install torch transformers
     python3 chat_server.py
 """
-import sys, json, torch, time
-from http.server import HTTPServer, BaseHTTPRequestHandler
+import json
+import time
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
+import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 MODEL_NAME = "meta-llama/Llama-3.2-1B-Instruct"

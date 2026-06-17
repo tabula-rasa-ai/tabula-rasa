@@ -12,21 +12,19 @@ Sleep Cycle Integration:
 The curriculum is progressive: each stage unlocks when the previous is mastered.
 """
 
-import json
 import random
 import time
-from pathlib import Path
-from enum import Enum
 
 import torch
 from torch.optim import AdamW
 
 from tabula_rasa.cognitive.code_specialist import (
-    CodeAlphaZero, DevelopmentStage, ALGORITHM_PROBLEMS,
-    PYTHON_PROGRAMS, check_syntax,
+    ALGORITHM_PROBLEMS,
+    PYTHON_PROGRAMS,
+    CodeAlphaZero,
+    DevelopmentStage,
+    check_syntax,
 )
-from tabula_rasa.cognitive.code_sandbox import PythonEnvironment
-
 
 # ═════════════════════════════════════════════════════════════════════
 # CURRICULUM PROGRESSION
@@ -361,7 +359,7 @@ def full_code_training_session(model, tokenizer,
     # ── Summary ──
     print()
     print(f'  {"="*50}')
-    print(f'  Code Training Summary')
+    print('  Code Training Summary')
     print(f'  {"="*50}')
     for stage, results in all_results.items():
         print(f'  {stage}:')
@@ -385,7 +383,7 @@ def pythagorean_code_review(code_history: list) -> dict:
     Q2: What have I done? — Code quality + refactoring assessment
     Q3: What duty is neglected? — Library/algorithm gaps in knowledge
     """
-    from tabula_rasa.cognitive.code_sandbox import has_dangerous_imports, check_syntax
+    from tabula_rasa.cognitive.code_sandbox import check_syntax, has_dangerous_imports
 
     review = {
         'transgressions': [],

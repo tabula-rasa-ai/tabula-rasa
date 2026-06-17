@@ -11,17 +11,12 @@ This mirrors the human neocortex: slow consolidation of patterns
 and rules from daily experiences into permanent knowledge.
 """
 
-import sys, json, math, time, random
+import random
+import sys
 from pathlib import Path
+
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 from torch.optim import AdamW
-
-from tabula_rasa.config import Config
-from tabula_rasa.tokenizer import MathTokenizer
-from tabula_rasa.model import MathTransformer
-
 
 # ─── Online Elastic Weight Consolidation (EWC) ────────────────────
 # Online EWC (Schwarz et al., 2018) merges all past-task Fisher matrices
@@ -157,8 +152,9 @@ def build_replay_loader(examples: list[dict], tokenizer, batch_size=32, max_seq_
             learned merges). No-op on base MathTokenizer.
     """
     import random as _random
+
     import torch
-    from torch.utils.data import Dataset, DataLoader
+    from torch.utils.data import DataLoader, Dataset
 
     class ReplayDataset(Dataset):
         def __init__(self, examples, tokenizer, max_seq_len):
@@ -279,10 +275,14 @@ def full_sleep_cycle(model, tokenizer, skill_dir: str = None, lambda_ewc=1000.0,
         lambda_ewc: Strength of EWC penalty.
         gamma: Fisher merge decay — how much to down-weight old Fisher.
     """
-    from tabula_rasa.memory.hippocampus import get_unconsolidated, get_old_memories, mark_consolidated
+    from tabula_rasa.memory.hippocampus import (
+        get_old_memories,
+        get_unconsolidated,
+        mark_consolidated,
+    )
 
     print(f'\n{"=" * 60}')
-    print(f'  Sleep Cycle — Neocortex Consolidation (Online EWC)')
+    print('  Sleep Cycle — Neocortex Consolidation (Online EWC)')
     print(f'{"=" * 60}')
 
     # Step 1: Get new experiences

@@ -7,16 +7,16 @@ and trains on the self-generated Q&A pairs.
 This bootstraps foundational vocabulary and understanding.
 """
 
-import sys, json, re, math, random
+import random
+import re
 from pathlib import Path
+
 import torch
-import torch.nn as nn
 from torch.optim import AdamW
 
 from tabula_rasa.config import Config
-from tabula_rasa.tokenizer import MathTokenizer
 from tabula_rasa.model import MathTransformer, count_parameters
-
+from tabula_rasa.tokenizer import MathTokenizer
 
 # ─── Expanded Tokenizer for Language ─────────────────────────────────
 
@@ -198,7 +198,7 @@ def train_curious_toddler(model, tokenizer, documents: list[str],
             all_pairs.extend(pairs)
 
         if not all_pairs:
-            print(f'    No Q&A pairs generated')
+            print('    No Q&A pairs generated')
             continue
 
         # Take top pairs
@@ -263,7 +263,7 @@ if __name__ == '__main__':
     total = train_curious_toddler(model, tok, docs, cycles=3, pairs_per_cycle=5)
 
     print(f'\n{"=" * 60}')
-    print(f'  Curious Toddler training complete!')
+    print('  Curious Toddler training complete!')
     print(f'  Total Q&A pairs learned: {total}')
-    print(f'  Tokenizer saved to: checkpoints/lang_tokenizer.json')
+    print('  Tokenizer saved to: checkpoints/lang_tokenizer.json')
     print(f'{"=" * 60}')

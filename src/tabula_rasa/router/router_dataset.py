@@ -14,10 +14,8 @@ Categories:
 from __future__ import annotations
 
 import json
-import math
 import random
 from pathlib import Path
-from typing import Optional
 
 # ─── Intent definitions (matches router_model.py) ─────────────────
 

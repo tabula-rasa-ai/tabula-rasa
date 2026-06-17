@@ -12,7 +12,7 @@ class TestConfigDefaults:
         assert cfg.n_layers == 4
         assert cfg.n_heads == 4
         assert cfg.d_ff == 512
-        assert cfg.max_seq_len == 256, f"Expected 256 (bumped for long context), got {cfg.max_seq_len}"
+        assert cfg.max_seq_len == 256, f"Expected 256, got {cfg.max_seq_len}"
         assert cfg.dropout == 0.1
 
     def test_training_defaults(self, cfg):

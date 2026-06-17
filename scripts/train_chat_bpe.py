@@ -1,5 +1,10 @@
 """Learn BPE merges from chat text and train a chat specialist with subword tokens."""
-import os, sys, time, torch
+import os
+import sys
+import time
+
+import torch
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from tabula_rasa.bpe_tokenizer import BPETokenizer

@@ -14,7 +14,10 @@ Usage:
     python3 scripts/cl_comparison.py --steps 200  # Full comparison
 """
 
-import sys, os, time, json, argparse
+import argparse
+import json
+import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -23,23 +26,22 @@ sys.path.insert(0, str(ROOT))
 
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader
+from egefalos.lwf_gem import GEM, LwF
+from egefalos.ogd import OGD
+from egefalos.online_ewc import OnlineEWC
 from torch.optim import AdamW
+from torch.utils.data import DataLoader
 
 from tabula_rasa.config import Config
+from tabula_rasa.model import MathTransformer
 from tabula_rasa.tokenizer import MathTokenizer
-from tabula_rasa.model import MathTransformer, count_parameters
-from tabula_rasa.dataset import generate_problem, generate_test_set
-from egefalos.online_ewc import OnlineEWC
-from egefalos.ogd import OGD
-from egefalos.lwf_gem import LwF, GEM
-
 
 # ─── Task Data ───────────────────────────────────────────────
 
 def make_dataset(op: str, num_samples: int = 200, max_digits: int = 2):
     """Generate a dataset for a given operation."""
     import random
+
     from tabula_rasa.tokenizer import MathTokenizer
     tok = MathTokenizer()
 
@@ -209,7 +211,7 @@ def compare_methods(steps: int = 50, task1: str = 'add', task2: str = 'sub',
     all_results = []
 
     print(f"\n{'='*70}")
-    print(f"  CONTINUAL LEARNING BENCHMARK")
+    print("  CONTINUAL LEARNING BENCHMARK")
     print(f"  Task 1: {task1.upper()}  →  Task 2: {task2.upper()}")
     print(f"  Steps per task: {steps}")
     print(f"{'='*70}")
@@ -235,7 +237,7 @@ def compare_methods(steps: int = 50, task1: str = 'add', task2: str = 'sub',
 
     # ── Results Table ──
     print(f"\n{'='*70}")
-    print(f"  RESULTS: Continual Learning Methods Comparison")
+    print("  RESULTS: Continual Learning Methods Comparison")
     print(f"{'='*70}")
     print(f"  {'Method':<8} {'Before':<10} {'After':<10} {'Forget':<10} {'Task2':<10} {'Time':<8}")
     print(f"  {'-'*6} {'-'*8} {'-'*8} {'-'*8} {'-'*8} {'-'*6}")

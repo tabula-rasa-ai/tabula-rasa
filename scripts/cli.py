@@ -14,7 +14,6 @@ Usage:
 """
 
 import argparse
-import json
 import os
 import sys
 import time
@@ -84,7 +83,7 @@ def cmd_benchmark(args):
         print("No checkpoint specified or found.")
         sys.exit(1)
     print(f"Running benchmark on {ckpt}...")
-    from tabula_rasa.eval import load_model, full_benchmark
+    from tabula_rasa.eval import full_benchmark, load_model
     model, tok = load_model(ckpt)
     results = full_benchmark(model, tok, train_max_digits=args.digits, verbose=True)
     if args.save:
@@ -106,8 +105,8 @@ def cmd_probe(args):
         print("No checkpoint specified or found.")
         sys.exit(1)
     print(f"Running linguistic probe on {ckpt}...")
-    from tabula_rasa.probe import full_probe
     from tabula_rasa.eval import load_model
+    from tabula_rasa.probe import full_probe
     model, tok = load_model(ckpt)
     full_probe(model, tok, visualize=True)
 
@@ -125,7 +124,7 @@ def cmd_export(args):
 
 
 def cmd_experiments(args):
-    from tabula_rasa.experiments import print_runs, list_runs, compare_runs, export_csv
+    from tabula_rasa.experiments import compare_runs, export_csv, list_runs, print_runs
     runs = list_runs(limit=args.limit)
     print_runs(runs)
     if args.compare and len(runs) >= 2:

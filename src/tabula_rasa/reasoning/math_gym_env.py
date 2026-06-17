@@ -30,23 +30,20 @@ Usage:
         obs, reward, terminated, truncated, info = env.step(action)
 """
 
-import math
 import random
-from typing import Any, Optional
+from typing import Optional
 
 import torch
-import torch.nn.functional as F
 
 from tabula_rasa.config import Config
-from tabula_rasa.tokenizer import MathTokenizer
-from tabula_rasa.model import MathTransformer
 from tabula_rasa.math_parser import (
-    parse_expression,
     evaluate,
+    parse_expression,
     verify_equation,
     verify_scratchpad,
-    OPS,
 )
+from tabula_rasa.model import MathTransformer
+from tabula_rasa.tokenizer import MathTokenizer
 
 try:
     import gymnasium as gym
@@ -467,7 +464,14 @@ class MathGymEnv:
             List of training examples: {state, policy, value, expression, scratchpad}
         """
         try:
-            from tabula_rasa.reasoning.mcts import micro_mcts_search, MCTSNode, select, expand, rollout, backup
+            from tabula_rasa.reasoning.mcts import (
+                MCTSNode,
+                backup,
+                expand,
+                micro_mcts_search,
+                rollout,
+                select,
+            )
         except ImportError:
             print("[!] egefalos.mcts not available — install or check PYTHONPATH")
             return []
@@ -606,8 +610,8 @@ def main():
     args = parser.parse_args()
 
     from pathlib import Path
+
     import torch
-    from tabula_rasa.config import Config
 
     # Load model
     ckpt = Path("specialists/math/add/best.pt")

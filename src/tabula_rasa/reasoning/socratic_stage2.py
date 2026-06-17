@@ -6,15 +6,15 @@ learns to anticipate counter-arguments and self-correct.
 This mirrors Plato's dialectic method: thesis → antithesis → synthesis.
 """
 
-import sys, json, random, time
+import sys
 from pathlib import Path
+
 import torch
 from torch.optim import AdamW
 
 from tabula_rasa.config import Config
+from tabula_rasa.model import MathTransformer
 from tabula_rasa.tokenizer import MathTokenizer
-from tabula_rasa.model import MathTransformer, count_parameters
-
 
 CRITIC_PROMPT = "Find the logical flaw, missing premise, or contradiction in the following statement:"
 

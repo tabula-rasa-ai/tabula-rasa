@@ -157,7 +157,7 @@ def main():
 
     print(f"Extracted {len(pairs)} DPO preference pairs")
     print(f"Output: {args.output}")
-    print(f"\nSample pair:")
+    print("\nSample pair:")
     print(json.dumps(pairs[0], indent=2))
 
 

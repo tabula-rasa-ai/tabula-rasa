@@ -22,14 +22,16 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 
-from src.tabula_rasa.config import Config
 from src.tabula_rasa.bpe_tokenizer import BPETokenizer
-from tabula_rasa.router.router_model import RouterModel, RouterConfig, count_router_params, INTENT_NAMES
+from tabula_rasa.cl.online_ewc import OnlineEWC
 from tabula_rasa.router.router_hippocampus import (
     get_router_consolidation_data,
     get_router_surprise_experiences,
 )
-from tabula_rasa.cl.online_ewc import OnlineEWC
+from tabula_rasa.router.router_model import (
+    RouterModel,
+    count_router_params,
+)
 
 
 def consolidate_router_sleep(
@@ -78,7 +80,7 @@ def consolidate_router_sleep(
     }
 
     print(f"\n{'='*60}")
-    print(f"  ROUTER SLEEP CYCLE — Nuance Consolidation")
+    print("  ROUTER SLEEP CYCLE — Nuance Consolidation")
     print(f"  Device: {device}")
     print(f"{'='*60}")
 

@@ -18,15 +18,14 @@ Usage:
     # -> "What is 168?"
 """
 
-import ast
 import math
 import random
 import re
 import time
-from typing import Any, Callable, Optional
+from typing import Any, Optional
 
-from tabula_rasa.math_parser import evaluate as math_eval, parse_expression
-
+from tabula_rasa.math_parser import evaluate as math_eval
+from tabula_rasa.math_parser import parse_expression
 
 # ═══════════════════════════════════════════════════════════════════
 # Tool Definitions

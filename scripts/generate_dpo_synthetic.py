@@ -6,8 +6,6 @@ where the rejected trace has a column error and the chosen trace is correct.
 
 import json
 import random
-import sys
-from pathlib import Path
 
 
 def _gen_problem(max_digits=1):
@@ -105,7 +103,7 @@ def main():
     print(f"Generated {len(pairs)} DPO preference pairs")
     print(f"Output: {args.output}")
     print(f"Valid chosen traces: {correct_count}/{len(pairs)}")
-    print(f"\nSample:")
+    print("\nSample:")
     print(json.dumps(pairs[0], indent=2))
 
 

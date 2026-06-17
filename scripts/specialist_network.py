@@ -23,12 +23,10 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 import json
 import os
-import shutil
 import socket
 import subprocess
 import sys
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 
 SPECIALISTS_DIR = Path("specialists")
@@ -189,7 +187,7 @@ def assign_skills():
         ("Worker 3", ["math/mul"]),
         ("Worker 4", ["math/div"]),
     ]
-    print(f"\nSkill Assignments:")
+    print("\nSkill Assignments:")
     print(f'{"Computer":<20} {"Skill":<20} {"Est. Time":<12}')
     print("-" * 52)
     for machine, skills in machines:
@@ -210,7 +208,7 @@ def sync_from_share(share_path: str):
     zips = list(share.glob("specialist_*.zip"))
     if not zips:
         print(f"[*] No specialist zips found in {share}")
-        print(f"    Place files like: specialist_math_subtraction.zip")
+        print("    Place files like: specialist_math_subtraction.zip")
         return
 
     for zf in zips:
@@ -357,7 +355,7 @@ def work_on(skill: str, share_path: str = None):
     # ── Final heartbeat ──
     if result.returncode == 0:
         write_heartbeat(skill, "done", share_path or ".")
-        print(f"\n[*] Training complete! Exporting...")
+        print("\n[*] Training complete! Exporting...")
         export_cmd = [sys.executable, "export_specialist.py", skill]
         write_heartbeat(skill, "exporting", share_path or ".")
         subprocess.run(export_cmd)

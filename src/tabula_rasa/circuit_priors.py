@@ -6,7 +6,7 @@ so the model doesn't have to learn basic operations from scratch.
 
 For arithmetic, this provides strong inductive bias:
   - CarryDetector: AND-like — both digits >= 5 trigger carry
-  - BorrowDetector: XOR-like — a_digit < b_digit triggers borrow  
+  - BorrowDetector: XOR-like — a_digit < b_digit triggers borrow
   - DigitComparator: returns which operand is larger
   - Incrementer: adds 1 (for handling carries)
   - ColumnSummer: a + b + carry_in → digit_out, carry_out
@@ -22,13 +22,9 @@ Usage:
 
 from __future__ import annotations
 
-import math
-from typing import Any
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
 
 # ═══════════════════════════════════════════════════════════════════════
 #  Individual Circuit Primitives

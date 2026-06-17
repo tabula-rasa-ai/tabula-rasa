@@ -1,7 +1,13 @@
 """Minimal API server — serves router predictions + math via specialist."""
-import sys, os, json, time, torch
+import json
+import os
+import sys
+import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+
+import torch
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
@@ -15,8 +21,9 @@ def load_router():
     global _router, _tok
     if _router is not None:
         return _router, _tok
+    from egefalos.router_model import RouterModel
+
     from src.tabula_rasa.bpe_tokenizer import BPETokenizer
-    from egefalos.router_model import RouterModel, INTENT_NAMES
     rpath = Path("checkpoints/router")
     if (rpath / "best.pt").exists() and (rpath / "tokenizer.json").exists():
         _tok = BPETokenizer.load(str(rpath / "tokenizer.json"))

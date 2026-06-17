@@ -13,13 +13,11 @@ This is the "High Surprise Routing" mechanism:
 
 from __future__ import annotations
 
-import time
-from pathlib import Path
 from typing import Optional
 
 import torch
 
-from tabula_rasa.router.router_model import RouterModel, INTENT_NAMES, vector_to_intents
+from tabula_rasa.router.router_model import INTENT_NAMES, RouterModel, vector_to_intents
 
 
 def route_with_hippocampus(

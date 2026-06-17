@@ -2,16 +2,13 @@
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
-import pytest
-
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from tabula_rasa.bpe_tokenizer import BPETokenizer, learn_from_verified_log, log_verified_output
-from tabula_rasa.text_dataset import TextReversalDataset, evaluate_reversal
+from tabula_rasa.bpe_tokenizer import BPETokenizer
+from tabula_rasa.text_dataset import TextReversalDataset
 
 
 class TestBPETokenizer:
@@ -131,7 +128,6 @@ class TestTextTrainingPipeline:
 
     def test_reversal_model_creation(self, tmp_path):
         """Create a tiny model and verify it can process text reversal."""
-        import torch
 
         from tabula_rasa.bpe_tokenizer import BPETokenizer
         from tabula_rasa.config import Config
@@ -154,7 +150,6 @@ class TestTextTrainingPipeline:
 
         # Generate a simple problem
         prompt = "ab="
-        expected = "ba"
         output = model.generate(tok, prompt, max_new_tokens=5, temperature=0.0)
         assert isinstance(output, str)
         assert len(output) > 0

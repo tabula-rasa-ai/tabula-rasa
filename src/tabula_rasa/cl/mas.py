@@ -23,9 +23,10 @@ Usage:
     loss = task_loss + mas.compute_penalty(model)
 """
 
+from typing import Dict, Optional
+
 import torch
 import torch.nn as nn
-from typing import Dict, Optional, Union
 
 
 class MAS:
@@ -422,13 +423,13 @@ class MAS:
 
 def main():
     """Test MAS with a small model."""
-    import sys
     import os
+    import sys
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+    from torch.utils.data import DataLoader, TensorDataset
+
     from tabula_rasa.config import Config
-    from tabula_rasa.tokenizer import MathTokenizer
     from tabula_rasa.model import MathTransformer
-    from torch.utils.data import TensorDataset, DataLoader
 
     print("MAS -- Quick Test")
     print("=" * 50)

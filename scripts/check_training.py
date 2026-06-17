@@ -2,7 +2,11 @@
 Usage: python3 scripts/check_training.py
        python3 scripts/check_training.py --watch   (poll every 60s)
 """
-import sys, os, re, time
+import os
+import re
+import sys
+import time
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 LOG_PATH = 'specialists/math/add/training.log'
@@ -23,12 +27,12 @@ def read_log():
         return None, None, None, None, None
     with open(LOG_PATH) as f:
         text = f.read()
-    
+
     # Parse only current run (max_steps=50000)
     steps, losses, accs = [], [], []
     best_acc = None
     latest_step, latest_loss, latest_speed = 0, None, None
-    
+
     for line in text.split('\n'):
         m = re.search(r'Step\s+(\d+)/(\d+).*?loss=([\d.]+)', line)
         if m:
@@ -51,14 +55,14 @@ def read_log():
             if best_acc is None or best > best_acc:
                 best_acc = best
             accs.append((latest_step, acc))
-    
+
     return latest_step, latest_loss, best_acc, latest_speed, (steps, losses, accs)
 
 def check_health(step, loss, best_acc, speed):
     """Return (status, message, color) where status is 'good', 'warn', or 'bad'."""
     if step is None or step == 0:
         return 'wait', 'No training data yet. First log at step 500.', '\033[90m'
-    
+
     # Find current milestone
     current_milestone = None
     next_milestone = None
@@ -68,13 +72,13 @@ def check_health(step, loss, best_acc, speed):
         if i + 1 < len(MILESTONES) and step < MILESTONES[i+1][0]:
             next_milestone = MILESTONES[i+1]
             break
-    
+
     # Check loss vs expected
     if current_milestone:
         exp_loss = current_milestone[1]
         exp_acc = current_milestone[2]
         name = current_milestone[3]
-        
+
         if loss is not None and loss > exp_loss * 2:
             return 'bad', f'Loss {loss:.4f} is much higher than expected {exp_loss:.2f} at step {step}. Check data format.', '\033[91m'
         elif loss is not None and loss > exp_loss * 1.3:
@@ -88,18 +92,18 @@ def check_health(step, loss, best_acc, speed):
                 eta_secs = remaining_steps / speed
                 eta = f' | Next milestone in {eta_secs/3600:.1f}h'
             return 'good', f'On track. Step {step} | Loss {loss:.4f} | Best {best_acc}%{eta}', '\033[92m'
-    
+
     return 'info', f'Step {step} | Loss {loss} | Processing...', '\033[94m'
 
 def check_once():
     step, loss, best_acc, speed, _ = read_log()
     status, msg, color = check_health(step, loss, best_acc, speed)
-    
+
     # Color legend
     icons = {'good': '[OK]', 'warn': '[!]', 'bad': '[X]', 'wait': '[...]', 'info': '[i]'}
-    
+
     print(f'{color}{icons[status]} {msg}\033[0m')
-    
+
     # Show speed and progress bar
     if step and step > 0:
         pct = step / CURRENT_RUN_MAX_STEPS * 100
@@ -112,7 +116,7 @@ def check_once():
             remaining = (CURRENT_RUN_MAX_STEPS - step) / speed
             eta = f' | ETA: {remaining/3600:.1f}h'
         print(f'  [{bar}] {pct:.0f}% | {speed_str}{eta}')
-    
+
     return status
 
 def watch(interval=60):

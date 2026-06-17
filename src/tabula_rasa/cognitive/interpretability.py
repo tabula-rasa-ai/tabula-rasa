@@ -25,7 +25,7 @@ try:
 except ImportError:
     captum = None  # type: ignore[assignment]
 
-#  Helpers 
+#  Helpers
 
 def _get_embedding_layer(model: nn.Module) -> nn.Embedding:
     """Return the token embedding layer from a MathTransformer."""
@@ -48,14 +48,14 @@ def _forward_wrapper(
 ) -> Callable:
     """Wrap model.forward so it returns logits for a single target position."""
     def wrapped(input_ids: torch.Tensor) -> torch.Tensor:
-        # Captum passes the original token IDs here. 
+        # Captum passes the original token IDs here.
         # We MUST call the embedding layer so Captum's hook can intercept it!
         x = model.token_embedding(input_ids)
-        
+
         # Ensure float — Captum hooks can produce non-float intermediates
         if x.dtype != torch.float32 and x.dtype != torch.float64:
             x = x.float()
-        
+
         # Pass through each transformer block
         for layer in model.layers:
             x, _ = layer(x)
@@ -70,14 +70,14 @@ def _forward_wrapper(
 
         if target_id is not None:
             return last_logits[:, target_id].sum().view(-1)
-        
+
         # Default: argmax
         pred_id = last_logits.argmax(dim=-1)
         return last_logits.gather(1, pred_id.unsqueeze(1)).sum().view(-1)
 
     return wrapped
 
-#  Public API 
+#  Public API
 
 def analyze_prediction(
     model: nn.Module,
@@ -163,7 +163,7 @@ def visualize_attention(
         def hook(module, inputs, output):
             hidden = inputs[0]  # (batch, seq_len, d_model)
             b, sl, _ = hidden.shape
-            
+
             q = module.wq(hidden).view(b, sl, module.n_heads, module.head_dim).transpose(1, 2)
             k = module.wk(hidden).view(b, sl, module.n_heads, module.head_dim).transpose(1, 2)
 
@@ -175,7 +175,7 @@ def visualize_attention(
 
             scale = module.head_dim ** -0.5
             attn_scores = torch.matmul(q, k.transpose(-2, -1)) * scale
-            
+
             # Causal mask
             causal = torch.tril(torch.ones(sl, sl, device=hidden.device)).view(1, 1, sl, sl)
             attn_scores = attn_scores.masked_fill(causal == 0, float("-inf"))
@@ -203,7 +203,7 @@ def visualize_attention(
         if not attn_list:
             continue
         attn = attn_list[-1]  # (1, n_heads, seq_len, seq_len)
-        n_heads = attn.size(1) 
+        n_heads = attn.size(1)
         head_dict: dict[str, list[list[float]]] = {}
         for h in range(n_heads):
             mat = attn[0, h].tolist()  # (seq_len, seq_len)

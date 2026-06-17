@@ -14,44 +14,43 @@ import json
 import math
 import random
 import re
-import time
-from pathlib import Path
-from typing import Optional, List, Tuple, Dict, Set
 from collections import Counter
+from pathlib import Path
+from typing import List, Optional, Set, Tuple
 
 # ─── Configuration & Constants ─────────────────────────────────────
 
 STOPWORDS: Set[str] = {
-    'what', 'is', 'are', 'was', 'were', 'the', 'a', 'an', 'to', 'of', 'in', 
-    'for', 'on', 'with', 'at', 'by', 'from', 'as', 'into', 'through', 'during', 
-    'before', 'after', 'above', 'below', 'between', 'out', 'off', 'over', 'under', 
-    'again', 'further', 'then', 'once', 'here', 'there', 'when', 'where', 'why', 
-    'how', 'all', 'any', 'both', 'each', 'few', 'more', 'most', 'other', 'some', 
-    'such', 'no', 'nor', 'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very', 
-    'can', 'will', 'just', 'should', 'now', 'do', 'does', 'did', 'tell', 'me', 
+    'what', 'is', 'are', 'was', 'were', 'the', 'a', 'an', 'to', 'of', 'in',
+    'for', 'on', 'with', 'at', 'by', 'from', 'as', 'into', 'through', 'during',
+    'before', 'after', 'above', 'below', 'between', 'out', 'off', 'over', 'under',
+    'again', 'further', 'then', 'once', 'here', 'there', 'when', 'where', 'why',
+    'how', 'all', 'any', 'both', 'each', 'few', 'more', 'most', 'other', 'some',
+    'such', 'no', 'nor', 'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very',
+    'can', 'will', 'just', 'should', 'now', 'do', 'does', 'did', 'tell', 'me',
     'about', 'give', 'you', 'your', 'i', 'my', 'mine', 'it', 'its', 'we', 'our'
 }
 
 TEMPLATE_GENERATORS = {
     'definition_question': {
         'templates': [
-            "What is {topic}?", "What are {topic}?", "Define {topic}.", 
-            "Explain {topic}.", "Tell me about {topic}.", "Describe {topic}.", 
-            "What does {topic} mean?", "Give me the definition of {topic}.", 
+            "What is {topic}?", "What are {topic}?", "Define {topic}.",
+            "Explain {topic}.", "Tell me about {topic}.", "Describe {topic}.",
+            "What does {topic} mean?", "Give me the definition of {topic}.",
             "What is meant by {topic}?", "Can you explain {topic}?"
         ],
         'topic_extract': [r'what is\s+(.+)', r'define\s+(.+)', r'explain\s+(.+)', r'describe\s+(.+)'],
     },
     'explanation_question': {
         'templates': [
-            "Why does {topic}?", "How does {topic}?", "Where does {topic}?", 
+            "Why does {topic}?", "How does {topic}?", "Where does {topic}?",
             "When does {topic}?", "Explain why {topic}.", "What causes {topic}?"
         ],
         'topic_extract': [r'why\s+(.+)', r'how\s+(.+)', r'explain\s+(.+)'],
     },
     'capability_question': {
         'templates': [
-            "What can you do?", "What do you know?", "What are your skills?", 
+            "What can you do?", "What do you know?", "What are your skills?",
             "Tell me your capabilities.", "What tasks can you perform?"
         ],
         'topic_extract': [],
@@ -62,7 +61,7 @@ TEMPLATE_GENERATORS = {
     },
     'conversation': {
         'templates': [
-            "Tell me a joke.", "Tell me a story.", "Tell me something interesting.", 
+            "Tell me a joke.", "Tell me a story.", "Tell me something interesting.",
             "What's new?", "How are you?", "Entertain me."
         ],
         'topic_extract': [],
@@ -83,7 +82,7 @@ WORD_REPLACEMENTS = {
 
 class AutoDatasetGenerator:
     """Generates synthetic training data using only blank-slate resources."""
-    
+
     def __init__(self, intent: str, seed_prompt: str, seed_answer: str,
                  skill_manager=None, max_pairs: int = 20):
         self.intent = intent
@@ -97,7 +96,7 @@ class AutoDatasetGenerator:
         """Extract the 'topic' from a question using robust regex."""
         config = TEMPLATE_GENERATORS.get(self.intent, {})
         text_clean = re.sub(r'[?.!]+$', '', text.lower().strip())
-        
+
         for pattern in config.get('topic_extract', []):
             m = re.search(pattern, text_clean)
             if m:
@@ -108,15 +107,15 @@ class AutoDatasetGenerator:
         """Calculates a stopword-filtered, TF-IDF-lite overlap score."""
         words1 = [w for w in re.findall(r'\w+', text1.lower()) if w not in STOPWORDS and len(w) > 1]
         words2 = [w for w in re.findall(r'\w+', text2.lower()) if w not in STOPWORDS and len(w) > 1]
-        
+
         if not words1 or not words2: return 0.0
-            
+
         counts1 = Counter(words1)
         counts2 = Counter(words2)
-        
+
         common = set(counts1.keys()) & set(counts2.keys())
         if not common: return 0.0
-            
+
         score = sum(min(counts1[w], counts2[w]) for w in common)
         norm = math.sqrt(len(words1) * len(words2))
         return score / norm if norm > 0 else 0.0
@@ -136,15 +135,15 @@ class AutoDatasetGenerator:
                 question = tmpl.format(topic=topic)
             except KeyError:
                 continue
-            
+
             if question.lower().strip() == self.seed[0].lower().strip():
                 continue
-                
+
             # Prefer kb_answer for templates, fall back to seed
             ans = kb_answer if kb_answer and len(kb_answer) > 10 else self.seed[1]
             if len(ans) < 10 and '{topic}' not in ans:
                 ans = f"Regarding {topic}, {ans}"
-                
+
             pairs.append((question, ans, 1))  # Difficulty 1
 
         # Synonym variants
@@ -157,7 +156,7 @@ class AutoDatasetGenerator:
                         if variant != q:
                             extra.append((variant, a, d))
         pairs.extend(extra)
-        
+
         random.shuffle(pairs)
         return pairs[:min(len(pairs), self.max_pairs // 2)]
 
@@ -165,7 +164,7 @@ class AutoDatasetGenerator:
 
     def mine_hippocampus(self) -> List[Tuple[str, str, int]]:
         try:
-            from tabula_rasa.memory.hippocampus import get_recent, get_old_memories
+            from tabula_rasa.memory.hippocampus import get_old_memories, get_recent
             db_path = Path('memory/hippocampus.db')
             if not db_path.exists(): return []
 
@@ -178,7 +177,7 @@ class AutoDatasetGenerator:
                 input_text = exp.get('input_text', '') or ''
                 output_text = exp.get('output_text', '') or exp.get('response', '') or ''
                 if not input_text or not output_text or len(output_text) < 3: continue
-                
+
                 overlap = self._calculate_semantic_score(self.seed[0], input_text)
                 if overlap >= 0.15:  # Adjusted threshold for TF-IDF lite
                     scored.append((overlap, input_text, output_text))
@@ -197,7 +196,7 @@ class AutoDatasetGenerator:
 
         pairs = []
         templates = self.generate_templates()[:5]
-        
+
         for question, _, _ in templates:
             answer = self._try_all_models(question)
             if answer and len(answer) > 3 and not self._is_garbage(answer):
@@ -223,7 +222,7 @@ class AutoDatasetGenerator:
                 )
                 ans = full.split('=', 1)[1].strip() if '=' in full else full.strip()
                 ans = ans.replace('<EOS>', '').replace('<PAD>', '').strip()
-                
+
                 if len(ans) >= 3 and not self._is_garbage(ans):
                     answers.append((len(ans), ans))
             except Exception:
@@ -236,7 +235,7 @@ class AutoDatasetGenerator:
     def _is_garbage(text: str) -> bool:
         if len(text) < 3: return True
         if len(set(text)) <= 3 and len(text) >= 4: return True
-        
+
         # Check for repeating n-grams (e.g., "I am I am I am")
         words = text.split()
         if len(words) >= 4:
@@ -244,22 +243,22 @@ class AutoDatasetGenerator:
                 ngrams = [tuple(words[i:i+n]) for i in range(len(words)-n+1)]
                 if len(set(ngrams)) <= len(ngrams) * 0.3:
                     return True
-                    
+
         alpha_ratio = sum(c.isalpha() for c in text) / max(len(text), 1)
         if alpha_ratio < 0.3: return True
-        
+
         vowels = set('aeiouyAEIOUY')
         if len(text) >= 8 and not any(c in vowels for c in text): return True
-        
+
         return False
 
     # ─── Stage 4: Retrieval Backfill ───────────────────────────
 
     def backfill_from_similar_intents(self) -> List[Tuple[str, str, int]]:
         if not self.manager: return []
-        
+
         pairs = []
-        
+
         # Priority 1: Knowledge base (bundled real-world Q&A, highest quality)
         kb_path = Path('datasets/knowledge_base.json')
         if kb_path.exists():
@@ -280,7 +279,7 @@ class AutoDatasetGenerator:
                             pairs.append((q, a, 2))  # Difficulty 2
             except Exception as e:
                 print(f'  [*] Knowledge base load failed: {e}')
-        
+
         # Priority 2: Existing datasets (lower quality, might be user-created)
         datasets_dir = Path('datasets')
         if datasets_dir.exists():
@@ -321,7 +320,7 @@ class AutoDatasetGenerator:
                     seed_qa = (self.seed[0], best_match[1])
             except Exception:
                 pass
-        
+
         # Stage 0: Seed pair
         self.pairs = [(seed_qa[0], seed_qa[1], 0)]
 
@@ -351,7 +350,7 @@ class AutoDatasetGenerator:
             if key not in seen and key != self.seed[0].lower().strip():
                 seen.add(key)
                 deduped.append((q, a))
-                
+
         # Always include seed at the very beginning
         final_pairs = [(seed_qa[0], seed_qa[1])] + deduped
         return final_pairs[:self.max_pairs]
@@ -363,7 +362,7 @@ def generate_dataset(intent: str, seed_prompt: str, seed_answer: str,
     """Convenience function: create and run AutoDatasetGenerator, save result."""
     gen = AutoDatasetGenerator(intent, seed_prompt, seed_answer, skill_manager, max_pairs)
     pairs = gen.generate()
-    
+
     if output_path:
         path = Path(output_path)
         path.parent.mkdir(parents=True, exist_ok=True)

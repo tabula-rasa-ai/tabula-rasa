@@ -18,15 +18,14 @@ import sys
 from pathlib import Path
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from tabula_rasa.config import Config
-from tabula_rasa.tokenizer import MathTokenizer
 from tabula_rasa.model import MathTransformer
+from tabula_rasa.tokenizer import MathTokenizer
 
 # ─── Hooks ──────────────────────────────────────────────────────────
 
@@ -462,7 +461,7 @@ def main():
         total_h4 = sum(
             1 for n in neuron_results["top_carry_neurons"] if n["layer"] >= 2
         )
-        print(f"  Carry-sensitive neurons concentrated in:")
+        print("  Carry-sensitive neurons concentrated in:")
         print(f"    Lower layers (0-1): {total_l4}")
         print(f"    Higher layers (2-3): {total_h4}")
 

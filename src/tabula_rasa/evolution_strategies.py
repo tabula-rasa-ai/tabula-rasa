@@ -26,7 +26,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import math
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -333,8 +332,9 @@ def make_cross_entropy_fitness(
     Returns:
         Fitness function f(model) → loss (lower = better).
     """
-    from tabula_rasa.dataset import MathDataset
     from torch.utils.data import DataLoader
+
+    from tabula_rasa.dataset import MathDataset
 
     ds = MathDataset(tokenizer, num_samples=num_samples, min_digits=1, max_digits=max_digits, seed=42)
     dl = DataLoader(ds, batch_size=min(32, num_samples), shuffle=False)
@@ -384,7 +384,7 @@ if __name__ == "__main__":
 
     print("=" * 60)
     print("  EVOLUTION STRATEGIES — Hyperscale Training")
-    print(f"  Reference [53]: 'Evolution Strategies at the Hyperscale'")
+    print("  Reference [53]: 'Evolution Strategies at the Hyperscale'")
     print("=" * 60)
     print()
     print(f"  Population: {args.population}")

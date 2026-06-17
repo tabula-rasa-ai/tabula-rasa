@@ -6,7 +6,6 @@ import os
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-import json
 import math
 import random
 import sys
@@ -14,7 +13,6 @@ import time
 from pathlib import Path
 
 import torch
-import torch.nn as nn
 from torch import optim
 
 from tabula_rasa.config import Config

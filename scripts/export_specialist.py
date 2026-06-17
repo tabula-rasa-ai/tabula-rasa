@@ -9,7 +9,6 @@ import os
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-import json
 import shutil
 import sys
 import zipfile
@@ -40,7 +39,7 @@ def export_specialist(skill_path: str, output: str = None):
 
     size = out_path.stat().st_size / 1e6
     print(f"  [*] Exported {skill_path} -> {out_path} ({size:.1f} MB)")
-    print(f"  [*] Files:")
+    print("  [*] Files:")
     with zipfile.ZipFile(out_path, "r") as zf:
         for info in zf.infolist():
             print(f"      {info.filename} ({info.file_size/1e3:.0f} KB)")
@@ -83,7 +82,7 @@ def import_specialist(zip_path: str, target: str = None):
     for f in dest.rglob("*"):
         if f.is_file():
             print(f"      {f.relative_to(SPECIALISTS_DIR)}")
-    print(f"  [*] Restart tabula_rasa.py to load the new specialist")
+    print("  [*] Restart tabula_rasa.py to load the new specialist")
 
 
 if __name__ == "__main__":

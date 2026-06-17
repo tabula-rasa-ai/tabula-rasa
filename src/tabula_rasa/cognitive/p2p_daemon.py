@@ -22,19 +22,17 @@ Usage:
 
 from __future__ import annotations
 
+import argparse
 import json
-import os
 import socket
 import struct
+import sys
 import threading
 import time
-import sys
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Optional
-from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse
-import argparse
-
 
 # ══════════════════════════════════════════════════════════════
 # Configuration
@@ -280,7 +278,7 @@ class P2PDaemon:
     def start(self):
         """Start all P2P services."""
         print(f'\n{"="*50}')
-        print(f'  P2P Specialist Swarm Daemon')
+        print('  P2P Specialist Swarm Daemon')
         print(f'  HTTP API:  http://localhost:{self.http_port}')
         print(f'  Multicast: {MULTICAST_GROUP}:{MULTICAST_PORT}')
         print(f'  Interval:  {BROADCAST_INTERVAL}s broadcast / {PEER_TIMEOUT}s timeout')
@@ -305,10 +303,10 @@ class P2PDaemon:
         self._threads.append(server_thread)
 
         print(f'  [P2P] Daemon running on port {self.http_port}')
-        print(f'  [P2P] Endpoints:')
-        print(f'    GET /health    — Peer status + specialists')
-        print(f'    GET /peers     — Known peers')
-        print(f'    GET /checkpoint/<op> — Download specialist')
+        print('  [P2P] Endpoints:')
+        print('    GET /health    — Peer status + specialists')
+        print('    GET /peers     — Known peers')
+        print('    GET /checkpoint/<op> — Download specialist')
         return self
 
     def stop(self):

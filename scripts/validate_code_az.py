@@ -11,7 +11,8 @@ Usage:
     python3 scripts/validate_code_az.py            # Full validation (500 games)
 """
 
-import sys, os, time
+import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -19,12 +20,13 @@ sys.path.insert(0, str(ROOT / 'src'))
 sys.path.insert(0, str(ROOT))
 
 import torch
-from tabula_rasa.config import Config
-from tabula_rasa.model import MathTransformer, count_parameters
-from tabula_rasa.bpe_tokenizer import BPETokenizer
-from egefalos.code_sandbox import PythonEnvironment, check_syntax
 from egefalos.code_curriculum import run_syntax_session
-from egefalos.code_specialist import CodeAlphaZero, DevelopmentStage
+from egefalos.code_sandbox import PythonEnvironment
+from egefalos.code_specialist import CodeAlphaZero
+
+from tabula_rasa.bpe_tokenizer import BPETokenizer
+from tabula_rasa.config import Config
+from tabula_rasa.model import count_parameters
 
 
 def validate_code_az(quick: bool = False):
@@ -48,7 +50,7 @@ def validate_code_az(quick: bool = False):
     num_games = 50 if quick else 500
 
     print(f"\n{'='*60}")
-    print(f"  CODE ALPHAZERO VALIDATION")
+    print("  CODE ALPHAZERO VALIDATION")
     print(f"  Device: {device}")
     print(f"  Model: {count_parameters(model):,} params ({cfg.d_model}d, {cfg.n_layers}L)")
     print(f"  Tokenizer: {tok.vocab_size} tokens")
@@ -56,7 +58,7 @@ def validate_code_az(quick: bool = False):
     print(f"{'='*60}")
 
     # Test 1: Sandbox basics
-    print(f"\n  [Test 1] Sandbox verification...")
+    print("\n  [Test 1] Sandbox verification...")
     env = PythonEnvironment()
     result = env.evaluate_move('print(1+1)', test_cases=[])
     assert result['reward'] == 1.0, f"Syntax game failed: {result}"
@@ -64,18 +66,18 @@ def validate_code_az(quick: bool = False):
 
     result = env.evaluate_move('print(1+', test_cases=[])
     print(f"    ✓ Invalid code: reward={result['reward']} (expected <1)")
-    print(f"  → Sandbox OK")
+    print("  → Sandbox OK")
 
     # Test 2: Tokenizer can encode Python code
-    print(f"\n  [Test 2] Python code encoding...")
+    print("\n  [Test 2] Python code encoding...")
     for code in ['print("hello")', 'x = 42', 'if True:', 'def f(): return 1']:
         ids = tok.encode(code, add_special_tokens=True)
         decoded = tok.decode(ids, skip_special=True)
         # Verify encoding preserves the code (for simple ASCII cases)
         assert decoded == code or decoded[:len(code)] == code, \
             f"Roundtrip failed: '{code}' -> '{decoded}'"
-    print(f"    ✓ All Python code examples encode/decode correctly")
-    print(f"  → Tokenizer OK")
+    print("    ✓ All Python code examples encode/decode correctly")
+    print("  → Tokenizer OK")
 
     # Test 3: Stage 1 Syntax Session
     print(f"\n  [Test 3] Stage 1 Syntax Games ({num_games} games)...")
@@ -102,25 +104,25 @@ def validate_code_az(quick: bool = False):
     print(f"  → Mastered:    {'✓' if results.get('mastered') else '✗'}")
 
     # Test 4: Model can generate code tokens
-    print(f"\n  [Test 4] Model generation (code output)...")
+    print("\n  [Test 4] Model generation (code output)...")
     prompt = "print("
     output = model.generate(tok, prompt, max_new_tokens=10, temperature=0.5)
     print(f"    Prompt: '{prompt}' → '{output}'")
     print(f"    Output length: {len(output)} tokens")
-    print(f"  → Generation OK")
+    print("  → Generation OK")
 
     # Summary
     print(f"\n{'='*60}")
-    print(f"  CODE ALPHAZERO VALIDATION RESULTS")
+    print("  CODE ALPHAZERO VALIDATION RESULTS")
     print(f"  {'='*50}")
-    print(f"  Sandbox:       ✓")
-    print(f"  Tokenizer:     ✓")
+    print("  Sandbox:       ✓")
+    print("  Tokenizer:     ✓")
     print(f"  Syntax Games:  {'✓' if len(results) > 0 else '✗'} ({valid_count} valid / {len(results)} total)")
-    print(f"  Generation:    ✓")
+    print("  Generation:    ✓")
     print(f"  {'='*50}")
-    print(f"  All systems operational. Code AlphaZero is ready for training.")
-    print(f"  To run full training, use:")
-    print(f"    python3 -c \"from egefalos.code_curriculum import full_code_training_session; ...\"")
+    print("  All systems operational. Code AlphaZero is ready for training.")
+    print("  To run full training, use:")
+    print("    python3 -c \"from egefalos.code_curriculum import full_code_training_session; ...\"")
     print(f"{'='*60}")
 
     return True

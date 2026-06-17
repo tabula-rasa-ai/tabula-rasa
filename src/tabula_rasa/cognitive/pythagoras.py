@@ -16,7 +16,9 @@ Flow:
   4. Neglected duties are sent to the curriculum queue for tomorrow.
 """
 
-import json, re, time
+import json
+import re
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -299,7 +301,7 @@ def pythagorean_review(experiences: list) -> dict:
         if len(experiences) > 0 else "0/0",
     }
 
-    print(f'  [Pythagoras] Review complete.')
+    print('  [Pythagoras] Review complete.')
     print(f'      Purged {transgressions} fallacious memories.')
     print(f'      Distilled {len(golden)} golden examples.')
     print(f'      Flagged {len(neglected)} neglected duties for tomorrow.')
@@ -308,7 +310,7 @@ def pythagorean_review(experiences: list) -> dict:
     # During the nightly audit, learn new token merges from the model's own
     # verified monologue (Socratic debates + corrected outputs).
     try:
-        from bpe_tokenizer import learn_from_verified_log, BPETokenizer
+        from bpe_tokenizer import BPETokenizer, learn_from_verified_log
         tok_path = Path('specialists/math/general/tokenizer.json')
         tok = None
         if tok_path.exists():

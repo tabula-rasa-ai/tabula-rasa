@@ -31,7 +31,6 @@ import urllib.request
 from pathlib import Path
 
 import torch
-import torch.nn as nn
 from torch import optim
 from torch.cuda.amp import GradScaler, autocast
 from torch.utils.data import DataLoader, Dataset
@@ -56,8 +55,8 @@ def setup_logging(level: str = "INFO", log_file: str | None = None):
     )
 
 
-from tabula_rasa.cl.online_ewc import OnlineEWC
 from tabula_rasa.cl.expert_ewc import ExpertEWC
+from tabula_rasa.cl.online_ewc import OnlineEWC
 from tabula_rasa.config import Config
 from tabula_rasa.lora import (
     apply_lora_to_model,
@@ -666,7 +665,7 @@ def _log_experiment(exp):
             method="POST",
         )
         urllib.request.urlopen(req, timeout=5)
-        print(f"  [*] Experiment logged to comparator", flush=True)
+        print("  [*] Experiment logged to comparator", flush=True)
     except Exception:
         pass  # Server not running is fine
 
@@ -792,7 +791,7 @@ def train_specialist(
         cfg.n_layers = 8
         cfg.n_heads = 4
         cfg.d_ff = 256
-        print(f"  *** DEEP MODEL: d=64 L=8 ff=256 (depth > width for algorithms) ***")
+        print("  *** DEEP MODEL: d=64 L=8 ff=256 (depth > width for algorithms) ***")
 
     # ── Validate ──
     warnings = _validate_config(cfg, op)
@@ -807,7 +806,9 @@ def train_specialist(
         seed = getattr(cfg, 'seed', 42)
         torch.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)
-        import random, numpy as np
+        import random
+
+        import numpy as np
         random.seed(seed)
         np.random.seed(seed)
 
@@ -823,7 +824,7 @@ def train_specialist(
     else:
         device = torch.device("cpu")
         device_name = "CPU"
-        print(f"  Device: CPU (no CUDA detected)")
+        print("  Device: CPU (no CUDA detected)")
         # CPU thread tuning — avoid oversubscription on many-core machines
         n_threads = os.cpu_count() or 4
         torch.set_num_threads(n_threads)
@@ -839,9 +840,9 @@ def train_specialist(
     cfg.use_amp = use_amp or cfg.use_amp
     use_amp_enabled = cfg.use_amp and device.type == "cuda"
     if use_amp_enabled:
-        print(f"  AMP: enabled (mixed precision)")
+        print("  AMP: enabled (mixed precision)")
     elif cfg.use_amp and device.type not in ("cuda",):
-        print(f"  AMP: disabled (requires CUDA; MPS does not support amp.GradScaler)")
+        print("  AMP: disabled (requires CUDA; MPS does not support amp.GradScaler)")
 
     # ── Gradient accumulation ──
     if gradient_accumulation_steps > 0:
@@ -893,7 +894,7 @@ def train_specialist(
         else:
             try:
                 model = torch.compile(model, mode="reduce-overhead")
-                print(f"  torch.compile: enabled (mode=reduce-overhead)")
+                print("  torch.compile: enabled (mode=reduce-overhead)")
             except Exception as e:
                 print(f"  [!] torch.compile failed: {e}")
 
@@ -986,7 +987,7 @@ def train_specialist(
                 global_step, best_acc = result
                 print(f"  Resumed from step {global_step} (best: {best_acc:.1f}%)")
             else:
-                print(f"  No checkpoint found — starting fresh")
+                print("  No checkpoint found — starting fresh")
 
     # ── Training log (overwrite, not append) ──
     log_path = op_dir / "training.log"
@@ -996,7 +997,7 @@ def train_specialist(
     header += f"\n  Steps: {global_step} -> {cfg.max_steps} | Batch: {cfg.batch_size} | LR: {cfg.learning_rate}"
     header += f"\n  Reversed: {cfg.use_reversed} | Loss masking: {cfg.use_loss_masking} | Scratchpad: {cfg.use_scratchpad} | CoT: {cfg.cot_scratchpad}"
     header += f"\n  Activation: {cfg.activation} | Norm: {cfg.norm_type} | Pos: {cfg.pos_encoding}"
-    header += f"\n"
+    header += "\n"
     print(header)
     log_file.write(header + "\n")
     log_file.flush()
@@ -1016,13 +1017,14 @@ def train_specialist(
         print(
             f"  Curriculum: phase 1/{len(cfg.curriculum_phases)} (max_digits={cfg.curriculum_phases[0][1]})"
         )
-    print(f"  Press Ctrl+C to save and exit gracefully.\\n")
+    print("  Press Ctrl+C to save and exit gracefully.\\n")
 
     # ── Persistent batch generator (avoids recreating DataLoader every epoch) ──
     _nw = 4 if device.type == "cuda" else 0
 
     def _infinite_batches(dataset, batch_size):
         from itertools import cycle
+
         from torch.utils.data import DataLoader
         loader = DataLoader(
             dataset, batch_size=batch_size, shuffle=True, num_workers=_nw, drop_last=True
@@ -1389,7 +1391,7 @@ def train_specialist(
     # ── Socratic Self-Improvement (post-training refinement) ──
     if socratic and not _INTERRUPTED and best_acc > 30.0:
         print(f'\n{"="*60}')
-        print(f"  Socratic Self-Improvement Phase")
+        print("  Socratic Self-Improvement Phase")
         print(f"  Refining {OP_NAMES[op]} specialist via critique loop")
         print(f"  {socratic_problems} problems, {socratic_steps} training steps")
         print(f'{"="*60}')
@@ -1436,7 +1438,7 @@ def train_specialist(
     # ── RL / PPO Training ──
     if use_rl and not _INTERRUPTED:
         print(f'\n{"="*60}')
-        print(f"  Reinforcement Learning Phase (PPO)")
+        print("  Reinforcement Learning Phase (PPO)")
         print(f'{"="*60}')
         try:
             from tabula_rasa.reasoning.math_gym_env import MathGymEnv
@@ -1451,7 +1453,7 @@ def train_specialist(
                 model.__init__(cfg)
                 model.load_state_dict(old_state, strict=False)
                 model.to(device)
-                print(f"  Value head enabled for PPO")
+                print("  Value head enabled for PPO")
 
             # Build environment with curriculum
             env = MathGymEnv(
@@ -1502,13 +1504,13 @@ def train_specialist(
 
         except ImportError as e:
             print(f"  [!] PPO not available: {e}")
-            print(f"  Install: pip install gymnasium")
+            print("  Install: pip install gymnasium")
 
     # ── Stage 3: Arithmetic Dialectical Self-Play ──
     socratic_stage3 = getattr(cfg, 'use_socratic_stage3', False)
     if socratic_stage3 and not _INTERRUPTED:
         print(f'\n{"="*60}')
-        print(f"  Stage 3: Dialectical Self-Play (Arithmetic Debate)")
+        print("  Stage 3: Dialectical Self-Play (Arithmetic Debate)")
         print(f'{"="*60}')
         try:
             from tabula_rasa.reasoning.socratic_stage3 import run_arithmetic_session
@@ -1528,12 +1530,15 @@ def train_specialist(
     # ── Dialectical Self-Play (Generator vs Critic debate) ──
     if dialectic and not _INTERRUPTED and best_acc > 30.0:
         print(f'\n{"="*60}')
-        print(f"  Dialectical Self-Play Phase")
+        print("  Dialectical Self-Play Phase")
         print(f"  Generator vs Critic debate: {dialectic_problems} problems, {dialectic_steps} steps")
         print(f'{"="*60}')
         try:
-            from tabula_rasa.reasoning.socratic_stage2 import GeneratorCritic, generate_training_data
-            from torch.utils.data import Dataset, DataLoader
+            from torch.utils.data import DataLoader, Dataset
+
+            from tabula_rasa.reasoning.socratic_stage2 import (
+                GeneratorCritic,
+            )
 
             # Use the trained model as both generator and critic
             debate_engine = GeneratorCritic(model, model, tok)
@@ -1838,7 +1843,7 @@ Examples:
         model = MathTransformer(cfg).to(device)
         print(f"  Model: {cfg.d_model}x{cfg.n_layers} ({sum(p.numel() for p in model.parameters()):,} params)")
 
-        from torch.utils.data import DataLoader, ConcatDataset
+        from torch.utils.data import DataLoader
         op_list = ["add", "sub", "mul"]
         datasets = {}
         for op_name in op_list:
@@ -1893,7 +1898,7 @@ Examples:
 
     if args.op == "all":
         print("\n  Training ALL specialists (add, sub, mul, div)")
-        print(f"  This will take a while. Press Ctrl+C to stop between ops.\n")
+        print("  This will take a while. Press Ctrl+C to stop between ops.\n")
         results = {}
         for op_name in ["add", "sub", "mul", "div"]:
             if _INTERRUPTED:
@@ -1947,9 +1952,9 @@ Examples:
         sys.exit(0)
 
     if args.op not in OPS:
-        print(f"Usage: python3 train_specialist.py [add|sub|mul|div|all] [options]")
-        print(f"       python3 train_specialist.py add --quick      (smoke test)")
-        print(f"       python3 train_specialist.py add --resume     (continue)")
+        print("Usage: python3 train_specialist.py [add|sub|mul|div|all] [options]")
+        print("       python3 train_specialist.py add --quick      (smoke test)")
+        print("       python3 train_specialist.py add --resume     (continue)")
         sys.exit(1)
 
     # ── Optional Weights & Biases ──

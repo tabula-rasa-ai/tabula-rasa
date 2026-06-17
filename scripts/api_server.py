@@ -6,7 +6,6 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 import json
-import math
 import mimetypes
 import os
 import re
@@ -65,7 +64,6 @@ def train_start(data: dict) -> dict:
         cmd.extend(["--lr", str(lr)])
 
     # Clear old training log so dashboard shows fresh
-    import os as _os
 
     log = Path(f"specialists/math/{op}/training.log")
     if log.exists():
@@ -200,7 +198,6 @@ def auto_train_status() -> dict:
 
 def get_cl_metrics() -> dict:
     """Load CL benchmark results and return formatted metrics."""
-    import torch
     path = Path("experiments/cl_benchmark_results.json")
     if not path.exists():
         return {"available": False, "message": "Run experiments/run_cl_benchmark.py first"}
@@ -368,7 +365,7 @@ def run_ewc_stress_test() -> dict:
     import torch
 
     from tabula_rasa.config import Config
-    from tabula_rasa.model import MathTransformer, count_parameters
+    from tabula_rasa.model import MathTransformer
     from tabula_rasa.tokenizer import MathTokenizer
 
     result = {"status": "ok", "before": {}, "after": {}, "delta": {}}
@@ -750,7 +747,6 @@ def list_available_checkpoints() -> list[dict]:
 def get_training_status():
     """Check if a training process is currently running and return its status."""
     import re
-    import subprocess
 
     info = {
         "running": False,
@@ -854,7 +850,6 @@ def _save_registry(entries):
 
 def export_checkpoint(data):
     """Package a checkpoint for sharing."""
-    import io
     import shutil
     import zipfile
 
@@ -1193,11 +1188,11 @@ def run_mcts_search(problem: str, sims: int = 32) -> dict:
     if str(_p) not in _sys.path: _sys.path.insert(0, str(_p))
     if str(_p / ".." / "src") not in _sys.path: _sys.path.insert(0, str(_p / ".." / "src"))
     try:
-        from tabula_rasa.reasoning.mcts import MicroMCTS
-        from tabula_rasa.reasoning.math_gym_env import MathGymEnv
-        from tabula_rasa.tokenizer import MathTokenizer
         from tabula_rasa.config import Config
         from tabula_rasa.model import MathTransformer
+        from tabula_rasa.reasoning.math_gym_env import MathGymEnv
+        from tabula_rasa.reasoning.mcts import MicroMCTS
+        from tabula_rasa.tokenizer import MathTokenizer
 
         tok = MathTokenizer()
         cfg = Config()

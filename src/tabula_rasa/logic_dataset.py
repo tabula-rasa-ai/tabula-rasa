@@ -15,7 +15,6 @@ Usage:
 """
 
 import random
-import re
 from typing import Optional
 
 import torch

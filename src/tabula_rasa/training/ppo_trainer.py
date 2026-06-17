@@ -7,19 +7,14 @@ Usage (via train_specialist.py --rl):
     python3 train_specialist.py add --rl --rl-steps 2000
 """
 
-import math
-import random
 import time
 from collections import deque
-from typing import Optional
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 
-from tabula_rasa.config import Config
-from tabula_rasa.tokenizer import MathTokenizer
 from tabula_rasa.model import MathTransformer
+from tabula_rasa.tokenizer import MathTokenizer
 
 
 def ppo_loss(
@@ -285,6 +280,9 @@ class PPOTrainer:
         rewards = self.buffer.rewards
         values = self.buffer.values
 
+        # Old values for PPO clipping (convert to tensor)
+        old_values = torch.tensor(values, device=self.device)
+
         # Compute GAE
         advantages, returns = compute_gae(rewards, values, self.gamma, self.gae_lambda)
         advantages = torch.tensor(advantages, device=self.device)
@@ -421,7 +419,7 @@ class PPOTrainer:
         avg_correct = sum(correct_history) / max(1, len(correct_history)) * 100
 
         print(f"\n{'='*60}")
-        print(f"  PPO Training Complete")
+        print("  PPO Training Complete")
         print(f"  Episodes: {episode} | Steps: {total_env_steps} | Time: {elapsed:.0f}s")
         print(f"  Avg reward: {avg_reward:.2f} | Avg correct: {avg_correct:.0f}%")
         print(f"{'='*60}")

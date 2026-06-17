@@ -17,14 +17,13 @@ Graduation: 98%+ on held-out pattern test set
 """
 
 import random
+
 import torch
-import torch.nn.functional as F
 from torch.optim import AdamW
 
-from tabula_rasa.model import MathTransformer, count_parameters
 from tabula_rasa.config import Config
+from tabula_rasa.model import MathTransformer, count_parameters
 from tabula_rasa.tokenizer import MathTokenizer
-
 
 # ═════════════════════════════════════════════════════════════════════
 # PATTERN PROBLEM GENERATORS
@@ -343,6 +342,6 @@ if __name__ == '__main__':
     print('\n=== Training (demo: 200 steps) ===')
     results = train_pattern_specialist(model, tok, train_steps=200, batch_size=32)
 
-    print(f'\n=== Evaluation ===')
+    print('\n=== Evaluation ===')
     acc = evaluate_patterns(model, tok, num_problems=50)
     print(f'  Accuracy: {acc*100:.1f}%')

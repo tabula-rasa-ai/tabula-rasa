@@ -19,8 +19,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import torch
 
 from tabula_rasa.config import Config
-from tabula_rasa.dataset import MathDataset, generate_problem
-from tabula_rasa.eval import full_benchmark, evaluate_accuracy, evaluate_per_position
+from tabula_rasa.dataset import MathDataset
+from tabula_rasa.eval import evaluate_accuracy, full_benchmark
 from tabula_rasa.model import MathTransformer, count_parameters
 from tabula_rasa.tokenizer import MathTokenizer
 

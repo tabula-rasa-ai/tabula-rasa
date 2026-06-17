@@ -4,9 +4,14 @@ Default: HuggingFaceTB/SmolLM2-360M-Instruct on port 8201
 RAG: if rag_url provided, retrieves context before each generation
    POST / with "use_rag": true to enable context injection
 """
-import sys, json, torch, time, os, urllib.request, urllib.error
-from http.server import HTTPServer, BaseHTTPRequestHandler
+import json
+import sys
+import time
+import urllib.error
+import urllib.request
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from socketserver import ThreadingMixIn
+
 
 class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
     allow_reuse_address = True

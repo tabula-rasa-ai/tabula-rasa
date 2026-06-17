@@ -18,7 +18,6 @@ Sub-modules (also importable directly):
 from __future__ import annotations
 
 import math
-import time
 from typing import Any
 
 import torch
@@ -26,11 +25,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 # ── Sub-module imports ──────────────────────────────────────────────
-from tabula_rasa.norms import _make_norm, _make_activation
+from tabula_rasa.norms import _make_activation, _make_norm
 from tabula_rasa.rope import (
     AbacusEmbedding,
-    RotaryEmbedding,
     LearnedPositionEmbedding,
+    RotaryEmbedding,
     _apply_pos_encoding,
     _rotate_half,
 )
@@ -111,7 +110,7 @@ class MathTransformer(nn.Module):
         if getattr(config, "use_compile", False) and hasattr(torch, "compile"):
             try:
                 self.forward = torch.compile(self.forward, mode="reduce-overhead")
-                print(f"  [*] torch.compile() enabled (mode=reduce-overhead)")
+                print("  [*] torch.compile() enabled (mode=reduce-overhead)")
             except Exception as e:
                 print(f"  [!] torch.compile() failed: {e}")
 

@@ -12,14 +12,11 @@ import os
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-import json
-import math
 import random
 import time
 from pathlib import Path
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim import AdamW
 from torch.utils.data import DataLoader, Dataset
@@ -267,7 +264,7 @@ class SelfImprovementLoop:
 
         # Build curriculum (hard-negative biased or pure random)
         if use_hard_negative:
-            print(f"  [*] Using hard-negative curriculum (entropy-guided)")
+            print("  [*] Using hard-negative curriculum (entropy-guided)")
             curriculum = self.miner.generate_curriculum(
                 num_problems,
                 min_digits=1,
@@ -460,7 +457,7 @@ class SelfImprovementLoop:
             print(f"  Cycle {cycle}: {elapsed:.0f}s, accuracy={acc:.1f}%")
 
         print(f'\n{"="*60}')
-        print(f"  SELF-IMPROVEMENT COMPLETE")
+        print("  SELF-IMPROVEMENT COMPLETE")
         print(f"  Starting accuracy: {accuracies[0]:.1f}%" if accuracies else "")
         print(f"  Final accuracy: {accuracies[-1]:.1f}%" if accuracies else "")
         print(f"  Best accuracy: {max(accuracies):.1f}%" if accuracies else "")
@@ -500,7 +497,7 @@ if __name__ == "__main__":
     if model is None:
         sys.exit(1)
 
-    print(f"Model loaded. Starting self-improvement...")
+    print("Model loaded. Starting self-improvement...")
     print(f"Device: {model.device}")
 
     # Move model to device

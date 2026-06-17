@@ -23,12 +23,9 @@ Usage:
 from __future__ import annotations
 
 import json
-import time
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any
-
 
 RUNS_DIR = Path(__file__).resolve().parent.parent.parent / "experiments" / "runs"
 RUNS_DIR.mkdir(parents=True, exist_ok=True)
@@ -279,4 +276,4 @@ if __name__ == "__main__":
     else:
         print(f"Experiment tracker — {len(list(RUNS_DIR.glob('*.json')))} runs logged")
         print(f"  Runs dir: {RUNS_DIR}")
-        print(f"  Commands: --list, --export [path], --clear")
+        print("  Commands: --list, --export [path], --clear")

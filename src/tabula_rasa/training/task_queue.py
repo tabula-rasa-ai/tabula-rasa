@@ -23,7 +23,6 @@ Usage:
     status = tq.get_status(task_id)  # {"state": "running", ...}
 """
 
-import json
 import queue
 import threading
 import time

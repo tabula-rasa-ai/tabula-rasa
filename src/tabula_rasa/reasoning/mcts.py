@@ -15,15 +15,15 @@ only the ones that genuinely require deliberation.
 
 import math
 import random
+
+# Memory-aware MCTS uses sys.path-based imports from tabula_rasa
+import sys
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Optional
 
 import torch
 import torch.nn.functional as F
-
-# Memory-aware MCTS uses sys.path-based imports from tabula_rasa
-import sys
-from pathlib import Path
 
 # Determine project root for tabula_rasa imports
 _project_root = str(Path(__file__).resolve().parent.parent / 'src')
@@ -881,9 +881,10 @@ def create_memory_aware_mcts_fn(
 # ═════════════════════════════════════════════════════════════════════
 
 if __name__ == '__main__':
+    from language_az import ConceptNode, LanguageAlphaZero, concept_to_string
+
     from tabula_rasa.config import Config
     from tabula_rasa.tokenizer import MathTokenizer
-    from language_az import LanguageAlphaZero, ConceptNode, concept_to_string
 
     cfg = Config()
     cfg.use_value_head = True

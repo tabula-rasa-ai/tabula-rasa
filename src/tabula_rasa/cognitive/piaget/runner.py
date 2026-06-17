@@ -55,14 +55,14 @@ def run_piaget_benchmark(model, tokenizer, specialist_map: dict = None,
     Returns:
         dict with per-stage results and overall_cognitive_score.
     """
-    from tabula_rasa.cognitive.piaget.sensorimotor import run_sensorimotor
-    from tabula_rasa.cognitive.piaget.preoperational import run_preoperational
     from tabula_rasa.cognitive.piaget.concrete_operational import run_concrete_operational
     from tabula_rasa.cognitive.piaget.formal_operational import run_formal_operational
+    from tabula_rasa.cognitive.piaget.preoperational import run_preoperational
+    from tabula_rasa.cognitive.piaget.sensorimotor import run_sensorimotor
 
     print(f'\n{"=" * 60}')
-    print(f'  Piaget Cognitive Benchmark')
-    print(f'  Measuring developmental stages of Tabula Rasa')
+    print('  Piaget Cognitive Benchmark')
+    print('  Measuring developmental stages of Tabula Rasa')
     print(f'{"=" * 60}')
     print()
 
@@ -101,7 +101,7 @@ def run_piaget_benchmark(model, tokenizer, specialist_map: dict = None,
 
     print()
     print(f'{"=" * 60}')
-    print(f'  Cognitive Profile')
+    print('  Cognitive Profile')
     print(f'{"─" * 60}')
     print(f'  Sensorimotor:        {stage1["overall_score"]:5.1f}%  '
           f'{"✓" if stage1["overall_score"] > 80 else "○"}')
@@ -114,7 +114,7 @@ def run_piaget_benchmark(model, tokenizer, specialist_map: dict = None,
     print(f'{"─" * 60}')
     print(f'  Unweighted Score:    {overall:5.1f}%')
     print(f'  Weighted Score:      {weighted:5.1f}%')
-    print(f'  (Scores >80/60/50/30 suggest stage transition)')
+    print('  (Scores >80/60/50/30 suggest stage transition)')
     print(f'{"=" * 60}')
 
     result = {

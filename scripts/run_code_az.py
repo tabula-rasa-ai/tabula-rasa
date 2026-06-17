@@ -13,7 +13,6 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 import argparse
-import json
 import sys
 
 
@@ -32,7 +31,7 @@ def main():
     )
     args = parser.parse_args()
 
-    print(f"[CodeAZ] Starting Code AlphaZero self-play", flush=True)
+    print("[CodeAZ] Starting Code AlphaZero self-play", flush=True)
     print(
         f"[CodeAZ] Syntax={args.syntax} Fuzzing={args.fuzzing} Algorithm={args.algorithm}",
         flush=True,
@@ -45,6 +44,7 @@ def main():
         run_syntax_session,
     )
     from egefalos.code_specialist import CodeAlphaZero
+
     from tabula_rasa.config import Config
     from tabula_rasa.tokenizer import MathTokenizer
 
@@ -81,7 +81,7 @@ def main():
             device="cpu",
         )
 
-    print(f"[CodeAZ] Self-play complete!", flush=True)
+    print("[CodeAZ] Self-play complete!", flush=True)
 
     # Flatten results for JSON output
     if isinstance(results, dict):

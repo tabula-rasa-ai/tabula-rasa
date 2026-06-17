@@ -210,7 +210,7 @@ def test_lora_multiple_adapters():
         # Swap adapter A into a fresh model with same base weights
         torch.manual_seed(42)
         fresh = MathTransformer(cfg)
-        loaded_a = load_lora_adapters(fresh, path_a, rank=4, alpha=1.0)
+        load_lora_adapters(fresh, path_a, rank=4, alpha=1.0)
         fresh.eval()
         with torch.no_grad():
             out_loaded_a, _, _ = fresh(x, x)

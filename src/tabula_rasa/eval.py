@@ -23,7 +23,6 @@ from tabula_rasa.dataset import generate_problem
 from tabula_rasa.model import MathTransformer, count_parameters
 from tabula_rasa.tokenizer import MathTokenizer
 
-
 # ═══════════════════════════════════════════════════════════════════════
 #  Results containers
 # ═══════════════════════════════════════════════════════════════════════
@@ -1014,8 +1013,8 @@ def load_model(checkpoint_path: str | Path) -> tuple[MathTransformer, MathTokeni
 
 
 if __name__ == "__main__":
-    import sys
     import json
+    import sys
 
     ckpt = Path("checkpoints/best.pt")
     train_max_digits = 4

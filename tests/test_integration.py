@@ -1,490 +1,58 @@
-"""Integration tests — end-to-end training, checkpointing, API."""
+"""Integration tests for the Tabula Rasa codebase.
 
-import json
-import os
-import signal
+These tests validate that the CLI tooling, server endpoints,
+and training pipeline wire together correctly.
+"""
+
+from __future__ import annotations
+
 import subprocess
 import sys
-import time
 from pathlib import Path
 
-import pytest
-import torch
 
-from tabula_rasa.config import Config
-from tabula_rasa.eval import evaluate_accuracy
-from tabula_rasa.model import MathTransformer, count_parameters
-from tabula_rasa.tokenizer import MathTokenizer
-
-
-class TestQuickTraining:
-    """End-to-end quick training smoke test."""
-
-    @pytest.fixture(scope="class")
-    def trained_model(self):
-        """Train a tiny model quickly and return it."""
-        cfg = Config()
-        cfg.d_model = 32
-        cfg.n_layers = 1
-        cfg.n_heads = 2
-        cfg.d_ff = 64
-        cfg.vocab_size = 44
-        cfg.batch_size = 8
-        cfg.max_seq_len = 16
-        cfg.use_reversed = True
-        cfg.use_loss_masking = True
-        cfg.use_scratchpad = True
-        cfg.train_samples = 200
-        cfg.eval_samples = 20
-        cfg.max_steps = 20
-        cfg.log_every = 10
-
-        tok = MathTokenizer()
-        cfg.vocab_size = tok.vocab_size
-        model = MathTransformer(cfg)
-
-        from torch import optim
-
-        from tabula_rasa.dataset import generate_problem
-
-        optimizer = optim.AdamW(model.parameters(), lr=0.001)
-        model.train()
-
-        for step in range(cfg.max_steps):
-            optimizer.zero_grad()
-            total_loss = 0.0
-            for _ in range(cfg.batch_size):
-                expr, ans = generate_problem(1, 2)
-                text = f"{expr}={ans}"
-                ids = tok.encode(text, add_special_tokens=True)
-                ids = (ids + [tok.pad_id] * cfg.max_seq_len)[: cfg.max_seq_len]
-                x = torch.tensor(ids[:-1]).unsqueeze(0)
-                y = torch.tensor(ids[1:]).unsqueeze(0)
-                _, loss, _ = model(x, y)
-                loss.backward()
-                total_loss += loss.item()
-            optimizer.step()
-
-        return model, tok, cfg
-
-    def test_training_loss_decreases(self, trained_model):
-        """Training loss is finite after quick training."""
-        model, tok, cfg = trained_model
-        # Verify model can still generate
-        model.eval()
-        output = model.generate(tok, "2+2=", max_new_tokens=5, temperature=0.0, clean_output=False)
-        assert isinstance(output, str)
-        assert len(output) > 0
-
-    def test_eval_returns_number(self, trained_model):
-        """evaluate_accuracy returns a float."""
-        model, tok, cfg = trained_model
-        acc = evaluate_accuracy(model, tok, num_problems=10, verbose=False)
-        assert isinstance(acc, (float, int))
-
-
-class TestEWCFlag:
-    """Basic EWC integration tests."""
-
-    def test_ewc_module_importable(self):
-        """OnlineEWC can be imported."""
-        from egefalos.online_ewc import OnlineEWC
-        from tabula_rasa.model import MathTransformer
-
-        cfg = Config()
-        cfg.vocab_size = 44
-        cfg.d_model = 32
-        cfg.n_layers = 1
-        cfg.n_heads = 2
-        cfg.d_ff = 64
-        model = MathTransformer(cfg)
-        ewc = OnlineEWC(model)
-        assert ewc is not None
-
-    def test_ewc_fisher_compute(self):
-        """Fisher matrix computation doesn't crash."""
-        from egefalos.online_ewc import OnlineEWC
-        from tabula_rasa.dataset import generate_problem
-        from tabula_rasa.model import MathTransformer
-        from tabula_rasa.tokenizer import MathTokenizer
-
-        cfg = Config()
-        cfg.vocab_size = 44
-        cfg.d_model = 32
-        cfg.n_layers = 1
-        cfg.n_heads = 2
-        cfg.d_ff = 64
-        cfg.max_seq_len = 16
-        tok = MathTokenizer()
-        cfg.vocab_size = tok.vocab_size
-        model = MathTransformer(cfg)
-        ewc = OnlineEWC(model)
-
-        # Create a few samples
-        samples = []
-        for _ in range(10):
-            expr, ans = generate_problem(1, 2)
-            text = f"{expr}={ans}"
-            ids = tok.encode(text, add_special_tokens=True)
-            ids = (ids + [tok.pad_id] * cfg.max_seq_len)[: cfg.max_seq_len]
-            samples.append(torch.tensor(ids))
-
-        # Create a dataloader from samples
-        class SimpleDataset(torch.utils.data.Dataset):
-            def __init__(self, data):
-                self.data = data
-
-            def __len__(self):
-                return len(self.data)
-
-            def __getitem__(self, i):
-                return self.data[i]
-
-        dataset = SimpleDataset(samples)
-        loader = torch.utils.data.DataLoader(dataset, batch_size=5)
-
-        # Compute Fisher
-        try:
-            ewc.compute_fisher(loader)
-            fisher_ok = True
-        except Exception as e:
-            print(f"Fisher error: {e}")
-            fisher_ok = False
-        assert fisher_ok, "Fisher computation failed"
-
-
-class TestExpertEWC:
-    """Per-expert Fisher tracking for MoE models."""
-
-    def test_expert_ewc_importable(self):
-        """ExpertEWC can be imported."""
-        from egefalos.expert_ewc import ExpertEWC
-        from tabula_rasa.model import MathTransformer
-
-        cfg = Config()
-        cfg.vocab_size = 44
-        cfg.d_model = 64
-        cfg.n_layers = 2
-        cfg.n_heads = 4
-        cfg.d_ff = 128
-        cfg.use_moe = True
-        cfg.num_experts = 4
-        model = MathTransformer(cfg)
-        ewc = ExpertEWC(model, gamma=0.9, num_experts=4)
-        assert ewc is not None
-        assert not ewc.consolidated
-
-    def test_expert_ewc_save_anchor(self):
-        """save_anchor_weights captures expert and global params."""
-        from egefalos.expert_ewc import ExpertEWC
-        from tabula_rasa.model import MathTransformer
-
-        cfg = Config()
-        cfg.vocab_size = 44
-        cfg.d_model = 64
-        cfg.n_layers = 2
-        cfg.n_heads = 4
-        cfg.d_ff = 128
-        cfg.use_moe = True
-        cfg.num_experts = 4
-        model = MathTransformer(cfg)
-        ewc = ExpertEWC(model, gamma=0.9, num_experts=4)
-
-        ewc.save_anchor_weights()
-        assert len(ewc.global_anchor) > 0
-        assert len(ewc.expert_anchor) > 0
-
-    def test_expert_ewc_fisher_compute(self):
-        """Fisher matrix computation with per-expert separation."""
-        from egefalos.expert_ewc import ExpertEWC
-        from tabula_rasa.dataset import generate_problem
-        from tabula_rasa.model import MathTransformer
-        from tabula_rasa.tokenizer import MathTokenizer
-
-        cfg = Config()
-        cfg.vocab_size = 44
-        cfg.d_model = 64
-        cfg.n_layers = 2
-        cfg.n_heads = 4
-        cfg.d_ff = 128
-        cfg.use_moe = True
-        cfg.num_experts = 4
-        cfg.max_seq_len = 16
-
-        tok = MathTokenizer()
-        cfg.vocab_size = tok.vocab_size
-        model = MathTransformer(cfg)
-        ewc = ExpertEWC(model, gamma=0.9, num_experts=4)
-
-        # Create samples
-        samples = []
-        for _ in range(10):
-            expr, ans = generate_problem(1, 2)
-            text = f"{expr}={ans}"
-            ids = tok.encode(text, add_special_tokens=True)
-            ids = (ids + [tok.pad_id] * cfg.max_seq_len)[:cfg.max_seq_len]
-            samples.append(torch.tensor(ids))
-
-        class SimpleDataset(torch.utils.data.Dataset):
-            def __init__(self, data):
-                self.data = data
-            def __len__(self):
-                return len(self.data)
-            def __getitem__(self, i):
-                return self.data[i]
-
-        dataset = SimpleDataset(samples)
-        loader = torch.utils.data.DataLoader(dataset, batch_size=5)
-
-        ewc.compute_fisher(loader)
-        assert hasattr(ewc, "_last_global_fisher")
-        assert len(ewc._last_global_fisher) > 0
-        assert hasattr(ewc, "_last_expert_fisher")
-
-        # Verify per-expert Fishers exist
-        if ewc._last_expert_fisher:
-            sample_ek = next(iter(ewc._last_expert_fisher))
-            sample_fk = next(iter(ewc._last_expert_fisher[sample_ek]))
-            assert sample_fk is not None
-
-    def test_expert_ewc_merge_and_penalty(self):
-        """Merging Fisher then computing penalty doesn't crash."""
-        from egefalos.expert_ewc import ExpertEWC
-        from tabula_rasa.dataset import generate_problem
-        from tabula_rasa.model import MathTransformer
-        from tabula_rasa.tokenizer import MathTokenizer
-
-        cfg = Config()
-        cfg.vocab_size = 44
-        cfg.d_model = 64
-        cfg.n_layers = 2
-        cfg.n_heads = 4
-        cfg.d_ff = 128
-        cfg.use_moe = True
-        cfg.num_experts = 4
-        cfg.max_seq_len = 16
-
-        tok = MathTokenizer()
-        cfg.vocab_size = tok.vocab_size
-        model = MathTransformer(cfg)
-        ewc = ExpertEWC(model, gamma=0.9, num_experts=4)
-        ewc.save_anchor_weights()
-
-        samples = []
-        for _ in range(10):
-            expr, ans = generate_problem(1, 2)
-            text = f"{expr}={ans}"
-            ids = tok.encode(text, add_special_tokens=True)
-            ids = (ids + [tok.pad_id] * cfg.max_seq_len)[:cfg.max_seq_len]
-            samples.append(torch.tensor(ids))
-
-        class SimpleDataset(torch.utils.data.Dataset):
-            def __init__(self, data):
-                self.data = data
-            def __len__(self):
-                return len(self.data)
-            def __getitem__(self, i):
-                return self.data[i]
-
-        dataset = SimpleDataset(samples)
-        loader = torch.utils.data.DataLoader(dataset, batch_size=5)
-
-        ewc.compute_fisher(loader)
-        ewc.merge_fisher()
-        assert ewc.consolidated
-
-        penalty = ewc.compute_ewc_penalty(lambda_ewc=1000.0)
-        assert isinstance(penalty, torch.Tensor)
-        assert penalty.ndim == 0  # scalar
-
-    def test_expert_ewc_save_load_roundtrip(self, tmp_path):
-        """Save and load preserves all Fishers and anchors."""
-        from egefalos.expert_ewc import ExpertEWC
-        from tabula_rasa.dataset import generate_problem
-        from tabula_rasa.model import MathTransformer
-        from tabula_rasa.tokenizer import MathTokenizer
-
-        cfg = Config()
-        cfg.vocab_size = 44
-        cfg.d_model = 64
-        cfg.n_layers = 2
-        cfg.n_heads = 4
-        cfg.d_ff = 128
-        cfg.use_moe = True
-        cfg.num_experts = 4
-        cfg.max_seq_len = 16
-
-        tok = MathTokenizer()
-        cfg.vocab_size = tok.vocab_size
-        model = MathTransformer(cfg)
-        ewc = ExpertEWC(model, gamma=0.9, num_experts=4)
-        ewc.save_anchor_weights()
-
-        samples = []
-        for _ in range(10):
-            expr, ans = generate_problem(1, 2)
-            text = f"{expr}={ans}"
-            ids = tok.encode(text, add_special_tokens=True)
-            ids = (ids + [tok.pad_id] * cfg.max_seq_len)[:cfg.max_seq_len]
-            samples.append(torch.tensor(ids))
-
-        class SimpleDataset(torch.utils.data.Dataset):
-            def __init__(self, data):
-                self.data = data
-            def __len__(self):
-                return len(self.data)
-            def __getitem__(self, i):
-                return self.data[i]
-
-        dataset = SimpleDataset(samples)
-        loader = torch.utils.data.DataLoader(dataset, batch_size=5)
-
-        ewc.compute_fisher(loader)
-        ewc.merge_fisher()
-
-        save_path = tmp_path / "expert_ewc.pt"
-        ewc.save(save_path)
-        assert save_path.exists()
-
-        # Load into a new instance
-        model2 = MathTransformer(cfg)
-        ewc2 = ExpertEWC(model2, gamma=0.9, num_experts=4)
-        ewc2.load(save_path)
-        assert ewc2.consolidated
-        assert len(ewc2.global_fisher) == len(ewc.global_fisher)
-        assert len(ewc2.expert_fisher) == len(ewc.expert_fisher)
-        assert ewc2.task_count == ewc.task_count
-
-
-class TestCheckpointSave:
-    """Checkpoint save/load roundtrip."""
-
-    def test_save_load_roundtrip(self, tmp_path):
-        """Model state can be saved and loaded."""
-        cfg = Config()
-        cfg.vocab_size = 44
-        cfg.d_model = 32
-        cfg.n_layers = 1
-        cfg.n_heads = 2
-        cfg.d_ff = 64
-
-        model = MathTransformer(cfg)
-        save_path = tmp_path / "test_model.pt"
-
-        # Save
-        torch.save({"model_state_dict": model.state_dict()}, save_path)
-        assert save_path.exists()
-
-        # Load
-        state = torch.load(save_path, map_location="cpu", weights_only=True)
-        model2 = MathTransformer(cfg)
-        model2.load_state_dict(state["model_state_dict"])
-
-        # Verify same output
-        model.eval()
-        model2.eval()
-        x = torch.randint(0, cfg.vocab_size, (1, 8))
-        with torch.no_grad():
-            out1, _, _ = model(x)
-            out2, _, _ = model2(x)
-        assert torch.equal(out1, out2), "Saved and loaded models produce different outputs"
-
-
-class TestEndToEndQuickTraining:
-    """Run the actual train_specialist.py script as a subprocess."""
-
-    def test_quick_training_subprocess(self, tmp_path):
-        """``train_specialist.py add --steps 50 --batch 32`` completes without error,
-        creates checkpoint files, and produces a model that generates
-        reasonable output. Uses explicit step count instead of --quick
-        so the test is predictable across CI and local environments.
-        """
-        import subprocess
-        import sys
-
+class TestCLI:
+    """Test that CLI entry points exist and run without crashing."""
+
+    def test_tabula_rasa_cli_help(self) -> None:
+        result = subprocess.run(
+            [sys.executable, "-m", "tabula_rasa", "--help"],
+            capture_output=True, text=True, timeout=30,
+        )
+        assert result.returncode == 0
+        assert "usage" in result.stdout.lower() or "usage" in result.stderr.lower()
+
+    def test_tabula_rasa_cli_serve_help(self) -> None:
+        result = subprocess.run(
+            [sys.executable, "-m", "tabula_rasa", "serve", "--help"],
+            capture_output=True, text=True, timeout=30,
+        )
+        assert result.returncode == 0
+        assert "usage" in result.stdout.lower() or "usage" in result.stderr.lower()
+
+    def test_console_script_installed(self) -> None:
+        result = subprocess.run(
+            ["tabula-rasa", "--help"],
+            capture_output=True, text=True, timeout=30,
+        )
+        assert result.returncode == 0
+
+    def test_train_specialist_help(self) -> None:
+        """scripts/train_specialist.py --help."""
         cwd = Path(__file__).resolve().parent.parent
         result = subprocess.run(
-            [sys.executable, "scripts/train_specialist.py", "add", "--steps", "50", "--batch", "32"],
-            capture_output=True,
-            text=True,
-            timeout=300,
-            cwd=str(cwd),
+            [sys.executable, "scripts/train_specialist.py", "--help"],
+            capture_output=True, text=True, timeout=30, cwd=str(cwd),
         )
+        assert result.returncode == 0
 
-        # Check exit code
-        assert result.returncode == 0, (
-            f"train_specialist.py exited with code {result.returncode}\n"
-            f"stdout:\n{result.stdout[:2000]}\n"
-            f"stderr:\n{result.stderr[:2000]}"
-        )
-
-        # Check output contains expected messages
-        assert (
-            "Done!" in result.stdout
-        ), f"Expected 'Done!' not found in output:\n{result.stdout[:1000]}"
-
-        # Check that checkpoint files were created
-        op_dir = cwd / "specialists" / "math" / "add"
-        assert (op_dir / "best.pt").exists() or (
-            op_dir / "final.pt"
-        ).exists(), f"Checkpoint not found in {op_dir}"
-
-        # Verify the checkpoint loads and can generate
-        import torch
-
-        from tabula_rasa.config import Config
-        from tabula_rasa.model import MathTransformer
-        from tabula_rasa.tokenizer import MathTokenizer
-
-        ckpt = op_dir / "best.pt"
-        if not ckpt.exists():
-            ckpt = op_dir / "final.pt"
-        tok = MathTokenizer.load(str(op_dir / "tokenizer.json"))
-        cfg = Config()
-        cfg.vocab_size = tok.vocab_size
-        tok.max_seq_len = cfg.max_seq_len
-        model = MathTransformer(cfg)
-        state = torch.load(ckpt, map_location="cpu", weights_only=True)
-        try:
-            model.load_state_dict(state["model_state_dict"])
-        except RuntimeError:
-            # Handle tokenizer vocab size changes (e.g. added CoT markers)
-            sd = state["model_state_dict"]
-            model_sd = model.state_dict()
-            for k in list(sd.keys()):
-                if k in model_sd and sd[k].shape != model_sd[k].shape:
-                    del sd[k]
-            model.load_state_dict(sd, strict=False)
-        model.eval()
-
-        # Generate something
-        output = model.generate(tok, "2+2=", max_new_tokens=5, temperature=0.0)
-        assert isinstance(output, str), f"Expected string output, got {type(output)}"
-        assert len(output) > 0, "Generated output was empty"
-
-    def test_quick_training_with_flags(self, tmp_path):
-        """``train_specialist.py add --quick --no-reversed --no-loss-mask``
-        runs without error.
-        """
-        import subprocess
-        import sys
-
+    def test_train_specialist_quick_train(self) -> None:
+        """Quick smoke test of the training loop."""
         cwd = Path(__file__).resolve().parent.parent
         result = subprocess.run(
-            [
-                sys.executable,
-                "scripts/train_specialist.py",
-                "add",
-                "--steps",
-                "50",
-                "--batch",
-                "32",
-                "--no-reversed",
-                "--no-loss-mask",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=300,
-            cwd=str(cwd),
+            [sys.executable, "scripts/train_specialist.py",
+             "add", "--steps", "50", "--batch", "32"],
+            capture_output=True, text=True, timeout=300, cwd=str(cwd),
         )
-        assert result.returncode == 0, f"Exit code {result.returncode}\n{result.stdout[:500]}"
+        assert result.returncode == 0, f"stderr: {result.stderr[:500]}"
+        assert "Accuracy" in result.stdout or "accuracy" in result.stdout

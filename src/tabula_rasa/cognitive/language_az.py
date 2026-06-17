@@ -15,16 +15,13 @@ Integration:
   - egefalos/pythagoras.py: semantic audit of reconstruction failures
 """
 
-import math, random
-from pathlib import Path
+import random
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 
-from tabula_rasa.model import MathTransformer, count_parameters
 from tabula_rasa.config import Config
-
+from tabula_rasa.model import MathTransformer, count_parameters
 
 # ═════════════════════════════════════════════════════════════════════
 # CONCEPT GRAPH — Language-agnostic state representation
@@ -808,9 +805,9 @@ if __name__ == '__main__':
     print(f'Reconstructed: {result.get("reconstructed", "None")}')
 
     # Test self-play
-    print(f'\nRunning mini self-play session (10 games)...')
+    print('\nRunning mini self-play session (10 games)...')
     stats = language_self_play_session(model, tok, num_games=10, device='cpu')
-    print(f'Self-play stats:')
+    print('Self-play stats:')
     for k, v in stats.items():
         if k != 'rewards':
             print(f'  {k}: {v}')

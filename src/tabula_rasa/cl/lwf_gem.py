@@ -23,10 +23,11 @@ Reference:
 
 from __future__ import annotations
 
+from typing import Optional
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Optional
 
 
 class LwF:
@@ -382,7 +383,7 @@ def main():
     total = lwf.get_total_loss(torch.tensor(1.0, requires_grad=True), x)
     print(f"    Total loss (task=1.0 + distill): {total.item():.4f}")
     print(f"    Summary: {lwf.get_summary()}")
-    print(f"  → LwF OK")
+    print("  → LwF OK")
 
     # Test GEM
     print("\n  [GEM]")
@@ -399,7 +400,7 @@ def main():
     loss.backward()
     sim = gem.project_gradients()
     print(f"    No refs projection: cos_sim={sim:.4f} (expected ~1.0)")
-    print(f"  → GEM OK")
+    print("  → GEM OK")
 
     print(f"\n{'='*50}")
     print("  LwF + GEM — Quick Test PASSED")

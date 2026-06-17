@@ -14,18 +14,14 @@ Usage:
 
 from __future__ import annotations
 
-import json
 import math
 import os
-import random
 import signal
 import sys
 import time
 from pathlib import Path
 
-import numpy as np
 import torch
-import torch.nn as nn
 from torch import optim
 from torch.utils.data import DataLoader, Dataset
 
@@ -253,7 +249,7 @@ def train_chat_specialist(
     header += f"\n  Device: {device_name} | Params: {n_params:,}"
     header += f"\n  Steps: {global_step} -> {cfg.max_steps} | Batch: {cfg.batch_size} | LR: {cfg.learning_rate}"
     header += f"\n  Dataset: {len(train_ds)} samples | Max seq: {cfg.max_seq_len}"
-    header += f"\n"
+    header += "\n"
     print(header)
     log_file.write(header + "\n")
     log_file.flush()
@@ -262,7 +258,7 @@ def train_chat_specialist(
     recent_losses = []
 
     print(f"  Training from step {global_step} to {cfg.max_steps}...")
-    print(f"  Press Ctrl+C to save and exit gracefully.\n")
+    print("  Press Ctrl+C to save and exit gracefully.\n")
 
     # ── Training loop ──
     try:

@@ -18,13 +18,11 @@ Usage:
 """
 
 import ast
+import os
+import re
 import subprocess
 import sys
 import time
-import re
-import os
-from pathlib import Path
-
 
 # ═════════════════════════════════════════════════════════════════════
 # DANGEROUS IMPORT BLACKLIST — The Pythagorean Security Audit

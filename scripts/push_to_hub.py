@@ -501,7 +501,7 @@ def push_specialist(
             token=token,
             commit_message=f"Push {op} specialist (step {global_step}, acc {acc:.1f}%)",
         )
-        print(f"  [*] Upload complete!")
+        print("  [*] Upload complete!")
         print(f"  [*] View at: {HF_BASE_URL}/{repo_id}")
 
         return repo_id
@@ -515,7 +515,7 @@ def push_specialist(
         import shutil
 
         shutil.rmtree(upload_dir, ignore_errors=True)
-        print(f"  [*] Cleaned up temp files")
+        print("  [*] Cleaned up temp files")
 
 
 def push_all(

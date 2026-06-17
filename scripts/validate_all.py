@@ -1,5 +1,9 @@
 """Quick validation — runs fast tests on CPU in <20s."""
-import sys, time, torch, os, tempfile
+import os
+import sys
+
+import torch
+
 sys.path.insert(0, 'src')
 
 PASS = 0; FAIL = 0
@@ -13,6 +17,7 @@ print()
 
 # 1. Config
 from tabula_rasa.config import Config
+
 cfg = Config()
 check(cfg.use_entropy_curriculum, 'entropy curriculum ON')
 check(cfg.use_gradient_checkpointing, 'gradient checkpointing ON')
@@ -24,6 +29,7 @@ for preset in ['1M', '5M', '10M']:
 
 # 2. Tokenizer
 from tabula_rasa.tokenizer import MathTokenizer
+
 tok = MathTokenizer()
 check(tok.vocab_size > 0, f'vocab size = {tok.vocab_size}')
 for text in ['12+34=46', '7+8=15', '100-1=99']:
@@ -32,7 +38,8 @@ for text in ['12+34=46', '7+8=15', '100-1=99']:
     check(decoded == text, f'roundtrip: {text}')
 
 # 3. Model: RASA
-from tabula_rasa.model import MathTransformer, count_parameters
+from tabula_rasa.model import MathTransformer
+
 cfg = Config(); cfg.d_model=32; cfg.n_layers=2; cfg.n_heads=4; cfg.d_ff=64
 cfg.vocab_size = tok.vocab_size; tok.max_seq_len = 48
 cfg.use_rasa = True
@@ -52,7 +59,8 @@ check(torch.isfinite(loss2), f'MoE forward: loss={loss2.item():.4f}')
 check(torch.isfinite(aux), f'MoE aux loss: {aux.item():.4f}')
 
 # 5. LoRA
-from tabula_rasa.lora import apply_lora_to_model, save_lora_adapters, load_lora_adapters
+from tabula_rasa.lora import apply_lora_to_model, load_lora_adapters, save_lora_adapters
+
 cfg.use_moe = False; cfg.use_rasa = False
 m3 = MathTransformer(cfg)
 lora = apply_lora_to_model(m3, rank=4, alpha=1.0)
@@ -63,13 +71,13 @@ check(len(lora2) == 8, 'LoRA loaded')
 os.unlink('/tmp/_lora_test.pt')
 
 # 6. Benchmark imports
-from tabula_rasa.eval import (evaluate_accuracy, evaluate_per_position,
-    evaluate_ood, evaluate_compositional, evaluate_robustness,
-    evaluate_adversarial, full_benchmark, BOUNDARY_PROBLEMS)
+from tabula_rasa.eval import BOUNDARY_PROBLEMS
+
 check(len(BOUNDARY_PROBLEMS) == 31, f'{len(BOUNDARY_PROBLEMS)} boundary cases')
 
 # 7. Orchestrator
 from tabula_rasa.orchestrator import PreparedSlateOrchestrator
+
 orch = PreparedSlateOrchestrator()
 check(orch._is_math_query('12+34'), 'math detection')
 check(orch._is_greeting('Hello'), 'greeting detection')
@@ -80,6 +88,7 @@ r2 = orch.answer('12+34'); check('not sure' in r2.answer.lower(), 'fallback fall
 # 8. MCTS / RAG structure
 from tabula_rasa.mcts_inference import MCTSInference
 from tabula_rasa.rag import RAGEngine
+
 m4 = MathTransformer(cfg); m4.eval()
 mcts = MCTSInference(m4, tok, num_simulations=4, top_k=5, max_new_tokens=6)
 ans, stats = mcts.generate('2+3')
@@ -95,6 +104,6 @@ total = PASS + FAIL
 print(f'\n{"="*50}')
 print(f'  {PASS}/{total} passed ({FAIL} failed)')
 if FAIL == 0:
-    print(f'  All integration tests OK')
+    print('  All integration tests OK')
 print(f'{"="*50}')
 sys.exit(0 if FAIL == 0 else 1)

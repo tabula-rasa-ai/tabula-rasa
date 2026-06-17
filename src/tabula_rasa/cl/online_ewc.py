@@ -4,12 +4,11 @@ Merged Fisher matrix prevents catastrophic forgetting across sequential tasks.
 Includes adaptive lambda/gamma tuning based on loss trajectory.
 """
 
-import math
+from pathlib import Path
+from typing import Dict, Optional
+
 import torch
 import torch.nn as nn
-from typing import Dict, Optional
-import json
-from pathlib import Path
 
 
 class OnlineEWC:

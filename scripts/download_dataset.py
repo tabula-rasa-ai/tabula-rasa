@@ -4,7 +4,9 @@ Usage: python3 download_dataset.py [num_samples=5000]
 Downloads Alpaca-cleaned from Hugging Face and converts to our JSONL format.
 No HF datasets library needed — uses direct HTTP download.
 """
-import sys, json, random, os, gzip, io
+import json
+import random
+import sys
 
 NUM_SAMPLES = int(sys.argv[1]) if len(sys.argv) > 1 else 5000
 
@@ -12,8 +14,8 @@ NUM_SAMPLES = int(sys.argv[1]) if len(sys.argv) > 1 else 5000
 print("Downloading alpaca-cleaned dataset...")
 
 # Try HF dataset viewer API (no datasets library needed)
-import urllib.request
 import urllib.error
+import urllib.request
 
 url = "https://huggingface.co/datasets/yahma/alpaca-cleaned/resolve/main/alpaca_data_cleaned.json"
 try:

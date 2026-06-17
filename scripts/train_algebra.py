@@ -9,7 +9,10 @@ Usage:
     python3 scripts/train_algebra.py --type linear        # Specific problem type
 """
 
-import sys, os, time, argparse, signal
+import argparse
+import signal
+import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -17,12 +20,12 @@ sys.path.insert(0, str(ROOT / 'src'))
 
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader
 from torch.optim import AdamW
+from torch.utils.data import DataLoader
 
+from tabula_rasa.algebra_dataset import AlgebraDataset, AlgebraTokenizer, evaluate_algebra
 from tabula_rasa.config import Config
 from tabula_rasa.model import MathTransformer, count_parameters
-from tabula_rasa.algebra_dataset import AlgebraDataset, AlgebraTokenizer, evaluate_algebra
 
 
 def train_algebra(opts):
@@ -58,7 +61,7 @@ def train_algebra(opts):
     )
 
     print(f'\n{"="*60}')
-    print(f'  ALGEBRA SPECIALIST — Solving for x')
+    print('  ALGEBRA SPECIALIST — Solving for x')
     print(f'  Problem type: {opts.type}')
     print(f'  Device: {device}')
     print(f'  Steps: {cfg.max_steps} | Batch: {cfg.batch_size} | LR: {cfg.learning_rate}')
@@ -187,7 +190,7 @@ def train_algebra(opts):
     print(f'\n{"="*60}')
     print(f'  DONE! {elapsed:.0f}s ({elapsed/60:.1f} min)')
     print(f'  Best accuracy: {best_acc:.1f}%')
-    print(f'  Model saved: specialists/algebra/best.pt')
+    print('  Model saved: specialists/algebra/best.pt')
     print(f'{"="*60}')
 
 

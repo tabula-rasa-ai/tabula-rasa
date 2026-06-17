@@ -13,17 +13,18 @@ a human teacher.
 The game generates synthetic training data for the AlphaZero self-play loop.
 """
 
-import torch
 import random
-from pathlib import Path
+
+import torch
 
 from tabula_rasa.cognitive.language_az import (
-    LanguageAlphaZero, ConceptNode, concept_to_string, string_to_concept,
-    concept_graph_equal, generate_training_concepts, concept_to_sentence_key,
-    LANGUAGE_TEMPLATES, BASE_CONCEPTS, COMPOUND_CONCEPTS,
-    language_self_play_session,
+    BASE_CONCEPTS,
+    COMPOUND_CONCEPTS,
+    ConceptNode,
+    LanguageAlphaZero,
+    concept_to_string,
+    generate_training_concepts,
 )
-
 
 # ═════════════════════════════════════════════════════════════════════
 # GAME CONFIG
@@ -325,7 +326,7 @@ if __name__ == '__main__':
     runner = SemanticGameRunner(model, tok)
     concept = ConceptNode(entity='apple', property='red', action='fall')
     result = runner.play_game(concept)
-    print(f'Game result:')
+    print('Game result:')
     print(f'  Concept: {concept}')
     print(f'  Sentence: {result["sentence"][:80]}')
     print(f'  Reconstructed: {result.get("reconstructed", "None")}')
@@ -334,7 +335,7 @@ if __name__ == '__main__':
     print(f'\nStats: {runner.get_stats()}')
 
     # Test full session
-    print(f'\nRunning mini gymnasium session (5 games)...')
+    print('\nRunning mini gymnasium session (5 games)...')
     from grammar_engine import create_grammar_rules
     rules = create_grammar_rules()
     results = alphazero_gymnasium_session(

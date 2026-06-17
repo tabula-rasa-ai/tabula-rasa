@@ -21,26 +21,21 @@ As part of training (added to train_specialist.py):
     python3 train_specialist.py add --socratic --socratic-steps 1000
 """
 
-import json
-import math
 import random
 import time
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import Dataset, DataLoader
 from torch import optim
+from torch.utils.data import DataLoader, Dataset
 
 from tabula_rasa.config import Config
-from tabula_rasa.tokenizer import MathTokenizer
-from tabula_rasa.model import MathTransformer, count_parameters
-from tabula_rasa.math_parser import verify_scratchpad, parse_expression, evaluate, OPS
-
 from tabula_rasa.memory.hippocampus import store_experience
+from tabula_rasa.model import MathTransformer, count_parameters
+from tabula_rasa.tokenizer import MathTokenizer
 
 try:
     from tabula_rasa.reasoning.socratic_critique import SocraticCritiqueLoop, generate_problem
@@ -590,7 +585,7 @@ class SocraticSelfTrainer:
         """
         if not quiet:
             print(f"\n  {'='*50}")
-            print(f"  Socratic Self-Improvement Iteration")
+            print("  Socratic Self-Improvement Iteration")
             print(f"  {'='*50}")
 
         corrections, collect_summary = self.collect_corrections(
@@ -670,7 +665,7 @@ class SocraticSelfTrainer:
 
         if not quiet:
             print(f"\n  {'='*60}")
-            print(f"  Self-Improvement Complete")
+            print("  Self-Improvement Complete")
             print(f"  Baseline: {baseline_acc:.1f}% -> Final: {final_acc:.1f}%")
             improvement = final_acc - baseline_acc
             print(f"  Net improvement: {improvement:+.1f}%")
@@ -719,7 +714,6 @@ def main():
     args = parser.parse_args()
 
     # Load model
-    from pathlib import Path
     ckpt_path = None
     if args.checkpoint:
         ckpt_path = Path(args.checkpoint)

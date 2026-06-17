@@ -7,7 +7,6 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import pytest
-import torch
 
 from tabula_rasa.config import Config
 from tabula_rasa.model import MathTransformer

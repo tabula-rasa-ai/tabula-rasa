@@ -11,7 +11,10 @@ Usage:
     python3 scripts/install.py --check-only        # Only print detected hardware
 """
 
-import subprocess, sys, platform, os, re
+import os
+import platform
+import subprocess
+import sys
 from pathlib import Path
 
 
@@ -103,7 +106,7 @@ def main():
     hardware = detect_hardware()
 
     print(f'\n{"="*50}')
-    print(f'  Tabula Rasa — Auto Installer')
+    print('  Tabula Rasa — Auto Installer')
     print(f'{"="*50}')
     print(f'  OS:      {hardware["os"]} ({hardware["arch"]})')
     print(f'  Python:  {hardware["python"]}')
@@ -133,7 +136,7 @@ def main():
     result = subprocess.run(pip_cmd, shell=True)
     if result.returncode == 0:
         print(f'\n{"="*50}')
-        print(f'  Installation complete!')
+        print('  Installation complete!')
         print(f'{"="*50}')
     else:
         print(f'\n  [!] Installation failed (exit code {result.returncode})')

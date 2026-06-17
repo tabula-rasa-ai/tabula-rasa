@@ -11,7 +11,6 @@ Usage:
 
 import argparse
 import json
-import os
 import subprocess
 import sys
 import time
@@ -73,7 +72,7 @@ def run_experiment(args):
         return
 
     # ── 2. Run full benchmark ──────────────────────────────────────
-    print(f"\n  [2/5] Benchmarking...")
+    print("\n  [2/5] Benchmarking...")
     bench_path = ROOT / "experiments" / "runs" / f"benchmark_{name}.json"
     bench_cmd = [
         sys.executable, "-m", "tabula_rasa.eval", str(ckpt),
@@ -83,11 +82,11 @@ def run_experiment(args):
     print(f"  Benchmark: exit code {proc.returncode}")
 
     # ── 3. Linguistic probe ────────────────────────────────────────
-    print(f"\n  [3/5] Linguistic probe...")
+    print("\n  [3/5] Linguistic probe...")
     probe_path = ROOT / "experiments" / "runs" / f"probe_{name}.json"
     try:
-        from tabula_rasa.probe import full_probe
         from tabula_rasa.eval import load_model
+        from tabula_rasa.probe import full_probe
         model, tok = load_model(str(ckpt))
         probe_results = full_probe(model, tok, visualize=False)
         with open(probe_path, "w") as f:
@@ -97,7 +96,7 @@ def run_experiment(args):
         print(f"  Probe skipped: {e}")
 
     # ── 4. Export to ProofGrid ─────────────────────────────────────
-    print(f"\n  [4/5] Benchmark export...")
+    print("\n  [4/5] Benchmark export...")
     export_dir = ROOT / "exports"
     export_dir.mkdir(exist_ok=True)
     try:
@@ -109,10 +108,10 @@ def run_experiment(args):
         print(f"  Export skipped: {e}")
 
     # ── 5. Log experiment ──────────────────────────────────────────
-    print(f"\n  [5/5] Logging experiment...")
+    print("\n  [5/5] Logging experiment...")
     try:
-        from tabula_rasa.experiments import log_run
         from tabula_rasa.eval import load_model
+        from tabula_rasa.experiments import log_run
         model, tok = load_model(str(ckpt))
         from tabula_rasa.eval import evaluate_accuracy
         acc, _ = evaluate_accuracy(model, tok, num_problems=100, max_digits=args.max_digits or 4, verbose=False)
@@ -158,8 +157,8 @@ def run_experiment(args):
     print(f"  Probe: {probe_path}")
     print(f"  Exports: {export_dir}")
     print(f"{'='*70}")
-    print(f"\n  Compare with: python3 scripts/cli.py experiments --compare")
-    print(f"  View all:     python3 scripts/cli.py experiments")
+    print("\n  Compare with: python3 scripts/cli.py experiments --compare")
+    print("  View all:     python3 scripts/cli.py experiments")
 
 
 def main():
@@ -184,7 +183,7 @@ def main():
     args = parser.parse_args()
 
     if args.list:
-        from tabula_rasa.experiments import print_runs, list_runs
+        from tabula_rasa.experiments import list_runs, print_runs
         print_runs(list_runs(limit=30))
         return
 

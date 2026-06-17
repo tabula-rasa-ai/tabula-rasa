@@ -8,8 +8,7 @@ This prevents the language model from guessing at arithmetic
 and preserves the specialist architecture's honesty.
 """
 
-import re, json
-from pathlib import Path
+import re
 
 MATH_CALL_TOKEN = '<MATH_CALL>'
 MATH_RESULT_TOKEN = '<MATH_RESULT>'
@@ -101,7 +100,6 @@ def extract_and_solve(math_call_text: str, math_specialist=None, tokenizer=None)
         # If we have a math specialist, use it for verification
         if math_specialist and tokenizer:
             try:
-                from tabula_rasa.model import MathTransformer
                 prompt = f'{expr}='
                 out = math_specialist.generate(tokenizer, prompt, max_new_tokens=10,
                                                temperature=0.1, top_k=3)

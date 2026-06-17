@@ -7,8 +7,8 @@ Usage:
     tabula-rasa auto-train [--target PCT] [--ops OP [OP ...]]
 """
 
-import sys
 import os
+import sys
 
 # Ensure src/ and project root are on path
 _src_dir = os.path.dirname(os.path.abspath(__file__))  # src/tabula_rasa/
@@ -46,7 +46,6 @@ def main():
 def _serve(args):
     """Start the Tabula Rasa AI server (port 8002)."""
     # Import here so the package can be installed without all deps at import time
-    import argparse
     from tabula_rasa.server.ai_server import main as server_main
 
     # Build a fresh argv for the server's own parser
@@ -82,9 +81,10 @@ def _train(args):
 
 def _bench(args):
     """Run full benchmark on a checkpoint."""
-    from tabula_rasa.eval import full_benchmark, load_model as eval_load_model
-    from tabula_rasa.tokenizer import MathTokenizer
     from tabula_rasa.config import Config
+    from tabula_rasa.eval import full_benchmark
+    from tabula_rasa.eval import load_model as eval_load_model
+    from tabula_rasa.tokenizer import MathTokenizer
 
     if not args:
         print('Usage: tabula-rasa bench <checkpoint.pt> [max_digits]')

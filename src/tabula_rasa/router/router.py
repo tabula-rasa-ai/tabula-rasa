@@ -17,8 +17,6 @@ The Router maintains a dispatch table and confidence scores.
 """
 
 import re
-from pathlib import Path
-
 
 # ═════════════════════════════════════════════════════════════════════
 # ROUTING RULES — Pattern-based dispatch

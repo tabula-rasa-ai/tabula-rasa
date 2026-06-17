@@ -13,21 +13,16 @@ Architecture:
   - Value Head learns to "intuit" algorithm complexity
 """
 
-import ast
 import random
-import time
 import re
 from enum import Enum
-from pathlib import Path
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 
-from tabula_rasa.model import MathTransformer, count_parameters
-from tabula_rasa.config import Config
 from tabula_rasa.cognitive.code_sandbox import PythonEnvironment, check_syntax
-
+from tabula_rasa.config import Config
+from tabula_rasa.model import MathTransformer, count_parameters
 
 # ═════════════════════════════════════════════════════════════════════
 # STAGE ENUM — Developmental Curriculum

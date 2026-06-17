@@ -47,6 +47,7 @@ def main():
     from egefalos.language_az import LanguageAlphaZero
     from egefalos.mcts import create_mcts_fn
     from egefalos.semantic_game import alphazero_gymnasium_session
+
     from tabula_rasa.config import Config
     from tabula_rasa.tokenizer import MathTokenizer
 
@@ -67,7 +68,7 @@ def main():
     grammar_rules = create_grammar_rules() if args.grammar else None
     mcts_fn = create_mcts_fn(model, tok, simulations=args.mcts_simulations) if args.mcts else None
 
-    print(f"[LanguageAZ] Running gymnasium session...", flush=True)
+    print("[LanguageAZ] Running gymnasium session...", flush=True)
 
     results = alphazero_gymnasium_session(
         model,
@@ -80,7 +81,7 @@ def main():
         device="cpu",
     )
 
-    print(f"[LanguageAZ] Self-play complete!", flush=True)
+    print("[LanguageAZ] Self-play complete!", flush=True)
     print(f'[LanguageAZ] Games: {results["games_played"]}', flush=True)
     print(f'[LanguageAZ] Avg reward: {results["avg_reward"]:.3f}', flush=True)
     print(f'[LanguageAZ] Perfect rate: {results["perfect_rate"]:.1f}%', flush=True)

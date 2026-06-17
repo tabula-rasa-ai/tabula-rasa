@@ -48,7 +48,6 @@ from typing import Optional
 import numpy as np
 import torch
 
-
 # ─── Constants ────────────────────────────────────────────────────
 
 SPECIALISTS_ROOT = Path("specialists")
@@ -604,7 +603,7 @@ def main() -> None:
 
     if args.command == "soup":
         result = model_soup(args.adapters, args.output, args.weights)
-        print(f"  [*] Model Soup complete:")
+        print("  [*] Model Soup complete:")
         print(f"      Adapters: {', '.join(result['adapter_names'])}")
         print(f"      Weights:  {[round(w, 3) for w in result['weights']]}")
         print(f"      Output:   {result['output_path']}")
@@ -632,7 +631,7 @@ def main() -> None:
         result = prune_stale_adapters(
             keep_top_k=args.keep, max_age_days=args.age
         )
-        print(f"  [*] Pruning complete:")
+        print("  [*] Pruning complete:")
         print(f"      Kept:   {len(result['kept'])} adapters")
         print(f"      Pruned: {len(result['pruned'])} adapters")
         if result["pruned"]:

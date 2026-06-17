@@ -9,7 +9,8 @@ Usage:
     python3 scripts/build_gpu_package.py --include-specialists  # Include trained checkpoints
 """
 
-import zipfile, os, json
+import json
+import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -126,14 +127,14 @@ def build_package(output_path: str = 'deploy.zip', include_specialists: bool = F
 
     size_mb = output_path.stat().st_size / 1_000_000
     print(f'\n{"="*50}')
-    print(f'  GPU Deployment Package')
+    print('  GPU Deployment Package')
     print(f'{"="*50}')
     print(f'  Output:    {output_path}')
     print(f'  Size:      {size_mb:.1f} MB')
     print(f'  Files:     {files_added}')
     print(f'  Specialists: {"Yes" if include_specialists else "No (smaller package)"}')
     print(f'{"="*50}')
-    print(f'\n  Deployment instructions:')
+    print('\n  Deployment instructions:')
     for step in manifest['instructions']:
         print(f'    {step}')
 

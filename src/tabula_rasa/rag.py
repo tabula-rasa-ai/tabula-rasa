@@ -17,7 +17,6 @@ Usage as a server:
 from __future__ import annotations
 
 import json
-import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -361,7 +360,7 @@ def run_server(port: int = 8300) -> None:
 
     server = ThreadedRAGServer(("0.0.0.0", port), Handler)
     print(f"[RAG] Server running on http://localhost:{port}")
-    print(f"[RAG] Endpoints: /health, /stats, /retrieve, /answer, /rebuild")
+    print("[RAG] Endpoints: /health, /stats, /retrieve, /answer, /rebuild")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

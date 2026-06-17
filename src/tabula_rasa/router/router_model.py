@@ -19,22 +19,19 @@ Intent labels:
 
 from __future__ import annotations
 
-import json
-import math
+# Reuse existing transformer blocks from model.py
+import sys
 from pathlib import Path
+from pathlib import Path as _Path
 from typing import Any, Optional
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-# Reuse existing transformer blocks from model.py
-import sys
-from pathlib import Path as _Path
 sys.path.insert(0, str(_Path(__file__).resolve().parent.parent))
 
-from src.tabula_rasa.model import TransformerBlock, _make_norm, RotaryEmbedding
-
+from src.tabula_rasa.model import TransformerBlock, _make_norm
 
 # ─── Intent definitions ────────────────────────────────────────────
 

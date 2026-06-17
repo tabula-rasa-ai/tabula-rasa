@@ -4,7 +4,13 @@ Usage: python3 train_chat_gpu.py chat_data.jsonl
 Learns subword tokens from the data first (num_merges=200),
 so "Hello" becomes ~2 tokens instead of 5 characters.
 """
-import os, sys, time, json, torch
+import json
+import os
+import sys
+import time
+
+import torch
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from tabula_rasa.bpe_tokenizer import BPETokenizer

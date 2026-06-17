@@ -235,7 +235,6 @@ class Config:
             'cuda' if CUDA GPU available, 'mps' if Apple Silicon,
             otherwise 'cpu'.
         """
-        import os
         import torch
 
         if torch.cuda.is_available():
@@ -265,6 +264,7 @@ class Config:
         Returns self for chaining.
         """
         import os
+
         import torch
 
         # Complexity score

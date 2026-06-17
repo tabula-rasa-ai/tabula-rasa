@@ -12,7 +12,10 @@ Usage:
     python3 scripts/train_mcts.py add --steps 500 --moe             # With MoE layer
 """
 
-import sys, os, time, random, argparse, signal
+import argparse
+import signal
+import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -21,14 +24,13 @@ sys.path.insert(0, str(ROOT))
 
 import torch
 import torch.nn as nn
+from egefalos.math_gym_env import MathGymEnv
+from egefalos.mcts import MicroMCTS
 from torch.optim import AdamW
 
 from tabula_rasa.config import Config
-from tabula_rasa.tokenizer import MathTokenizer
 from tabula_rasa.model import MathTransformer, count_parameters
-from tabula_rasa.dataset import generate_problem
-from egefalos.mcts import MicroMCTS
-from egefalos.math_gym_env import MathGymEnv
+from tabula_rasa.tokenizer import MathTokenizer
 
 
 class MCTSTrainer:
@@ -162,7 +164,7 @@ def main():
 
     model = MathTransformer(cfg).to(device)
     print(f'\n{"="*60}')
-    print(f'  ONLINE MCTS TRAINING')
+    print('  ONLINE MCTS TRAINING')
     print(f'  Op: {args.op} | Preset: {args.preset} | MoE: {args.moe}')
     print(f'  Device: {device} | Params: {count_parameters(model):,}')
     print(f'  MCTS sims: {args.mcts_sims} | Steps: {args.steps} | LR: {args.lr}')
@@ -226,7 +228,7 @@ def main():
     print(f'\n{"="*60}')
     print(f'  DONE! {elapsed:.0f}s ({elapsed/60:.1f} min)')
     print(f'  Final accuracy (last 100): {final_acc:.0f}%')
-    print(f'  Model saved: specialists/mcts/best.pt')
+    print('  Model saved: specialists/mcts/best.pt')
     print(f'{"="*60}')
 
 

@@ -17,7 +17,7 @@ import json
 import math
 import random
 import time
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Optional
 
@@ -25,16 +25,13 @@ import torch
 import torch.nn.functional as F
 
 from tabula_rasa.config import Config
-from tabula_rasa.tokenizer import MathTokenizer
-from tabula_rasa.model import MathTransformer, count_parameters
 from tabula_rasa.math_parser import (
-    verify_scratchpad,
-    verify_equation,
-    parse_expression,
     evaluate,
-    OPS,
+    verify_equation,
+    verify_scratchpad,
 )
-
+from tabula_rasa.model import MathTransformer, count_parameters
+from tabula_rasa.tokenizer import MathTokenizer
 
 # ═══════════════════════════════════════════════════════════════════
 # Telemetry

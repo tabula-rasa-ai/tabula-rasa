@@ -13,7 +13,6 @@ import argparse
 import json
 import math
 import os
-import shutil
 import sys
 import time
 import zipfile
@@ -51,7 +50,6 @@ OUT.mkdir(parents=True, exist_ok=True)
 def create_model(cfg, use_lora=False, lora_rank=8, lora_alpha=1.0, quantize_bits=0):
     """Create model with optional LoRA and quantization. Move to GPU immediately."""
     from tabula_rasa.lora import apply_lora_to_model, set_lora_trainable
-    from tabula_rasa.model import count_parameters
     model = MathTransformer(cfg).to(DEVICE)
 
     # Quantize if requested (requires bitsandbytes on CUDA)
@@ -62,11 +60,11 @@ def create_model(cfg, use_lora=False, lora_rank=8, lora_alpha=1.0, quantize_bits
         except ImportError as e:
             print(f"  [!] Quantization skipped: {e}")
     elif quantize_bits in (4, 8):
-        print(f"  [!] Quantization requires CUDA. Skipping.")
+        print("  [!] Quantization requires CUDA. Skipping.")
 
     # StreamBP: selective attention checkpointing (built into TransformerBlock)
     if getattr(cfg, "use_streambp", True):
-        print(f"  [*] StreamBP enabled (attention checkpointing)")
+        print("  [*] StreamBP enabled (attention checkpointing)")
 
     # LoRA
     lora_layers = []
@@ -116,7 +114,7 @@ def run_full_benchmark(model, tok, name, max_digits=4):
     try:
         from tabula_rasa.eval import full_benchmark
         results = full_benchmark(model, tok, train_max_digits=max_digits, verbose=True)
-        
+
         summary = {}
         for k, v in results.items():
             if hasattr(v, "accuracy"):
@@ -141,8 +139,9 @@ def train_one(name, data_dir, save_dir, steps=20000, batch_size=512, lr=3e-4,
               use_lora=False, lora_rank=8, lora_alpha=1.0, quantize_bits=0):
     """Train one specialist on GPU with all enhancements."""
     from mmap_dataset import get_loader
+
     from tabula_rasa.config import Config
-    from tabula_rasa.model import MathTransformer, count_parameters
+    from tabula_rasa.model import count_parameters
     from tabula_rasa.tokenizer import MathTokenizer
     tok = MathTokenizer()
     cfg = Config()
@@ -151,7 +150,7 @@ def train_one(name, data_dir, save_dir, steps=20000, batch_size=512, lr=3e-4,
 
     model, lora_layers = create_model(cfg, use_lora=use_lora, lora_rank=lora_rank, lora_alpha=lora_alpha, quantize_bits=quantize_bits)
     params = count_parameters(model)
-    
+
     # Op detection
     op_map = {"generalist": None, "add": "add", "sub": "sub", "mul": "mul", "div": "div"}
     op = None
@@ -169,7 +168,7 @@ def train_one(name, data_dir, save_dir, steps=20000, batch_size=512, lr=3e-4,
     print(f'{"="*60}')
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=cfg.weight_decay)
-    
+
     # AMP scaler (only on CUDA)
     use_amp = DEVICE == "cuda" and getattr(cfg, "use_amp", True)
     scaler = torch.amp.GradScaler(device=DEVICE, enabled=use_amp) if use_amp else None
@@ -330,7 +329,6 @@ def hard_negative_finetune(model, tok, save_dir, op=None, num_rounds=3, hard_rat
         print(f"  No data at {data_dir}, skipping HNM")
         return 0.0
 
-    from mmap_dataset import get_loader
     full_loader = get_loader(data_dir, batch_size=512, shuffle=False)
     all_x, all_y = [], []
     for x, y in full_loader:
@@ -397,7 +395,7 @@ def main():
     args = parser.parse_args()
 
     if hasattr(args, 'history') and args.history:
-        from tabula_rasa.experiments import print_runs, list_runs
+        from tabula_rasa.experiments import list_runs, print_runs
         print_runs(list_runs(limit=30))
         sys.exit(0)
 
@@ -443,7 +441,7 @@ def main():
 
     # ── Summary ──
     print(f'\n{"="*60}')
-    print(f"  All training complete!")
+    print("  All training complete!")
     print(f"  Output: {OUT}")
     print(f"  Config: preset={args.preset} MoE={args.moe} RASA={args.rasa} LoRA={args.lora}")
     for f in sorted(OUT.iterdir()):

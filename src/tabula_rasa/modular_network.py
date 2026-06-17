@@ -26,15 +26,11 @@ Usage:
 
 from __future__ import annotations
 
-import math
 import random
-from dataclasses import dataclass, field
 from typing import Any
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-
 
 # ═══════════════════════════════════════════════════════════════════════
 #  Concept Register — shared memory that modules read/write
@@ -502,8 +498,8 @@ if __name__ == "__main__":
 
     model = ModularArithmetic(concept_dim=64, hidden_dim=32, max_digits=4, num_columns=4)
     print(f"  Parameters: {sum(p.numel() for p in model.parameters()):,}")
-    print(f"  Modules: DigitParser, OperationSelector, ColumnComputer,")
-    print(f"           CarryPropagator, ResultFormatter")
+    print("  Modules: DigitParser, OperationSelector, ColumnComputer,")
+    print("           CarryPropagator, ResultFormatter")
     print()
 
     # Test forward pass

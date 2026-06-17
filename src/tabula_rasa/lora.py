@@ -163,9 +163,9 @@ def load_lora_adapters(
     state = torch.load(path, map_location="cpu", weights_only=True)
 
     # Determine rank/alpha from saved state if available
-    if f"lora_0_rank" in state:
+    if "lora_0_rank" in state:
         rank = int(state["lora_0_rank"])
-    if f"lora_0_alpha" in state:
+    if "lora_0_alpha" in state:
         alpha = float(state["lora_0_alpha"])
 
     lora_layers = apply_lora_to_model(model, rank=rank, alpha=alpha, target_modules=target_modules)

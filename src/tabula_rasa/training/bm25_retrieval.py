@@ -15,10 +15,8 @@ Usage:
 import math
 import re
 import sqlite3
-import time
 from collections import Counter
 from pathlib import Path
-from typing import Optional
 
 # Default stop words for filtering
 STOP_WORDS = frozenset({

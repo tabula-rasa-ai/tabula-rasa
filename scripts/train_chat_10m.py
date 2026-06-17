@@ -1,7 +1,13 @@
 """Train a 10M chat specialist on JSONL data.
 Uses base character-level tokenizer (no BPE merges — skips slow learning phase).
 """
-import os, sys, time, json, torch
+import json
+import os
+import sys
+import time
+
+import torch
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from tabula_rasa.bpe_tokenizer import BPETokenizer

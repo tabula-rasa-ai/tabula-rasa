@@ -8,11 +8,17 @@ Usage:
     python3 tabula_rasa.py --learn biology  # Queue a new skill for training
 """
 
-import argparse, json, time, sys, re, os, random, threading
+import argparse
+import json
+import random
+import re
+import sys
+import threading
+import time
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
-from http.server import HTTPServer, BaseHTTPRequestHandler
-from urllib.parse import urlparse
 from socketserver import ThreadingMixIn
+from urllib.parse import urlparse
 
 # Ensure src/ is on path before importing tabula_rasa package
 # sys.path: running inside package
@@ -29,17 +35,17 @@ class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
     daemon_threads = True
 
 import torch
+
 from tabula_rasa.config import Config
-from tabula_rasa.tokenizer import MathTokenizer
-from tabula_rasa.model import MathTransformer, count_parameters
 from tabula_rasa.lora import (
     LoRALayer,
     apply_lora_to_model,
-    set_lora_trainable,
     save_lora_adapters,
+    set_lora_trainable,
     switch_lora_adapters,
 )
-
+from tabula_rasa.model import MathTransformer, count_parameters
+from tabula_rasa.tokenizer import MathTokenizer
 
 # Module-level flag: train new conversational specialists as LoRA adapters
 # on a shared base model instead of full models from scratch.
@@ -351,7 +357,6 @@ def load_dataset(intent):
 
 def detect_skill(prompt: str) -> tuple:
     """Detect which skill a prompt needs. Returns (skill_name, confidence)."""
-    import re
     prompt_lower = prompt.lower()
     for name, info in SKILL_REGISTRY.items():
         for op in info['ops']:
@@ -598,7 +603,7 @@ class SkillManager:
     def _replay_memory(self):
         """Replay saved corrections from persistent memory."""
         try:
-            from tabula_rasa.memory.memory import get_all_corrections, save_correction
+            from tabula_rasa.memory.memory import get_all_corrections
             corrections = get_all_corrections()
             if not corrections:
                 return
@@ -619,7 +624,6 @@ class SkillManager:
                     # Train on corrections
                     model.train()
                     opt = torch.optim.AdamW(model.parameters(), lr=1e-4)
-                    import time as _t
                     for expr, ans in pairs:
                         text = f'{expr}={ans}'
                         tok = self.tokenizers.get(skill) or self.tokenizers.get('general_math')
@@ -723,7 +727,7 @@ class SkillManager:
         from tabula_rasa.training.pii_scrubber import scrub_pii
         clean_prompt = scrub_pii(prompt)
         if clean_prompt != prompt:
-            debug(f"ask: PII detected and scrubbed in prompt")
+            debug("ask: PII detected and scrubbed in prompt")
             prompt = clean_prompt  # Use scrubbed version downstream
         # ─────────────────────────────────────────────────────────
         force_skill = skill if (skill and skill in self.models) else None
@@ -750,7 +754,7 @@ class SkillManager:
             ds_skill, ds_conf = detect_skill(prompt)
             if ds_skill == 'conversation' and ds_conf >= 0.5:
                 skill = 'conversation'
-        
+
         # Conversational learning: if user follows up with an answer to a pending question
         if self.pending_question:
             result = self.learn_from_followup(prompt)
@@ -824,7 +828,7 @@ class SkillManager:
                 if ans_ret and len(ans_ret) > 5 and 'learning about' not in ans_ret:
                     ans_ret = f"[HERMES-6-16-2026] {ans_ret}"
                     return {'prompt': prompt, 'answer': ans_ret, 'knows': True, 'skill': 'conversation', 'skill_description': SKILL_REGISTRY.get('conversation', {}).get('description', ''), 'time_ms': 0, 'status': 'answered', 'confidence': 100.0, 'is_confident': True, 'message': None, 'training_info': meta_ret}
-            
+
             # ─── Intent detection ───
             intent = 'unknown'
             if any(phrase in prompt_lower for phrase in ['translate', 'what does', 'mean', 'say in']):
@@ -837,7 +841,7 @@ class SkillManager:
                 intent = 'capability_question'
             elif 'how are you' in prompt_lower:
                 intent = 'conversation'
-                debug(f"DEBUG_INTENT: matched how are you -> conversation")
+                debug("DEBUG_INTENT: matched how are you -> conversation")
             elif prompt_lower.startswith('how do') or prompt_lower.startswith('how does') or prompt_lower.startswith('how can') or prompt_lower.startswith('how was') or prompt_lower.startswith('how come') or prompt_lower.startswith('why do') or prompt_lower.startswith('why does') or prompt_lower.startswith('when do') or prompt_lower.startswith('when does') or prompt_lower.startswith('when did') or prompt_lower.startswith('where do') or prompt_lower.startswith('where does') or prompt_lower.startswith('where is'):
                 intent = 'explanation_question'
             elif '?' in prompt:
@@ -1261,7 +1265,6 @@ class SkillManager:
                     dataset_path.write_text(json.dumps(pairs, indent=2, ensure_ascii=False), encoding="utf-8")
                     debug(f"auto-dataset: fallback to single pair for {intent}")
             except Exception as e:
-                import traceback
                 debug(f"auto-dataset: generator failed ({e}), using basic append")
                 # Fallback: basic append with retrieval match
                 best_match_answer = None
@@ -1736,7 +1739,7 @@ class TabulaRasaHandler(BaseHTTPRequestHandler):
             test_q = qs.get('q', [''])[0]
             if test_q:
                 try:
-                    from tabula_rasa.orchestrator import SpecialistOrchestrator, decompose_question
+                    from tabula_rasa.orchestrator import decompose_question
                     parts = decompose_question(test_q)
                     self._send_json({'original': test_q, 'sub_questions': parts, 'count': len(parts)})
                 except Exception as e:
@@ -1853,7 +1856,7 @@ def print_welcome():
     for s in manager.known_skills:
         print(f'    ✓ {s}: {SKILL_REGISTRY[s]["description"]}')
     if manager.queued_skills:
-        print(f'  Queued (not yet trained):')
+        print('  Queued (not yet trained):')
         for s in manager.queued_skills:
             print(f'    ○ {s}: {SKILL_REGISTRY[s]["description"]}')
     print()
@@ -1872,7 +1875,7 @@ def main():
     print_welcome()
 
     print(f'[*] Starting Tabula Rasa AI on http://{args.host}:{args.port}')
-    print(f'[*] Ask me anything:')
+    print('[*] Ask me anything:')
     print(f'    curl http://{args.host}:{args.port}/ask -d \'{{"question":"12+34="}}\'')
     print(f'    curl http://{args.host}:{args.port}/skills')
     print()

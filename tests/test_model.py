@@ -1,6 +1,5 @@
 """Tests for transformer model — init, forward pass, parameter count."""
 
-import pytest
 import torch
 
 from tabula_rasa.config import Config
@@ -145,9 +144,8 @@ class TestModelGenerate:
     def test_generate_respects_max_tokens(self, model, tok):
         """Generate doesn't exceed max_new_tokens."""
         model.eval()
-        result = model.generate(tok, "1+1=", max_new_tokens=3, temperature=0.0)
-        # The prompt is already part of output, so total may be prompt + new
-        pass  # Just verify it doesn't hang
+        model.generate(tok, "1+1=", max_new_tokens=3, temperature=0.0)
+        # Just verify it doesn't hang
 
 
 class TestModelEdgeCases:

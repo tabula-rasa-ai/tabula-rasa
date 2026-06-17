@@ -17,8 +17,7 @@ from collections import defaultdict, deque
 from pathlib import Path
 from typing import Any, Optional
 
-from tabula_rasa.router.router import Router, RoutingRule
-
+from tabula_rasa.router.router import Router
 
 # ═══════════════════════════════════════════════════════════════════
 # Outcome Memory
@@ -393,7 +392,7 @@ def main():
               f"confidence={s['confidence']:.2f}, "
               f"consecutive_fails={s['consecutive_failures']}")
 
-    print(f"\n  Recent history:")
+    print("\n  Recent history:")
     for r in orchestrator.get_recent_history(5):
         icon = "✓" if r['success'] else "✗"
         print(f"    {icon} {r['specialist']:25s} conf={r['confidence']:.2f}")

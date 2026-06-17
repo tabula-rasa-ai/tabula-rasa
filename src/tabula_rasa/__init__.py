@@ -15,9 +15,9 @@ from .eval import (
     evaluate_per_position,
     evaluate_robustness,
     full_benchmark,
+    solve_problems,
 )
 from .eval import load_model as eval_load_model
-from .eval import solve_problems
 from .experiments import ExperimentRun, compare_runs, list_runs, log_run, print_runs
 from .generate import load_model as gen_load_model
 from .generate import main as generate_main
@@ -31,8 +31,8 @@ from .lora import (
 )
 from .mcts_inference import MCTSInference, mcts_generate
 from .model import MathTransformer, alphazero_loss, count_parameters
-from .orchestrator import PreparedSlateOrchestrator, AnswerResult
-from .rag import RAGEngine, Document, RetrievalResult
+from .orchestrator import AnswerResult, PreparedSlateOrchestrator
+from .rag import Document, RAGEngine, RetrievalResult
 from .tokenizer import MathTokenizer
 
 __all__ = [

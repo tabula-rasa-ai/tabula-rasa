@@ -9,7 +9,11 @@ Usage:
     python3 scripts/socratic_benchmark.py --seeds 3 --steps 10000
 """
 
-import subprocess, sys, json, time, re
+import json
+import re
+import subprocess
+import sys
+import time
 from pathlib import Path
 
 BASE = Path(__file__).resolve().parent.parent
@@ -143,7 +147,7 @@ def compare_socratic(seeds: int, steps: int, ops: list[str] = None, gpu_config: 
 
     # Print results table
     print(f"\n{'='*70}")
-    print(f"  RESULTS: Socratic vs Standard Training Comparison")
+    print("  RESULTS: Socratic vs Standard Training Comparison")
     print(f"{'='*70}")
     print(f"  {'Seed':<8} {'Variant':<12} {'Op':<6} {'Accuracy':<12} {'Time':<12}")
     print(f"  {'-'*8} {'-'*12} {'-'*6} {'-'*12} {'-'*12}")
@@ -159,7 +163,7 @@ def compare_socratic(seeds: int, steps: int, ops: list[str] = None, gpu_config: 
     if std_accs and soc_accs:
         avg_std = sum(std_accs) / len(std_accs)
         avg_soc = sum(soc_accs) / len(soc_accs)
-        print(f"\n  Summary:")
+        print("\n  Summary:")
         print(f"  Standard average: {avg_std:.1f}%")
         print(f"  Socratic average: {avg_soc:.1f}%")
         print(f"  Improvement: {avg_soc - avg_std:+.1f}%")

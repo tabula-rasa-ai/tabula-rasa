@@ -11,7 +11,10 @@ Usage:
     python3 scripts/train_text.py --steps 5000 --bpe 30    # Custom run with BPE merges
 """
 
-import sys, os, time, json, argparse, signal
+import argparse
+import signal
+import sys
+import time
 from pathlib import Path
 
 # Add project root to path
@@ -20,12 +23,12 @@ sys.path.insert(0, str(ROOT / 'src'))
 
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader, Dataset
 from torch.optim import AdamW
+from torch.utils.data import DataLoader, Dataset
 
+from tabula_rasa.bpe_tokenizer import BPETokenizer
 from tabula_rasa.config import Config
 from tabula_rasa.model import MathTransformer, count_parameters
-from tabula_rasa.bpe_tokenizer import BPETokenizer
 
 # ─── Text Reversal Dataset ─────────────────────────────────────
 
@@ -89,7 +92,7 @@ def train_reversal(opts):
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f'\n{"="*60}')
-    print(f'  TEXT SPECIALIST — String Reversal')
+    print('  TEXT SPECIALIST — String Reversal')
     print(f'  Device: {device} | Params: {count_parameters.__name__}')
     print(f'  Steps: {cfg.max_steps} | Batch: {cfg.batch_size} | LR: {cfg.learning_rate}')
     print(f'  Arch: d={cfg.d_model}, L={cfg.n_layers}, H={cfg.n_heads}, ff={cfg.d_ff}')
@@ -231,7 +234,7 @@ def train_reversal(opts):
     print(f'\n{"="*60}')
     print(f'  DONE! {elapsed:.0f}s ({elapsed/60:.1f} min)')
     print(f'  Best accuracy: {best_acc:.1f}%')
-    print(f'  Model saved: specialists/text/best.pt')
+    print('  Model saved: specialists/text/best.pt')
     print(f'{"="*60}')
 
 

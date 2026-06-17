@@ -18,7 +18,6 @@ Usage:
 """
 
 import argparse
-import json
 import os
 import sys
 import time
@@ -139,9 +138,9 @@ def test_model_moe():
 @test("Model: creation with LoRA")
 def test_model_lora():
     from tabula_rasa.config import Config
-    from tabula_rasa.model import MathTransformer, count_parameters
+    from tabula_rasa.lora import apply_lora_to_model, save_lora_adapters, set_lora_trainable
+    from tabula_rasa.model import MathTransformer
     from tabula_rasa.tokenizer import MathTokenizer
-    from tabula_rasa.lora import apply_lora_to_model, set_lora_trainable, save_lora_adapters
 
     tok = MathTokenizer()
     cfg = Config(); cfg.d_model = 32; cfg.n_layers = 2; cfg.n_heads = 4; cfg.d_ff = 64
@@ -177,11 +176,16 @@ def test_tokenizer():
 
 @test("Benchmark: full_benchmark imports and structure")
 def test_benchmark():
-    from tabula_rasa.eval import (EvalResult, PerPositionResult,
-                                   evaluate_accuracy, evaluate_per_position,
-                                   evaluate_ood, evaluate_compositional,
-                                   evaluate_robustness, evaluate_adversarial,
-                                   full_benchmark, BOUNDARY_PROBLEMS)
+    from tabula_rasa.eval import (
+        BOUNDARY_PROBLEMS,
+        evaluate_accuracy,
+        evaluate_adversarial,
+        evaluate_compositional,
+        evaluate_ood,
+        evaluate_per_position,
+        evaluate_robustness,
+        full_benchmark,
+    )
     check(len(BOUNDARY_PROBLEMS) == 31, f"boundary cases: {len(BOUNDARY_PROBLEMS)}")
     for fn in [evaluate_accuracy, evaluate_per_position, evaluate_ood,
                evaluate_compositional, evaluate_robustness, evaluate_adversarial,
@@ -192,9 +196,9 @@ def test_benchmark():
 @test("Benchmark: adversarial runs on tiny model")
 def test_benchmark_adversarial():
     from tabula_rasa.config import Config
+    from tabula_rasa.eval import evaluate_adversarial
     from tabula_rasa.model import MathTransformer
     from tabula_rasa.tokenizer import MathTokenizer
-    from tabula_rasa.eval import evaluate_adversarial
 
     tok = MathTokenizer()
     cfg = Config(); cfg.d_model = 16; cfg.n_layers = 1; cfg.n_heads = 2; cfg.d_ff = 32
@@ -231,7 +235,7 @@ def test_mcts():
 
 @test("RAG: engine builds index and retrieves")
 def test_rag():
-    from tabula_rasa.rag import RAGEngine, Document, RetrievalResult
+    from tabula_rasa.rag import RAGEngine
     engine = RAGEngine()
     n = engine.build_index()
     check(n > 0, f"RAG indexed {n} documents")
@@ -249,7 +253,7 @@ def test_rag():
 
 @test("Orchestrator: query routing")
 def test_orchestrator():
-    from tabula_rasa.orchestrator import PreparedSlateOrchestrator, AnswerResult
+    from tabula_rasa.orchestrator import PreparedSlateOrchestrator
     orch = PreparedSlateOrchestrator()
 
     # Math detection
@@ -297,9 +301,9 @@ def test_experiment_runner():
 @test("LoRA: save/load roundtrip preserves adapter weights")
 def test_lora_saveload():
     from tabula_rasa.config import Config
-    from tabula_rasa.model import MathTransformer, count_parameters
+    from tabula_rasa.lora import apply_lora_to_model, load_lora_adapters, save_lora_adapters
+    from tabula_rasa.model import MathTransformer
     from tabula_rasa.tokenizer import MathTokenizer
-    from tabula_rasa.lora import apply_lora_to_model, save_lora_adapters, load_lora_adapters
 
     tok = MathTokenizer()
     cfg = Config(); cfg.d_model = 32; cfg.n_layers = 2; cfg.n_heads = 4; cfg.d_ff = 64
@@ -348,9 +352,9 @@ def test_rasa_forward():
 @test("Full benchmark: runs with adversarial_kwargs")
 def test_benchmark_kwargs():
     from tabula_rasa.config import Config
+    from tabula_rasa.eval import full_benchmark
     from tabula_rasa.model import MathTransformer
     from tabula_rasa.tokenizer import MathTokenizer
-    from tabula_rasa.eval import full_benchmark
 
     tok = MathTokenizer()
     cfg = Config(); cfg.d_model = 16; cfg.n_layers = 1; cfg.n_heads = 2; cfg.d_ff = 32

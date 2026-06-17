@@ -1,10 +1,7 @@
 """Tests for MathTokenizer — encode, decode, carry-digit tokens."""
 
-import json
 import tempfile
 from pathlib import Path
-
-import pytest
 
 from tabula_rasa.tokenizer import MathTokenizer
 

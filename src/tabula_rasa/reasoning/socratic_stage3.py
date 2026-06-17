@@ -8,17 +8,15 @@ Supports both philosophical debate (original) and arithmetic reasoning
 (self-critique of mathematical scratchpads).
 """
 
-import sys, json, random, time, math
+import sys
 from pathlib import Path
+
 import torch
-import torch.nn as nn
 from torch.optim import AdamW
 
 from tabula_rasa.config import Config
+from tabula_rasa.model import MathTransformer
 from tabula_rasa.tokenizer import MathTokenizer
-from tabula_rasa.model import MathTransformer, count_parameters
-from tabula_rasa.math_parser import verify_scratchpad, verify_equation, evaluate as math_eval
-
 
 PERSONAS = {
     'logician': "You are a strict logician. Use formal logic and evidence.",
@@ -322,7 +320,7 @@ def run_arithmetic_session(
     Returns:
         Dict with results.
     """
-    from train_specialist import generate_problem, _correct_scratchpad
+    from train_specialist import generate_problem
 
     engine = DialecticalEngine(model, tokenizer)
     judge = ValueJudge(model, tokenizer)
@@ -448,7 +446,7 @@ def _generate_correct_trace(a: int, b: int, op: str) -> str:
 def full_socratic_session(model, tokenizer, topic: str, turns=3):
     """Run a complete Socratic session: debate -> judge -> consolidate."""
     print(f'\n{"=" * 60}')
-    print(f'  Socratic Session')
+    print('  Socratic Session')
     print(f'  Topic: {topic}')
     print(f'  Personas: Logician vs Philosopher ({turns} turns)')
     print(f'{"=" * 60}')
@@ -459,7 +457,7 @@ def full_socratic_session(model, tokenizer, topic: str, turns=3):
 
     judge = ValueJudge(model, tokenizer)
     result = judge.judge_debate(debate)
-    print(f'\n  Scores:')
+    print('\n  Scores:')
     for p, s in result['scores'].items():
         print(f'    {p}: {s:.1f}')
     print(f'  Winner: {result["winner"]}')

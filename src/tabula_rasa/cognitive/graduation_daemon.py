@@ -17,16 +17,20 @@ Each stage:
 """
 
 import json
-import math
 import random
 import time
-from pathlib import Path
 from enum import Enum
+from pathlib import Path
 
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 
+from tabula_rasa.model import MathTransformer
+
+# Lazy import for ai_server's SKILL_REGISTRY (optional — graceful fallback)
+try:
+    from tabula_rasa.server.ai_server import SKILL_REGISTRY
+except ImportError:
+    SKILL_REGISTRY = {}
 
 # ═════════════════════════════════════════════════════════════════════
 # DEVELOPMENTAL STAGES
@@ -117,7 +121,7 @@ def evaluate_held_out_test(specialist_name: str, test_data: list = None) -> floa
     Returns:
         float: Accuracy (0.0 to 1.0)
     """
-    from tabula_rasa.server.ai_server import SkillManager, SKILL_REGISTRY
+    from tabula_rasa.server.ai_server import SKILL_REGISTRY, SkillManager
 
     manager = SkillManager()
 
@@ -235,7 +239,6 @@ def generate_held_out_test(specialist_name: str, count: int = 1000) -> list:
     elif specialist_name == 'grammar_specialist':
         # Stage 5: Grammaticality judgment
         from tabula_rasa.cognitive.grammar_engine import grammar_score
-        from tabula_rasa.cognitive.code_specialist import PYTHON_PROGRAMS
         for _ in range(count):
             # Use sentence templates
             subj = rng.choice(['The dog', 'A cat', 'The children', 'My friend'])
@@ -380,7 +383,7 @@ def run_graduation_check(specialist_name: str, force: bool = False) -> dict:
                 result['next_stage'] = next_name
                 result['next_stage_number'] = next_stage_num
             else:
-                print(f'  [Graduation] ALL STAGES COMPLETE! Tabula Rasa is fully developed.')
+                print('  [Graduation] ALL STAGES COMPLETE! Tabula Rasa is fully developed.')
                 result['all_complete'] = True
 
             state['last_graduation'] = time.time()
@@ -400,12 +403,12 @@ def daemon_cycle(force_check: bool = False):
     state = load_graduation_state()
     current_stage_num = state['current_stage']
 
-    print(f'\n  ╔══════════════════════════════════════════╗')
+    print('\n  ╔══════════════════════════════════════════╗')
     print(f'  ║  GRADUATION DAEMON — Stage {current_stage_num}/6    ║')
-    print(f'  ╚══════════════════════════════════════════╝')
+    print('  ╚══════════════════════════════════════════╝')
 
     if current_stage_num > 6:
-        print(f'  [Graduation] All 6 stages graduated!')
+        print('  [Graduation] All 6 stages graduated!')
         return
 
     current_stage = CognitiveStage(current_stage_num)
@@ -427,7 +430,7 @@ def daemon_cycle(force_check: bool = False):
     # Print graduated stages summary
     graduated = state.get('graduated_stages', {})
     if graduated:
-        print(f'\n  Graduated stages:')
+        print('\n  Graduated stages:')
         for name, info in graduated.items():
             acc = info.get('accuracy', 0) * 100
             print(f'    [{info.get("stage", "?")}] {name}: {acc:.1f}%')
@@ -529,7 +532,7 @@ def run_developmental_pipeline(start_stage: int = 1):
 
         # Check if already graduated
         if specialist in state.get('graduated_stages', {}):
-            print(f'  Already graduated. Skipping.')
+            print('  Already graduated. Skipping.')
             continue
 
         # Create directory and tokenizer if needed
@@ -578,10 +581,10 @@ if __name__ == '__main__':
     elif args.status:
         state = load_graduation_state()
         print(f'Current stage: {state["current_stage"]}/6')
-        print(f'Graduated stages:')
+        print('Graduated stages:')
         for name, info in state.get('graduated_stages', {}).items():
             print(f'  {name}: {info["accuracy"]*100:.1f}%')
-        print(f'Accuracies:')
+        print('Accuracies:')
         for name, acc in state.get('stage_accuracies', {}).items():
             print(f'  {name}: {acc*100:.1f}%')
 

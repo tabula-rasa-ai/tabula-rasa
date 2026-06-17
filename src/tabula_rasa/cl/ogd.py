@@ -18,9 +18,10 @@ Usage:
     ogd.store_gradients(dataloader, num_batches=10)
 """
 
+from typing import Optional
+
 import torch
 import torch.nn as nn
-from typing import Optional
 
 
 class OGD:
@@ -213,8 +214,8 @@ class OGD:
 def main():
     """Test OGD with a small model."""
     from tabula_rasa.config import Config
-    from tabula_rasa.tokenizer import MathTokenizer
     from tabula_rasa.model import MathTransformer
+    from tabula_rasa.tokenizer import MathTokenizer
 
     print("OGD — Quick Test")
     print("=" * 50)
@@ -243,7 +244,7 @@ def main():
     print(f"  No references: cos_sim={sim:.4f} (expected ~1.0)")
 
     # Store a reference gradient
-    from torch.utils.data import TensorDataset, DataLoader
+    from torch.utils.data import DataLoader, TensorDataset
     ds = TensorDataset(x, y)
     loader = DataLoader(ds, batch_size=2)
     ogd.store_gradients(loader, num_batches=2)

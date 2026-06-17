@@ -19,20 +19,13 @@ Graduation: 98%+ grammaticality accuracy
 """
 
 import random
+
 import torch
-import torch.nn.functional as F
 from torch.optim import AdamW
 
-from tabula_rasa.model import MathTransformer, count_parameters
-from tabula_rasa.config import Config
-from tabula_rasa.tokenizer import MathTokenizer
 from tabula_rasa.cognitive.grammar_engine import (
-    grammar_score, check_subject_verb_agreement,
-    check_sentence_structure, check_det_noun_agreement,
-    check_punctuation, score_long_distance_structure,
-    create_grammar_rules,
+    grammar_score,
 )
-
 
 # ═════════════════════════════════════════════════════════════════════
 # GRAMMAR PROBLEM GENERATORS

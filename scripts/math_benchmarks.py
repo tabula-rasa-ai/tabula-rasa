@@ -200,7 +200,7 @@ def load_model(
     cfg = _infer_config_from_state(model_state, tok)
     cfg.vocab_size = tok.vocab_size
 
-    print(f"\n  Inferred architecture:")
+    print("\n  Inferred architecture:")
     print(f"    d_model={cfg.d_model}, n_layers={cfg.n_layers}, "
           f"n_heads={cfg.n_heads}, d_ff={cfg.d_ff}")
     print(f"    pos_encoding={cfg.pos_encoding}, max_seq_len={cfg.max_seq_len}")
@@ -676,7 +676,7 @@ def _print_category_result(result: BenchmarkResult) -> None:
     print(f"    Accuracy:  {color}{acc:5.1f}%  ({result.correct}/{result.total})  [{status}]")
 
     if result.per_digit_total:
-        print(f"    Per-digit breakdown:")
+        print("    Per-digit breakdown:")
         for pos in sorted(result.per_digit_total.keys()):
             total = result.per_digit_total[pos]
             correct = result.per_digit_correct.get(pos, 0)

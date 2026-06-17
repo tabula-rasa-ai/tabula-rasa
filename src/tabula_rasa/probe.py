@@ -239,8 +239,8 @@ def full_probe(model: Any, tokenizer: Any, visualize: bool = False) -> dict:
             print(f"  {key}: {val}")
         elif isinstance(val, (int, float)):
             print(f"  {key}: {val}")
-    print(f"\n  Layer position norms indicate which input positions")
-    print(f"  receive the most processing (higher = more attention)")
+    print("\n  Layer position norms indicate which input positions")
+    print("  receive the most processing (higher = more attention)")
 
     print(f"\n{'='*60}")
     print("  PROBE COMPLETE")
@@ -278,7 +278,7 @@ if __name__ == "__main__":
     model = MathTransformer(cfg)
     state = torch.load(ckpt, map_location="cpu", weights_only=True)
     sd = state["model_state_dict"]
-    
+
     # Handle vocab mismatch
     ckpt_vocab = sd["token_embedding.weight"].shape[0]
     if ckpt_vocab != cfg.vocab_size:

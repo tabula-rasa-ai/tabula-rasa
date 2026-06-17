@@ -19,7 +19,10 @@ Usage:
 
 from __future__ import annotations
 
-import sys, time, argparse, json
+import argparse
+import json
+import sys
+import time
 from pathlib import Path
 
 # Ensure project root and src are on path
@@ -28,10 +31,11 @@ sys.path.insert(0, str(_root / 'src'))
 sys.path.insert(0, str(_root))
 
 import torch
+
 from tabula_rasa.config import Config
-from tabula_rasa.tokenizer import MathTokenizer
 from tabula_rasa.model import MathTransformer, count_parameters
 from tabula_rasa.reasoning.socratic_trainer import SocraticSelfTrainer
+from tabula_rasa.tokenizer import MathTokenizer
 
 
 def _find_latest_checkpoint() -> Path | None:
@@ -168,7 +172,7 @@ def main():
     args = parser.parse_args()
 
     print(f'\n{"="*60}')
-    print(f'  SELF-IMPROVEMENT DAEMON')
+    print('  SELF-IMPROVEMENT DAEMON')
     print(f'  {"="*50}')
     print(f'  Op: {args.op} | Max digits: {args.max_digits}')
     print(f'  Iterations per cycle: {args.iterations}')
@@ -177,7 +181,7 @@ def main():
     if args.daemon:
         print(f'  Mode: DAEMON (every {args.interval}s, {"unlimited" if args.cycles == 0 else args.cycles + " cycles"})')
     else:
-        print(f'  Mode: SINGLE CYCLE')
+        print('  Mode: SINGLE CYCLE')
     print(f'{"="*60}')
 
     # Load model
@@ -203,9 +207,9 @@ def main():
         time.sleep(args.interval)
 
     print(f'\n{"="*60}')
-    print(f'  SELF-IMPROVEMENT COMPLETE')
+    print('  SELF-IMPROVEMENT COMPLETE')
     print(f'  Cycles: {cycle}')
-    print(f'  History saved to: memory/self_improve_history.json')
+    print('  History saved to: memory/self_improve_history.json')
     print(f'{"="*60}')
 
 

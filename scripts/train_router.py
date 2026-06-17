@@ -25,25 +25,26 @@ import argparse
 import json
 import math
 import random
-import time
 from typing import Optional
 
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from torch.utils.data import DataLoader, Dataset, TensorDataset
-
-from src.tabula_rasa.config import Config
-from src.tabula_rasa.bpe_tokenizer import BPETokenizer
-from egefalos.router_model import (
-    RouterModel, RouterConfig, count_router_params,
-    INTENT_NAMES,
-)
 from egefalos.router_dataset import (
-    generate_router_dataset, generate_multi_label_dataset,
-    save_dataset, load_dataset, print_dataset_stats,
+    generate_multi_label_dataset,
+    generate_router_dataset,
+    load_dataset,
+    print_dataset_stats,
+    save_dataset,
 )
+from egefalos.router_model import (
+    INTENT_NAMES,
+    RouterConfig,
+    RouterModel,
+    count_router_params,
+)
+from torch.utils.data import DataLoader, TensorDataset
 
+from src.tabula_rasa.bpe_tokenizer import BPETokenizer
+from src.tabula_rasa.config import Config
 
 # ─── Paths ─────────────────────────────────────────────────────────
 
@@ -567,7 +568,6 @@ def main():
     # ── 5. EWC setup (Phase 2+) ─────────────────────────────────
     ewc = None
     if args.phase >= 2:
-        from egefalos.online_ewc import OnlineEWC
 
         ewc_path = ROUTER_DIR / "ewc_fisher.pt"
         if args.ewc_checkpoint:
@@ -619,7 +619,7 @@ def main():
         json.dump(json_safe, f, indent=2)
     print(f"\n  [*] Training history saved to {history_path}")
     print(f"  [*] Best accuracy: {history.get('best_acc', 0):.3f}")
-    print(f"  [*] Done!")
+    print("  [*] Done!")
 
 
 if __name__ == "__main__":
