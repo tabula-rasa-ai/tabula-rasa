@@ -40,7 +40,6 @@ jobs:
           python -m venv /tmp/venv
           source /tmp/venv/bin/activate
           pip install --upgrade pip
-          pip install torch==2.5.1 --extra-index-url https://download.pytorch.org/whl/cpu
           pip install -e ".[dev]"
 
       - name: Run unit tests with coverage (core packages)
