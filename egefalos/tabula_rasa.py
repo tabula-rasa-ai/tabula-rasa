@@ -385,6 +385,10 @@ class SkillManager:
         self._base_config = None
         self._lora_adapters = {}  # intent -> list of LoRALayer references
         self._base_training_lock = threading.Lock()
+        # Task queue for background training (replaces raw threading)
+        from egefalos.task_queue import TaskQueue
+        self._task_queue = TaskQueue(num_workers=1)
+        self._task_queue.register("train_intent")(self._train_intent_worker_task)
         self._load_existing()
 
     def _load_existing(self):
@@ -1294,9 +1298,12 @@ class SkillManager:
             'loss': 0, 'status': 'starting',
             'config': sc, 'cpu': cpu_count, 't0': time.time(),
         }
-        import threading
-        t = threading.Thread(target=self._train_intent_worker, args=(intent, pairs), daemon=True)
-        t.start()
+        # Enqueue training task via task queue instead of raw threading
+        self._task_queue.enqueue("train_intent", intent=intent, pairs=pairs)
+
+    def _train_intent_worker_task(self, args: dict):
+        """Wrapper for task queue: accepts a dict and forwards to _train_intent_worker."""
+        return self._train_intent_worker(args["intent"], args["pairs"])
 
     def _train_intent_worker(self, intent: str, pairs: list):
         """Train a tiny chat specialist on intent-specific data.
@@ -1676,6 +1683,8 @@ class TabulaRasaHandler(BaseHTTPRequestHandler):
             self._send_json({'skills': manager.status_summary})
         elif path == '/training-progress':
             self._send_json({'training': manager.training_progress})
+        elif path == '/api/tasks':
+            self._send_json({'tasks': manager._task_queue.stats})
         elif path == '/':
             self._send_json({
                 'system': 'Tabula Rasa AI',

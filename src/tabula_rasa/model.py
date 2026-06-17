@@ -513,6 +513,21 @@ class MathTransformer(nn.Module):
         # Initialize weights
         self.apply(self._init_weights)
 
+        # torch.compile() — PyTorch 2.0+ JIT compilation for 2-3x speedup
+        if getattr(config, "use_compile", False) and hasattr(torch, "compile"):
+            try:
+                self.forward = torch.compile(self.forward, mode="reduce-overhead")
+                print(f"  [*] torch.compile() enabled (mode=reduce-overhead)")
+            except Exception as e:
+                print(f"  [!] torch.compile() failed: {e}")
+
+        # Also compile generate_step for faster inference
+        if getattr(config, "use_compile", False) and hasattr(torch, "compile"):
+            try:
+                self._generate_step_impl = torch.compile(self._generate_step_impl, mode="reduce-overhead")
+            except Exception:
+                pass
+
     def _init_weights(self, module: nn.Module) -> None:
         """Initialise weights for ``Linear`` and ``Embedding`` modules.
 
@@ -716,6 +731,46 @@ class MathTransformer(nn.Module):
 
     @torch.no_grad()
     def generate_step(
+        self,
+        input_ids: torch.Tensor,
+        past_kv_caches: list[tuple[torch.Tensor, torch.Tensor]] | None = None,
+    ) -> tuple[torch.Tensor, list[tuple[torch.Tensor, torch.Tensor]]]:
+        """Single forward step for generation with KV cache.
+
+        Args:
+            input_ids: Token IDs to process of shape ``(batch, seq_len)``
+                — usually just the latest token.
+            past_kv_caches: List of ``(K, V)`` tuples from previous steps,
+                one per layer, or ``None`` for the first step.
+
+        Returns:
+            Tuple ``(logits, new_kv_caches)`` where logits are for every
+            position in the input and KV caches include both past and
+            current keys/values.
+        """
+        batch, seq_len = input_ids.shape
+        device = input_ids.device
+
+        arithmetic_bias = self._compute_arithmetic_bias(input_ids)
+
+        x = self.token_embedding(input_ids)
+
+        new_kvs: list[tuple[torch.Tensor, torch.Tensor]] = []
+        for i, layer in enumerate(self.layers):
+            past = past_kv_caches[i] if past_kv_caches else None
+            x, kv = layer(x, mask=None, past_kv=past, arithmetic_bias=arithmetic_bias if past_kv_caches is None else None)
+            new_kvs.append(kv)
+
+        x = self.norm(x)
+        logits = self.lm_head(x)
+        return logits, new_kvs
+
+    @property
+    def generate_step(self):
+        """Return the compiled (or original) generate_step method."""
+        return self._generate_step_impl
+
+    def _generate_step_impl(
         self,
         input_ids: torch.Tensor,
         past_kv_caches: list[tuple[torch.Tensor, torch.Tensor]] | None = None,

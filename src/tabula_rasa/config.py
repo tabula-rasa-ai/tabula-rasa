@@ -32,6 +32,9 @@ class Config:
     load_in_8bit: bool = False  # Enable 8-bit quantization (requires bitsandbytes)
     load_in_4bit: bool = False  # Enable 4-bit quantization (requires bitsandbytes)
 
+    # ── Compilation (PyTorch 2.0+) ──────────────────────────
+    use_compile: bool = False  # Enable torch.compile() for 2-3x speedup
+
     # ═══════════════════════════════════════════════════════════
     # MODEL ARCHITECTURE — 1M params (full capacity)
     # ═══════════════════════════════════════════════════════════
