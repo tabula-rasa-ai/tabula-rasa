@@ -69,11 +69,15 @@ def _forward_wrapper(
     """
 
     def wrapped(input_embeds: torch.Tensor) -> torch.Tensor:
-        # input_embeds: (batch, seq_len, d_model) from embedding
-        # We need to run the full model from embeddings.
-        # MathTransformer.forward() expects token IDs, so we do a custom forward.
-        batch, seq_len, d_model = input_embeds.shape
-        x = input_embeds
+        # input_embeds: (batch, d_model) or (batch, seq_len, d_model)
+        # Captum passes single positions (2D) during integrated gradients
+        if input_embeds.dim() == 2:
+            batch, d_model = input_embeds.shape
+            seq_len = 1
+            x = input_embeds.unsqueeze(1)  # (batch, 1, d_model)
+        else:
+            batch, seq_len, d_model = input_embeds.shape
+            x = input_embeds
 
         # Pass through each transformer block
         for layer in model.layers:
