@@ -31,14 +31,14 @@ x-common-gpu: &common-gpu
             capabilities: [gpu]
 
 services:
-  # ── API Server ──────────────────────────────────────────
-  api-server:
+  # ── Math API Server ─────────────────────────────────────
+  math-server:
     <<: *common
     profiles: ["cpu", "gpu", "minimal"]
-    container_name: tabula-rasa-api
+    container_name: tabula-rasa-math
     ports:
       - "8000:8000"
-    command: ["python", "api_server.py"]
+    command: ["python", "serve.py", "--port", "8000"]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
@@ -51,14 +51,38 @@ services:
           cpus: "4"
           memory: "4G"
 
-  # ── GPU API Server ──────────────────────────────────────
-  api-server-gpu:
+  # ── Router (Conversational AI) ──────────────────────────
+  router:
+    <<: *common
+    profiles: ["cpu", "gpu"]
+    container_name: tabula-rasa-router
+    ports:
+      - "8002:8002"
+    command: ["python", "egefalos/tabula_rasa.py", "--port", "8002"]
+    depends_on:
+      math-server:
+        condition: service_healthy
+
+  # ── Streamlit Dashboard ─────────────────────────────────
+  dashboard:
+    <<: *common
+    profiles: ["cpu", "gpu"]
+    container_name: tabula-rasa-dashboard
+    ports:
+      - "8050:8050"
+    command: ["streamlit", "run", "streamlit_app.py", "--server.port", "8050", "--server.headless", "true"]
+    depends_on:
+      - math-server
+      - router
+
+  # ── GPU Math Server ─────────────────────────────────────
+  math-server-gpu:
     <<: *common-gpu
     profiles: ["gpu"]
-    container_name: tabula-rasa-api-gpu
+    container_name: tabula-rasa-math-gpu
     ports:
       - "8000:8000"
-    command: ["python", "api_server.py"]
+    command: ["python", "serve.py", "--port", "8000"]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
@@ -73,7 +97,7 @@ services:
     container_name: tabula-rasa-sleep
     command: ["python", "egefalos/sleep_cycle.py", "--daemon", "--interval", "3600"]
     depends_on:
-      api-server:
+      math-server:
         condition: service_healthy
 
   sleep-cycle-gpu:
@@ -81,16 +105,6 @@ services:
     profiles: ["gpu"]
     container_name: tabula-rasa-sleep-gpu
     command: ["python", "egefalos/sleep_cycle.py", "--daemon", "--interval", "3600"]
-
-  # ── P2P Swarm Daemon ────────────────────────────────────
-  p2p-swarm:
-    <<: *common
-    profiles: ["cpu", "gpu"]
-    container_name: tabula-rasa-p2p
-    ports:
-      - "9000:9000"
-    command: ["python", "egefalos/p2p_daemon.py", "--port", "9000"]
-    network_mode: host
 
   # ── Self-Improvement Daemon ─────────────────────────────
   self-improve:
