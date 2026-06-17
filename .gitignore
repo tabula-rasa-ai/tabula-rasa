@@ -17,6 +17,7 @@ error.log
 ablation*.log
 
 # Checkpoints & specialists
+checkpoints/
 specialists/**/checkpoint.pt
 specialists/**/best.pt
 specialists/**/best_lora.pt
@@ -61,3 +62,22 @@ tabula_rasa_gpu.zip
 
 # HuggingFace cache
 .cache/
+
+# Experiment run data
+experiments/*.pt
+experiments/*.log
+experiments/*.json
+experiments/ewc_test/
+
+# Generated data
+data/*.pt
+data/*.json
+
+# Backups & misc
+*.bak
+todo.md
+verified_monologue.txt
+_check.js
+chat_data.jsonl
+dpo_pairs_synthetic.jsonl
+test_borrow_log.txt
