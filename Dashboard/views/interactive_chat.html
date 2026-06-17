@@ -567,8 +567,8 @@
             var keys = Object.keys(prog);
             var el = document.getElementById('train-status');
             if (keys.length === 0) { el.textContent = ''; return; }
-            // Auto-open datasets panel when training starts
-            if (!dsOpen) {
+            // Open datasets panel once when training first starts
+            if (!dsOpen && !dsUserClosed) {
                 dsOpen = true;
                 document.getElementById('ds-panel').className = 'ds-panel open';
                 document.getElementById('ds-arrow').innerHTML = '&#x25B2;';
@@ -606,11 +606,13 @@
 
     // ─── Datasets panel ───
     var dsOpen = false;
+    var dsUserClosed = false;
     function toggleDatasets() {
         dsOpen = !dsOpen;
+        dsUserClosed = !dsOpen;  // If user closed it, remember
         document.getElementById('ds-panel').className = 'ds-panel' + (dsOpen ? ' open' : '');
         document.getElementById('ds-arrow').innerHTML = dsOpen ? '&#x25B2;' : '&#x25BC;';
-        if (dsOpen) pollDatasets();
+        if (dsOpen) { dsUserClosed = false; pollDatasets(); }
     }
     async function pollDatasets() {
         try {
