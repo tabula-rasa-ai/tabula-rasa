@@ -35,15 +35,21 @@ class Config:
     # ── Compilation (PyTorch 2.0+) ──────────────────────────
     use_compile: bool = False  # Enable torch.compile() for 2-3x speedup
 
-    # ═══════════════════════════════════════════════════════════
+    # StreamBP: selective attention checkpointing for long sequences.
+    # Attention is O(n²) memory, FFN is O(n). StreamBP only checkpoints
+    # attention, saving ~3x memory at long sequence lengths vs standard
+    # gradient checkpointing. Enabled by default.
+    use_streambp: bool = True
+
+    # ═══════════════════════════════════════════════════════════════
     # MODEL ARCHITECTURE — 1M params (full capacity)
-    # ═══════════════════════════════════════════════════════════
+    # ═══════════════════════════════════════════════════════════════
     config_preset: str = "1M"  # 1M | 10M — use apply_preset() to set architecture
     d_model: int = 128  # Embedding / hidden dimension
     n_layers: int = 4  # Number of transformer layers (depth)
     n_heads: int = 4  # Attention heads (must divide d_model)
     d_ff: int = 512  # Feed-forward hidden dimension
-    max_seq_len: int = 256  # Default context window; supports CoT/MCTS reasoning; KV-cache makes O(n) generation
+    max_seq_len: int = 256  # Default context window; StreamBP saves memory for long sequences
     dropout: float = 0.1  # Dropout rate (0=off, 0.0-0.5)
 
     # Architecture variants
@@ -56,6 +62,13 @@ class Config:
     num_experts: int = 4          # Number of experts in each MoE layer
     top_k: int = 2                # Top-K experts to route each token to
     moe_capacity_factor: float = 1.25  # Expert capacity multiplier
+
+    # Relation-Aware Sparse Attention (RASA) — see "Exposing and Breaking
+    # the Relational Bottleneck in Transformers" (arXiv:2602.02834)
+    # Adds learned relative position biases to attention scores, enabling
+    # the model to reason about digit-column relationships directly.
+    use_rasa: bool = False         # Enable RASA relational attention bias
+    rasa_max_relative: int = 16   # Max relative distance for position bias lookup
 
     # Weight initialization
     weight_init: str = "normal"  # normal | xavier | kaiming
@@ -79,9 +92,10 @@ class Config:
         # (steps, max_digits) - train on this difficulty for N steps
         (30000, 1),  # Single phase: 1-digit only for clean convergence
     ]
-    use_entropy_curriculum: bool = False  # Advance phases based on output entropy
+    use_entropy_curriculum: bool = True  # Advance phases based on output entropy
     entropy_threshold: float = 0.5  # Advance when avg entropy < this (lower=more confident)
     entropy_window: int = 3  # Number of evals to smooth over
+    use_gradient_checkpointing: bool = True  # Memory-efficient backprop (trades compute for memory)
 
     # Optimizer
     optimizer: str = "adamw"  # adamw | adam | sgd
@@ -137,6 +151,12 @@ class Config:
     # Evaluation
     eval_temperature: float = 0.0  # 0=greedy, >0 adds randomness
     eval_max_tokens: int = 48  # Max tokens to generate per answer (longer for scratchpad/CoT)
+
+    # ── Inference-time MCTS ──────────────────────────────
+    use_mcts_inference: bool = False  # Enable MCTS search at inference (vs greedy)
+    mcts_simulations: int = 16        # MCTS rollouts per token position
+    mcts_temperature: float = 0.5     # Softmax temperature for MCTS action selection
+    mcts_c_puct: float = 1.0          # PUCT exploration constant
 
     # ═══════════════════════════════════════════════════════════
     # DATA
@@ -307,15 +327,15 @@ class Config:
     PRESETS: dict[str, dict] = {
         "1M": {
             "d_model": 128, "n_layers": 4, "n_heads": 4, "d_ff": 512,
-            "max_seq_len": 32, "dropout": 0.1, "params_approx": 1_061_504,
+            "max_seq_len": 64, "dropout": 0.1, "params_approx": 1_061_504,
         },
         "5M": {
             "d_model": 256, "n_layers": 5, "n_heads": 8, "d_ff": 1024,
-            "max_seq_len": 48, "dropout": 0.1, "params_approx": 5_269_248,
+            "max_seq_len": 96, "dropout": 0.1, "params_approx": 5_269_248,
         },
         "10M": {
             "d_model": 320, "n_layers": 6, "n_heads": 8, "d_ff": 1280,
-            "max_seq_len": 64, "dropout": 0.1, "params_approx": 9_860_000,
+            "max_seq_len": 128, "dropout": 0.1, "params_approx": 9_860_000,
         },
     }
 

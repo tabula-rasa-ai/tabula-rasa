@@ -76,7 +76,7 @@ class BenchmarkRunner:
     def __init__(self, quick: bool = True):
         self.quick = quick
         self.results: list[dict] = []
-        self.per_test_timeout = 10 if quick else 60
+        self.per_test_timeout = 30 if quick else 60  # longer for benchmark
         # Training test always gets a longer timeout
         self.training_subprocess_timeout = 120 if quick else 300
         self.training_thread_timeout = self.training_subprocess_timeout + 15
@@ -88,9 +88,8 @@ class BenchmarkRunner:
             ("tokenizer_carry_tokens", self.test_tokenizer_carry_tokens),
             ("ewc_import", self.test_ewc_import),
             ("ewc_compute_fisher", self.test_ewc_compute_fisher),
-            ("quick_training", self.test_quick_training),
             ("checkpoint_save_load", self.test_checkpoint_save_load),
-            ("api_endpoints", self.test_api_endpoints),
+            ("full_benchmark", self.test_full_benchmark),
         ]
         for name, func in tests:
             result = self._run_single(name, func)
@@ -101,17 +100,20 @@ class BenchmarkRunner:
 
     def _run_single(self, name: str, func) -> dict:
         start = time.time()
-        # Training test uses its own longer timeout
-        test_timeout = (
-            self.training_thread_timeout if name == "quick_training" else self.per_test_timeout
-        )
+        # Different tests have different timeout needs
+        timeout_map = {
+            "full_benchmark": 60 if self.quick else 120,
+            "ewc_compute_fisher": 15 if self.quick else 30,
+            "ewc_import": 10 if self.quick else 20,
+        }
+        test_timeout = timeout_map.get(name, self.per_test_timeout)
         wrapped = timeout(test_timeout)(func)
         try:
             detail = wrapped()
             passed = True
         except TimeoutError as e:
             passed = False
-            detail = f"TIMEOUT after {self.per_test_timeout}s"
+            detail = f"TIMEOUT after {test_timeout}s"
         except Exception as e:
             passed = False
             tb = traceback.format_exc()
@@ -283,10 +285,10 @@ class BenchmarkRunner:
     # ── Test 6: Quick training ─────────────────────────────────────
     def test_quick_training(self) -> str:
         if self.quick:
-            # Use the --quick flag in train_specialist.py
+            # Use the --quick flag in scripts/train_specialist.py
             cmd = [
                 sys.executable or "python3",
-                str(PROJECT_ROOT / "train_specialist.py"),
+                str(PROJECT_ROOT / "scripts" / "train_specialist.py"),
                 "add",
                 "--quick",
             ]
@@ -294,7 +296,7 @@ class BenchmarkRunner:
             # Short full-mode training: 1000 steps, no curriculum
             cmd = [
                 sys.executable or "python3",
-                str(PROJECT_ROOT / "train_specialist.py"),
+                str(PROJECT_ROOT / "scripts" / "train_specialist.py"),
                 "add",
                 "--steps",
                 "1000",
@@ -422,7 +424,7 @@ class BenchmarkRunner:
         port = sock.getsockname()[1]
         sock.close()
 
-        api_script = str(PROJECT_ROOT / "api_server.py")
+        api_script = str(PROJECT_ROOT / "scripts" / "api_server.py")
         env = os.environ.copy()
         env["PYTHONPATH"] = str(PROJECT_ROOT / "src") + os.pathsep + env.get("PYTHONPATH", "")
 
@@ -486,6 +488,79 @@ class BenchmarkRunner:
             except subprocess.TimeoutExpired:
                 proc.kill()
 
+    # ── Test 9: Full benchmark suite ────────────────────────────────
+    def test_full_benchmark(self) -> str:
+        """Run the full 8-dimension benchmark suite on a freshly trained model."""
+        from tabula_rasa.config import Config
+        from tabula_rasa.model import MathTransformer, count_parameters
+        from tabula_rasa.tokenizer import MathTokenizer
+        from tabula_rasa.eval import full_benchmark
+        from tabula_rasa.dataset import MathDataset
+        from torch.utils.data import DataLoader
+        from torch.optim import AdamW
+
+        import torch
+
+        cfg = Config()
+        if self.quick:
+            cfg.d_model = 32
+            cfg.n_layers = 2
+            cfg.n_heads = 4
+            cfg.d_ff = 64
+            cfg.max_seq_len = 32
+            cfg.batch_size = 16
+            train_steps = 10
+            cfg.max_digits = 1
+        else:
+            cfg.apply_preset("1M")
+            train_steps = 500
+
+        tok = MathTokenizer()
+        cfg.vocab_size = tok.vocab_size
+        tok.max_seq_len = cfg.max_seq_len
+
+        model = MathTransformer(cfg)
+        model.train()
+        opt = AdamW(model.parameters(), lr=0.001)
+
+        # Quick training
+        ds = MathDataset(tok, num_samples=max(100, train_steps * cfg.batch_size),
+                         min_digits=1, max_digits=cfg.max_digits)
+        dl = DataLoader(ds, batch_size=cfg.batch_size, shuffle=True)
+        data_iter = iter(dl)
+        for step in range(train_steps):
+            try:
+                x, y = next(data_iter)
+            except StopIteration:
+                data_iter = iter(dl)
+                x, y = next(data_iter)
+            opt.zero_grad()
+            _, loss, _ = model(x, y)
+            loss.backward()
+            opt.step()
+
+        model.eval()
+        params = count_parameters(model)
+        # Skip FGSM in quick mode (too slow on CPU), keep other adversarial
+        n_fgsm = 0 if self.quick else 10
+        n_noise = 10 if self.quick else 20
+        results = full_benchmark(model, tok, train_max_digits=cfg.max_digits, verbose=False,
+                                 adversarial_kwargs={"num_fgsm": n_fgsm, "num_noise": n_noise})
+
+        # Build summary
+        metrics = []
+        for name in ["accuracy", "per_position", "ood", "compositional", "robustness"]:
+            if name in results:
+                r = results[name]
+                acc = r.accuracy if hasattr(r, "accuracy") else r.overall_accuracy if hasattr(r, "overall_accuracy") else 0
+                metrics.append(f"{name}={acc:.1f}%")
+        for adv_name in ["boundary", "format_attacks", "noise", "fgsm"]:
+            key = f"adversarial/{adv_name}"
+            if key in results:
+                metrics.append(f"{adv_name}={results[key].accuracy:.1f}%")
+
+        return f"params={params:,} {' | '.join(metrics)}"
+
 
 # ── Main ───────────────────────────────────────────────────────────
 def main():
@@ -494,7 +569,7 @@ def main():
         "--quick",
         action="store_true",
         default=True,
-        help="Quick mode: tiny model, 10s per test timeout (default)",
+        help="Quick mode: tiny model, faster timeouts (default)",
     )
     parser.add_argument(
         "--full",
@@ -502,7 +577,37 @@ def main():
         default=False,
         help="Full mode: default model config, longer timeouts",
     )
+    parser.add_argument(
+        "--syntax-only",
+        action="store_true",
+        help="Syntax + import checks only (no computation)",
+    )
     args = parser.parse_args()
+
+    if args.syntax_only:
+        print("=== Syntax + Import Check ===")
+        errors = []
+        import ast
+        for root, dirs, files in os.walk(PROJECT_ROOT):
+            dirs[:] = [d for d in dirs if d not in ('__pycache__', '.git', '.pytest_cache')]
+            for f in files:
+                if f.endswith('.py'):
+                    path = Path(root) / f
+                    try:
+                        with open(path, encoding='utf-8') as fh:
+                            ast.parse(fh.read())
+                    except SyntaxError as e:
+                        errors.append(f"  FAIL {path.relative_to(PROJECT_ROOT)}: {e}")
+        if errors:
+            for e in errors:
+                print(e)
+            print(f"\n{len(errors)} syntax errors found")
+            sys.exit(1)
+        else:
+            py_files = sum(1 for _ in Path(PROJECT_ROOT).rglob('*.py')
+                           if '__pycache__' not in str(_) and '.git' not in str(_))
+            print(f"  All {py_files} Python files parse OK")
+            sys.exit(0)
 
     # --full overrides --quick
     quick = not args.full

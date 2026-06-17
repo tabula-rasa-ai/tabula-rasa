@@ -41,7 +41,11 @@ import torch.nn as nn
 from torch.optim import AdamW
 
 from tabula_rasa.config import Config
+from tabula_rasa.lora import apply_lora_to_model, load_lora_adapters, switch_lora_adapters
+from tabula_rasa.mcts_inference import MCTSInference, mcts_generate
 from tabula_rasa.model import MathTransformer, count_parameters
+from tabula_rasa.orchestrator import PreparedSlateOrchestrator
+from tabula_rasa.rag import RAGEngine
 from tabula_rasa.tokenizer import MathTokenizer
 
 
@@ -62,15 +66,81 @@ class ModelHandler:
 
         self.model = MathTransformer(self.cfg)
         state = torch.load(checkpoint_path, map_location=self.device, weights_only=True)
-        self.model.load_state_dict(state["model_state_dict"])
+        sd = state["model_state_dict"]
+        
+        # Handle vocab size mismatch: checkpoint may have different vocab
+        ckpt_vocab = sd.get("token_embedding.weight", torch.zeros(0)).shape[0]
+        if ckpt_vocab != self.cfg.vocab_size:
+            print(f"  [*] Vocab mismatch: checkpoint={ckpt_vocab}, model={self.cfg.vocab_size}")
+            # Resize embeddings: copy overlapping, random init new
+            if ckpt_vocab < self.cfg.vocab_size:
+                # Extend: copy checkpoint weights, init new tokens randomly
+                old_w = sd["token_embedding.weight"]
+                new_w = torch.randn(self.cfg.vocab_size, self.cfg.d_model) * 0.02
+                new_w[:ckpt_vocab] = old_w
+                sd["token_embedding.weight"] = new_w
+                old_w = sd["lm_head.weight"]
+                new_w = torch.randn(self.cfg.vocab_size, self.cfg.d_model) * 0.02
+                new_w[:ckpt_vocab] = old_w
+                sd["lm_head.weight"] = new_w
+                print(f"  [*] Extended embeddings: {ckpt_vocab} → {self.cfg.vocab_size}")
+        
+        self.model.load_state_dict(sd, strict=False)
+
+        # Load LoRA adapters if present alongside checkpoint
+        self.lora_layers = []
+        ckpt_dir = Path(checkpoint_path).parent
+        lora_path = ckpt_dir / "lora_best.pt"
+        if not lora_path.exists():
+            lora_path = ckpt_dir / "lora_final.pt"
+        if lora_path.exists():
+            self.lora_layers = load_lora_adapters(
+                self.model, str(lora_path),
+                rank=8, alpha=1.0,
+                target_modules=["wq", "wk", "wv", "wo"],
+            )
+            print(f"  [*] LoRA adapters loaded from {lora_path}")
+
         self.model.eval()
         self.model.to(self.device)
+
+        # Lazy-init RAG + Orchestrator for the /ask endpoint
+        self._rag = None
+        self._orch = None
 
         self.params = count_parameters(self.model)
         self.name = f"MathTransformer-{self.params // 1000}K"
         self.checkpoint_path = checkpoint_path
         self.total_corrections = 0
         self.optimizer = None
+
+    def _get_orchestrator(self):
+        """Lazy-init Prepared Slate Orchestrator with RAG."""
+        if self._orch is None:
+            try:
+                self._rag = RAGEngine()
+                self._rag.build_index()
+            except Exception as e:
+                print(f"  [*] RAG init skipped: {e}")
+                self._rag = None
+            self._orch = PreparedSlateOrchestrator(
+                math_model=self.model,
+                tokenizer=self.tokenizer,
+                rag_engine=self._rag,
+            )
+        return self._orch
+
+    def ask(self, query: str, strategy: str | None = None) -> dict:
+        """Answer any query using the prepared slate orchestrator."""
+        orch = self._get_orchestrator()
+        result = orch.answer(query, force_strategy=strategy)
+        return {
+            "query": result.query,
+            "answer": result.answer,
+            "strategy": result.strategy,
+            "confidence": round(result.confidence, 3),
+            "time_ms": result.time_ms,
+        }
 
     def _get_optimizer(self):
         if self.optimizer is None:
@@ -79,50 +149,84 @@ class ModelHandler:
 
     @torch.no_grad()
     def generate(
-        self, prompt: str, temperature: float = 0.3, top_k: int = 5, max_new_tokens: int = 15
+        self, prompt: str, temperature: float = 0.3, top_k: int = 5, max_new_tokens: int = 15,
+        use_mcts: bool = False, mcts_simulations: int = 16,
     ) -> dict:
-        """Generate completion for a prompt."""
+        """Generate completion for a prompt.
+
+        Args:
+            prompt: Math expression (e.g. '12+34').
+            temperature: Sampling temperature (for greedy decode).
+            top_k: Top-K tokens to consider (for greedy decode).
+            max_new_tokens: Max tokens to generate.
+            use_mcts: If True, use MCTS inference instead of greedy decode.
+            mcts_simulations: MCTS rollouts per token position.
+
+        Returns:
+            Dict with prompt, result, display, time_ms, model, and
+            optionally mcts_stats.
+        """
         self.model.eval()
         t0 = time.time()
 
         if not prompt.endswith("="):
             prompt += "="
 
-        full = self.model.generate(
-            self.tokenizer,
-            prompt,
-            max_new_tokens=max_new_tokens,
-            temperature=temperature,
-            top_k=top_k,
-        )
+        mcts_stats = None
+        if use_mcts:
+            # ── MCTS inference path ────────────────────────────────
+            mcts_engine = MCTSInference(
+                model=self.model,
+                tokenizer=self.tokenizer,
+                num_simulations=mcts_simulations,
+                top_k=top_k,
+                temperature=max(temperature, 0.1),
+                max_new_tokens=max_new_tokens,
+            )
+            answer, mcts_stats = mcts_engine.generate(prompt)
+            full = prompt + answer
+            display = answer
+        else:
+            # ── Standard greedy/beam path ──────────────────────────
+            full = self.model.generate(
+                self.tokenizer,
+                prompt,
+                max_new_tokens=max_new_tokens,
+                temperature=temperature,
+                top_k=top_k,
+            )
 
-        elapsed = time.time() - t0
-        # Parse scratchpad: extract digit values from carry-digit pairs
-        display = full
-        if "=" in full:
-            raw = full.split("=", 1)[-1].replace("<EOS>", "").replace("<PAD>", "").strip()
-            if len(raw) >= 2:
-                # scratchpad format: carry-digit per column, LSD-first
-                digits = raw[1::2]  # every 2nd char starting at 1 = digit values
-                carries = raw[0::2]  # every 2nd char starting at 0 = carry values
-                # Reverse LSD-first -> normal order
-                normal = digits[::-1]
-                # If last column had a carry, prepend '1'
-                if carries and carries[-1] == "1":
-                    display_str = "1" + normal
+            elapsed = time.time() - t0
+            # Parse scratchpad: extract digit values from carry-digit pairs
+            display = full
+            if "=" in full:
+                raw = full.split("=", 1)[-1].replace("<EOS>", "").replace("<PAD>", "").strip()
+                if len(raw) >= 2:
+                    # scratchpad format: carry-digit per column, LSD-first
+                    digits = raw[1::2]  # every 2nd char starting at 1 = digit values
+                    carries = raw[0::2]  # every 2nd char starting at 0 = carry values
+                    # Reverse LSD-first -> normal order
+                    normal = digits[::-1]
+                    # If last column had a carry, prepend '1'
+                    if carries and carries[-1] == "1":
+                        display_str = "1" + normal
+                    else:
+                        display_str = normal.lstrip("0") or "0"
                 else:
-                    display_str = normal.lstrip("0") or "0"
-            else:
-                display_str = raw
-            display = display_str
-        return {
+                    display_str = raw
+                display = display_str
+
+        result = {
             "prompt": prompt,
             "result": full,
             "display": display,
             "tokens": len(self.tokenizer.encode(full)),
-            "time_ms": round(elapsed * 1000),
+            "time_ms": round((time.time() - t0) * 1000),
             "model": self.name,
         }
+        if mcts_stats:
+            result["mcts"] = mcts_stats
+        return result
 
     def train_step(self, pairs: list[tuple[str, str]], epochs: int = 5) -> dict:
         """Fine-tune on (expression, answer) pairs immediately."""
@@ -522,8 +626,28 @@ class RequestHandler(BaseHTTPRequestHandler):
                 return
             temperature = float(data.get("temperature", 0.3))
             top_k = int(data.get("top_k", 5))
+            use_mcts = data.get("use_mcts", False)
+            mcts_simulations = int(data.get("mcts_simulations", 16))
             try:
-                result = model_handler.generate(prompt, temperature, top_k)
+                result = model_handler.generate(
+                    prompt, temperature, top_k,
+                    use_mcts=use_mcts, mcts_simulations=mcts_simulations,
+                )
+                self._send_json(result)
+            except Exception as e:
+                self._send_json({"error": str(e)}, 500)
+
+        elif path == "/ask":
+            if model_handler is None:
+                self._send_json({"error": "No model loaded. Train first."}, 503)
+                return
+            query = data.get("query", "").strip()
+            if not query:
+                self._send_json({"error": 'Missing "query"'}, 400)
+                return
+            strategy = data.get("strategy", None)
+            try:
+                result = model_handler.ask(query, strategy)
                 self._send_json(result)
             except Exception as e:
                 self._send_json({"error": str(e)}, 500)

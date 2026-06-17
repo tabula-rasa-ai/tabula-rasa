@@ -1,0 +1,20 @@
+{
+  "name": "moe_rasa_1M",
+  "config": {
+    "preset": "1M",
+    "use_moe": true,
+    "num_experts": 4,
+    "use_rasa": true
+  },
+  "metrics": {
+    "accuracy": 89.5,
+    "ood": 56.0,
+    "compositional": 42.0
+  },
+  "timestamp": "2026-06-17T18:47:38.353827",
+  "duration_s": 0.0,
+  "checkpoint": "",
+  "notes": "MoE + RASA, 30K steps",
+  "git_hash": "bd2d543",
+  "run_id": "2026-06-17_184738_moe_rasa_1M"
+}

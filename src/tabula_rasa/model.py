@@ -205,6 +205,15 @@ class Attention(nn.Module):
         elif self.pos_type == "alibi_arithmetic":
             # ALiBi-style slopes for decimal-place alignment
             self.register_buffer("alibi_slopes", _compute_alibi_slopes(self.n_heads))
+
+        # Relation-Aware Sparse Attention (RASA)
+        self.use_rasa = getattr(config, "use_rasa", False)
+        if self.use_rasa:
+            # Learned relative position bias per head: (n_heads, 2*max_rel + 1)
+            max_rel = getattr(config, "rasa_max_relative", 16)
+            self.rasa_max_relative = max_rel
+            self.rel_bias = nn.Embedding(2 * max_rel + 1, self.n_heads)
+
         self.dropout = nn.Dropout(config.dropout)
 
     def forward(
@@ -272,13 +281,33 @@ class Attention(nn.Module):
             # No KV cache: use built-in causal masking
             attn_mask = None
 
+        # ── Relation-Aware Sparse Attention (RASA) ───────────────────────
+        # Add learned relative position bias before softmax
+        rasa_bias = None
+        if self.use_rasa:
+            q_len = seq_len
+            total_len = k.size(2)
+            # Relative position indices: (q_len, total_len)
+            rel_pos = torch.arange(q_len, device=x.device).unsqueeze(1) - \
+                      torch.arange(total_len, device=x.device).unsqueeze(0)  # (q, kv)
+            # Clamp to [-max_rel, max_rel]
+            rel_pos = torch.clamp(rel_pos, -self.rasa_max_relative, self.rasa_max_relative)
+            # Shift to [0, 2*max_rel] range for embedding lookup
+            rel_pos_idx = rel_pos + self.rasa_max_relative  # (q, kv)
+            # Lookup: (q, kv, n_heads) → permute to (1, n_heads, q, kv)
+            rasa_bias = self.rel_bias(rel_pos_idx).permute(2, 0, 1).unsqueeze(0)  # (1, n_heads, q, kv)
+
         # SDPA: is_causal=True when no explicit mask and no KV cache
-        use_causal = mask is None and past_kv is None
+        use_causal = mask is None and past_kv is None and rasa_bias is None and not (
+            arithmetic_bias is not None and self.pos_type == "alibi_arithmetic"
+        )
         if arithmetic_bias is not None and self.pos_type == "alibi_arithmetic":
             # Expand per-head: (B, 1, Q, KV) → (B, n_heads, Q, KV)
             h_bias = arithmetic_bias.expand(-1, self.n_heads, -1, -1)
             # Apply as attention bias (added to scores before softmax)
             attn_mask_final = h_bias
+            if rasa_bias is not None:
+                attn_mask_final = attn_mask_final + rasa_bias
             if mask is not None:
                 attn_mask_final = attn_mask_final.masked_fill(~mask.unsqueeze(1), float('-inf'))
             elif past_kv is None:
@@ -287,6 +316,24 @@ class Attention(nn.Module):
                 total_len = q_len
                 causal = torch.tril(torch.ones(q_len, total_len, device=x.device))
                 attn_mask_final = attn_mask_final.masked_fill(causal.unsqueeze(0).unsqueeze(0) == 0, float('-inf'))
+            out = F.scaled_dot_product_attention(
+                q, k, v,
+                attn_mask=attn_mask_final,
+                dropout_p=self.dropout.p if self.training else 0.0,
+                is_causal=False,
+            )
+        elif rasa_bias is not None:
+            # RASA active: combine with causal mask as float attn_mask
+            q_len = seq_len
+            total_len = k.size(2)
+            causal = torch.tril(torch.ones(q_len, total_len, device=x.device))
+            causal_mask = causal.view(1, 1, q_len, total_len)
+            # Build float mask: -inf where masked, 0 elsewhere, then add rasa bias
+            float_mask = torch.zeros_like(causal_mask, dtype=q.dtype, device=x.device)
+            float_mask = float_mask.masked_fill(causal_mask == 0, float('-inf'))
+            attn_mask_final = float_mask + rasa_bias
+            if mask is not None:
+                attn_mask_final = attn_mask_final.masked_fill(~mask.unsqueeze(1), float('-inf'))
             out = F.scaled_dot_product_attention(
                 q, k, v,
                 attn_mask=attn_mask_final,
@@ -445,6 +492,10 @@ class TransformerBlock(nn.Module):
         self.ffn_norm = _make_norm(config.d_model, config.norm_type)
         self.dropout = nn.Dropout(config.dropout)
 
+        # StreamBP: selective attention checkpointing
+        # Attention is O(n²) memory, FFN is O(n). Only checkpoint attention.
+        self.use_streambp = getattr(config, "use_streambp", True)
+
     def forward(
         self,
         x: torch.Tensor,
@@ -463,7 +514,17 @@ class TransformerBlock(nn.Module):
         Returns:
             Tuple ``(output, current_kv)``.
         """
-        attn_out, current_kv = self.attention(self.attention_norm(x), mask, past_kv=past_kv, arithmetic_bias=arithmetic_bias)
+        # StreamBP: checkpoint attention to avoid storing O(n²) attention matrix
+        if self.use_streambp and self.training and past_kv is None:
+            import torch.utils.checkpoint as cp
+            attn_out, current_kv = cp.checkpoint(
+                self.attention, self.attention_norm(x), mask, None, arithmetic_bias,
+                use_reentrant=False,
+            )
+        else:
+            attn_out, current_kv = self.attention(
+                self.attention_norm(x), mask, past_kv=past_kv, arithmetic_bias=arithmetic_bias
+            )
         x = x + self.dropout(attn_out)
         x = x + self.dropout(self.feed_forward(self.ffn_norm(x)))
         return x, current_kv
@@ -1111,6 +1172,25 @@ class MathTransformer(nn.Module):
             print("  [*] Quantization not requested. Loading standard model.")
 
         return model
+
+    def get_moe_aux_loss(self) -> torch.Tensor:
+        """Aggregate MoE auxiliary load-balancing losses from all layers.
+
+        Each MoEFeedForward layer stores its aux loss in ``last_aux_loss``.
+        This method sums them. Returns 0 if no MoE layers are present.
+
+        The aux loss encourages balanced token-to-expert routing,
+        preventing the router from collapsing to a single expert.
+
+        Returns:
+            Scalar tensor (0 if no MoE layers).
+        """
+        aux = 0.0
+        for layer in self.layers:
+            ff = layer.feed_forward
+            if hasattr(ff, "last_aux_loss"):
+                aux = aux + ff.last_aux_loss
+        return torch.tensor(aux, device=next(self.parameters()).device) if isinstance(aux, float) else aux
 
 
 def alphazero_loss(

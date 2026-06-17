@@ -17,6 +17,7 @@ from torch.utils.data import DataLoader
 
 from tabula_rasa.config import Config
 from tabula_rasa.dataset import MathDataset, format_math_sample, generate_problem
+from tabula_rasa.lora import apply_lora_to_model, save_lora_adapters, set_lora_trainable
 from tabula_rasa.model import MathTransformer, count_parameters
 from tabula_rasa.tokenizer import MathTokenizer
 
@@ -93,6 +94,23 @@ def train(resume_from=None, resume_steps=None):
 
     # Build or load model
     model = MathTransformer(cfg).to(device)
+
+    # StreamBP: selective attention checkpointing (built into TransformerBlock)
+    if getattr(cfg, "use_streambp", True):
+        print(f"  [*] StreamBP enabled (attention checkpointing)", flush=True)
+
+    # Apply LoRA if configured
+    lora_layers = []
+    if getattr(cfg, "use_lora", False):
+        rank = getattr(cfg, "lora_rank", 8)
+        alpha = getattr(cfg, "lora_alpha", 1.0)
+        targets = getattr(cfg, "lora_target_modules", "wq,wk,wv,wo").split(",")
+        lora_layers = apply_lora_to_model(model, rank=rank, alpha=alpha, target_modules=targets)
+        set_lora_trainable(model, trainable=True)
+        n_lora = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        print(f"  [*] LoRA applied (rank={rank}, alpha={alpha}, targets={targets})", flush=True)
+        print(f"  [*] Trainable LoRA parameters: {n_lora:,}", flush=True)
+
     optimizer = AdamW(model.parameters(), lr=cfg.learning_rate, weight_decay=cfg.weight_decay)
 
     # Resume from checkpoint
@@ -147,11 +165,16 @@ def train(resume_from=None, resume_steps=None):
     log_path = Path("training.log")
     log_file = open(log_path, "w")
 
-    print(f'\n{"="*60}')
+    # AMP scaler for mixed precision (only on CUDA)
+    use_amp = getattr(cfg, "use_amp", False) and device.type == "cuda"
+    scaler = torch.amp.GradScaler(device=device.type, enabled=use_amp) if hasattr(torch, 'amp') and use_amp else None
+
+    print(f'\\n{"="*60}')
     print(f"Training for {cfg.max_steps} steps...")
     print(f"Batch size: {cfg.batch_size}")
     print(f"Learning rate: {cfg.learning_rate}")
-    print(f'{"="*60}\n')
+    print(f"AMP: {'ON (CUDA)' if use_amp else 'OFF'}")
+    print(f'{"="*60}\\n')
 
     while global_step < cfg.max_steps:
         for batch in train_loader:
@@ -161,12 +184,29 @@ def train(resume_from=None, resume_steps=None):
             x, y = batch
             x, y = x.to(device), y.to(device)
 
-            _, loss, _ = model(x, y)
-
+            # Mixed precision forward
             optimizer.zero_grad()
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-            optimizer.step()
+            if scaler is not None:
+                with torch.amp.autocast(device_type=device.type):
+                    _, loss, _ = model(x, y)
+                    # MoE auxiliary load-balancing loss
+                    moe_loss = model.get_moe_aux_loss() * 0.01 if hasattr(model, 'get_moe_aux_loss') else 0.0
+                    total_loss = loss + moe_loss
+                scaler.scale(total_loss).backward()
+            else:
+                _, loss, _ = model(x, y)
+                moe_loss = model.get_moe_aux_loss() * 0.01 if hasattr(model, 'get_moe_aux_loss') else 0.0
+                total_loss = loss + moe_loss
+                total_loss.backward()
+
+            if scaler is not None:
+                scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip_norm)
+                scaler.step(optimizer)
+                scaler.update()
+            else:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip_norm)
+                optimizer.step()
             scheduler.step()
 
             losses.append(loss.item())
@@ -210,29 +250,34 @@ def train(resume_from=None, resume_steps=None):
 
                 if acc > best_acc:
                     best_acc = acc
-                    torch.save(
-                        {
-                            "step": global_step,
-                            "model_state_dict": model.state_dict(),
-                            "optimizer_state_dict": optimizer.state_dict(),
-                            "loss": loss.item(),
-                            "acc": acc,
-                        },
-                        save_dir / "best.pt",
-                    )
-                    print(f"  [*] New best model saved!")
-
-            # Save checkpoint
-            if global_step % cfg.save_every == 0:
-                torch.save(
-                    {
+                    save_dict = {
                         "step": global_step,
                         "model_state_dict": model.state_dict(),
                         "optimizer_state_dict": optimizer.state_dict(),
                         "loss": loss.item(),
-                    },
-                    save_dir / f"checkpoint_{global_step}.pt",
-                )
+                        "acc": acc,
+                    }
+                    torch.save(save_dict, save_dir / "best.pt")
+                    # Also save LoRA adapters separately if using LoRA
+                    if lora_layers:
+                        lora_path = save_dir / "lora_best.pt"
+                        save_lora_adapters(lora_layers, str(lora_path))
+                    print(f"  [*] New best model saved!")
+
+            # Save checkpoint
+            if global_step % cfg.save_every == 0:
+                ckpt_path = save_dir / f"checkpoint_{global_step}.pt"
+                save_dict = {
+                    "step": global_step,
+                    "model_state_dict": model.state_dict(),
+                    "optimizer_state_dict": optimizer.state_dict(),
+                    "loss": loss.item(),
+                }
+                torch.save(save_dict, ckpt_path)
+                # Also save LoRA adapters separately
+                if lora_layers:
+                    lora_path = save_dir / f"lora_{global_step}.pt"
+                    save_lora_adapters(lora_layers, str(lora_path))
                 print(f"  [*] Checkpoint saved at step {global_step}")
 
     # Save final model
@@ -257,6 +302,12 @@ def train(resume_from=None, resume_steps=None):
     log_file.write(f"Training complete! Best accuracy: {best_acc:.1f}%\n")
     log_file.close()
 
+    # Save final LoRA adapters if used
+    if lora_layers:
+        final_lora_path = Path(cfg.save_dir) / "lora_final.pt"
+        save_lora_adapters(lora_layers, str(final_lora_path))
+        print(f"  [*] Final LoRA adapters saved to {final_lora_path}")
+
     return model, tok
 
 
@@ -264,6 +315,11 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="Train or resume the math transformer")
+    parser.add_argument(
+        "--history",
+        action="store_true",
+        help="Show experiment history and exit",
+    )
     parser.add_argument(
         "--resume",
         type=str,
@@ -277,8 +333,66 @@ if __name__ == "__main__":
         help="Number of additional steps when resuming (ignored for fresh training)",
     )
     parser.add_argument("--use-value-head", action="store_true", help="Enable AlphaZero value head")
+    parser.add_argument("--use-moe", action="store_true", help="Enable Mixture of Experts FFN layers")
+    parser.add_argument("--use-rasa", action="store_true", help="Enable Relation-Aware Sparse Attention bias")
+    parser.add_argument("--preset", type=str, default=None, choices=["1M", "5M", "10M"],
+                        help="Architecture preset (overrides config_preset)")
+    parser.add_argument("--num-experts", type=int, default=4, help="Number of MoE experts")
+    parser.add_argument("--top-k", type=int, default=2, help="Top-K MoE experts per token")
+    parser.add_argument("--max-digits", type=int, default=None, help="Override max digits for training")
     args = parser.parse_args()
+
+    if args.history:
+        from tabula_rasa.experiments import print_runs, list_runs
+        runs = list_runs(limit=30)
+        print_runs(runs)
+        sys.exit(0)
+
     cfg = Config()
     if args.use_value_head:
         cfg.use_value_head = True
+    if args.use_moe:
+        cfg.use_moe = True
+        cfg.num_experts = args.num_experts
+        cfg.top_k = args.top_k
+    if args.use_rasa:
+        cfg.use_rasa = True
+    if args.preset:
+        cfg.apply_preset(args.preset)
+        print(f"  [*] Applied preset: {args.preset} ({cfg.d_model}d, {cfg.n_layers}L, {cfg.n_heads}h)")
+    if args.max_digits is not None:
+        cfg.max_digits = args.max_digits
+        cfg.curriculum_phases = [(cfg.max_steps, args.max_digits)]
+    t0 = time.time()
     model, tok = train(resume_from=args.resume, resume_steps=args.steps)
+    elapsed = time.time() - t0
+
+    # Auto-log experiment
+    try:
+        from tabula_rasa.experiments import log_run
+        import torch
+        model.eval()
+        from tabula_rasa.eval import evaluate_accuracy
+        acc, _ = evaluate_accuracy(model, tok, num_problems=100, max_digits=cfg.max_digits, verbose=False)
+        log_run(
+            name=f"train_{cfg.config_preset}_{cfg.max_digits}d",
+            config={
+                "preset": cfg.config_preset,
+                "d_model": cfg.d_model, "n_layers": cfg.n_layers,
+                "n_heads": cfg.n_heads, "d_ff": cfg.d_ff,
+                "max_seq_len": cfg.max_seq_len,
+                "use_moe": cfg.use_moe, "num_experts": cfg.num_experts, "top_k": cfg.top_k,
+                "use_rasa": cfg.use_rasa,
+                "use_lora": cfg.use_lora, "lora_rank": cfg.lora_rank,
+                "use_streambp": cfg.use_streambp,
+                "use_entropy_curriculum": cfg.use_entropy_curriculum,
+                "batch_size": cfg.batch_size, "learning_rate": cfg.learning_rate,
+                "max_steps": cfg.max_steps, "max_digits": cfg.max_digits,
+            },
+            metrics={"accuracy": round(acc, 1)},
+            checkpoint=str(Path(cfg.save_dir) / "best.pt"),
+            notes=f"train.py {args.preset or 'default'}",
+            duration_s=elapsed,
+        )
+    except Exception as e:
+        print(f"  [!] Experiment logging: {e}")
