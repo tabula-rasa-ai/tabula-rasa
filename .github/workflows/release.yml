@@ -48,4 +48,4 @@ jobs:
         with:
           context: .
           push: true
-          tags: ghcr.io/${{ lower(github.repository_owner) }}/${{ github.event.repository.name }}:latest,ghcr.io/${{ lower(github.repository_owner) }}/${{ github.event.repository.name }}:${{ github.ref_name }}
+          tags: ghcr.io/matrix-research-ai/tabula-rasa:latest,ghcr.io/matrix-research-ai/tabula-rasa:${{ github.ref_name }}
