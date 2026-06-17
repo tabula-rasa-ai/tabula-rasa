@@ -53,13 +53,13 @@ def run_one(op: str, seed: int, steps: int, scratchpad: bool, quick: bool) -> di
     result = subprocess.run(cmd, cwd=str(PROJECT), capture_output=True, text=True, timeout=7200)
     elapsed = time.time() - t0
 
-    # Parse accuracy from stdout (last eval line: "Eval: 87.5%")
+    # Parse accuracy from stdout (last eval line: "Eval step N: 87.5%")
     acc = 0.0
     for line in (result.stdout or '').splitlines():
-        if 'Eval:' in line and '%' in line:
-            parts = line.split()
-            for p in parts:
-                if p.endswith('%'):
+        if 'Eval' in line and '%' in line:
+            # Find the first percentage value (overall accuracy)
+            for p in line.split():
+                if p.endswith('%') and p.replace('.','').rstrip('%').isdigit():
                     try:
                         acc = float(p.rstrip('%'))
                     except ValueError:
