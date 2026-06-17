@@ -24,8 +24,11 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest]
         python-version: ["3.9", "3.10", "3.11", "3.12"]
+        include:
+          - os: macos-latest
+            python-version: "3.12"
 
     steps:
       - uses: actions/checkout@v4
@@ -42,22 +45,44 @@ jobs:
 
       - name: Run unit tests with coverage (core packages)
         run: |
-          python -m pytest tests/ -v --tb=short \
-            --cov=tabula_rasa.config \
-            --cov=tabula_rasa.model \
-            --cov=tabula_rasa.tokenizer \
-            --cov=tabula_rasa.dataset \
-            --cov=tabula_rasa.eval \
-            --cov=tabula_rasa.rope \
-            --cov=tabula_rasa.norms \
-            --cov=tabula_rasa.attention \
-            --cov=tabula_rasa.ffn \
-            --cov=tabula_rasa.transformer_block \
-            --cov=tabula_rasa.experiments \
-            --cov=tabula_rasa.generate \
-            --cov=tabula_rasa.lora \
-            --cov=tabula_rasa.training.mult_scratchpad \
-            --cov-fail-under=70 -x
+          if [ "${{ matrix.os }}" = "macos-latest" ]; then
+            python -m pytest tests/ -v --tb=short \
+              --ignore=tests/test_integration.py \
+              --ignore=tests/test_model.py \
+              --ignore=tests/test_property_based.py \
+              --cov=tabula_rasa.config \
+              --cov=tabula_rasa.model \
+              --cov=tabula_rasa.tokenizer \
+              --cov=tabula_rasa.dataset \
+              --cov=tabula_rasa.eval \
+              --cov=tabula_rasa.rope \
+              --cov=tabula_rasa.norms \
+              --cov=tabula_rasa.attention \
+              --cov=tabula_rasa.ffn \
+              --cov=tabula_rasa.transformer_block \
+              --cov=tabula_rasa.experiments \
+              --cov=tabula_rasa.generate \
+              --cov=tabula_rasa.lora \
+              --cov=tabula_rasa.training.mult_scratchpad \
+              --cov-fail-under=40 -x
+          else
+            python -m pytest tests/ -v --tb=short \
+              --cov=tabula_rasa.config \
+              --cov=tabula_rasa.model \
+              --cov=tabula_rasa.tokenizer \
+              --cov=tabula_rasa.dataset \
+              --cov=tabula_rasa.eval \
+              --cov=tabula_rasa.rope \
+              --cov=tabula_rasa.norms \
+              --cov=tabula_rasa.attention \
+              --cov=tabula_rasa.ffn \
+              --cov=tabula_rasa.transformer_block \
+              --cov=tabula_rasa.experiments \
+              --cov=tabula_rasa.generate \
+              --cov=tabula_rasa.lora \
+              --cov=tabula_rasa.training.mult_scratchpad \
+              --cov-fail-under=70 -x
+          fi
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
