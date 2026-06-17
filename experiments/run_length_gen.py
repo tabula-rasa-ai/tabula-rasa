@@ -35,8 +35,10 @@ def run_one(
 
     Returns dict with training and evaluation metrics.
     """
+    import os
+    _PY = os.environ.get("TABULA_RASA_PYTHON", sys.executable)
     cmd = [
-        sys.executable, 'scripts/train_specialist.py', op,
+        _PY, 'scripts/train_specialist.py', op,
         '--seed', str(seed),
         '--steps', str(steps),
         '--max-digits', str(train_digits),
@@ -64,7 +66,7 @@ def run_one(
 
     # Run OOD eval on longer digits
     eval_cmd = [
-        sys.executable, '-m', 'tabula_rasa.eval',
+        _PY, '-m', 'tabula_rasa.eval',
         f'specialists/math/{op}/best.pt',
         str(eval_digits),
     ]

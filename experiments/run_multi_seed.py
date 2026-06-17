@@ -19,6 +19,8 @@ import sys
 import time
 from pathlib import Path
 
+PYTHON = os.environ.get("TABULA_RASA_PYTHON", sys.executable)
+
 PROJECT = Path(__file__).resolve().parent.parent
 RESULTS_FILE = PROJECT / 'experiments' / 'multi_seed_results.json'
 
@@ -37,7 +39,7 @@ def run_one(op: str, seed: int, steps: int, scratchpad: bool, quick: bool) -> di
         Dict with ``accuracy``, ``steps``, ``seed``, and ``duration_s``.
     """
     cmd = [
-        sys.executable, 'scripts/train_specialist.py', op,
+        PYTHON, 'scripts/train_specialist.py', op,
         '--seed', str(seed),
         '--steps', str(steps),
     ]
