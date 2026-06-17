@@ -80,3 +80,13 @@ htmlcov/
 
 # Cache
 .cache/
+
+# Test scripts
+test_retrain*.py
+test_borrow*.py
+test_borrow*.txt
+run_ai_server_old.py
+start_server.py
+kill_ports.ps1
+fix_api_ports.py
+nul
