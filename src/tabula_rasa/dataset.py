@@ -3,13 +3,24 @@
 from __future__ import annotations
 
 import random
-
-import torch
-from torch.utils.data import Dataset
+from typing import TYPE_CHECKING
 
 from tabula_rasa.tokenizer import MathTokenizer
 
+if TYPE_CHECKING:
+    import torch
+    from torch.utils.data import Dataset
+
 OPERATIONS: list[str] = ["+", "-", "*", "/"]
+
+# Lazy torch import — avoids crash on runners with broken torch install
+def _torch():
+    import torch
+    return torch
+
+def _Dataset():
+    from torch.utils.data import Dataset
+    return Dataset
 
 
 def generate_problem(min_digits: int = 1, max_digits: int = 4) -> tuple[str, str]:
@@ -75,7 +86,7 @@ def format_math_sample(expr: str, answer: str) -> str:
     return f"{expr}={answer}"
 
 
-class MathDataset(Dataset[tuple[torch.Tensor, torch.Tensor]]):
+class MathDataset(_Dataset()):  # type: ignore
     """Dataset of synthetic math problems for autoregressive training.
 
     Each sample is a tokenised string of the form ``'{expr}={answer}'``,
@@ -142,7 +153,8 @@ class MathDataset(Dataset[tuple[torch.Tensor, torch.Tensor]]):
         x = padded[:-1]
         # Target: all tokens except first (shifted)
         y = padded[1:]
-        return torch.tensor(x, dtype=torch.long), torch.tensor(y, dtype=torch.long)
+        t = _torch()
+        return t.tensor(x, dtype=t.long), t.tensor(y, dtype=t.long)
 
 
 def generate_test_set(num_samples: int = 100, seed: int = 123) -> list[tuple[str, str]]:
