@@ -18,9 +18,12 @@ def _torch():
     import torch
     return torch
 
-def _Dataset():
-    from torch.utils.data import Dataset
-    return Dataset
+def _dataset():  # noqa: N802
+    try:
+        from torch.utils.data import Dataset
+        return Dataset
+    except Exception:
+        return object
 
 
 def generate_problem(min_digits: int = 1, max_digits: int = 4) -> tuple[str, str]:
@@ -86,7 +89,7 @@ def format_math_sample(expr: str, answer: str) -> str:
     return f"{expr}={answer}"
 
 
-class MathDataset(_Dataset()):  # type: ignore
+class MathDataset(_dataset()):  # type: ignore
     """Dataset of synthetic math problems for autoregressive training.
 
     Each sample is a tokenised string of the form ``'{expr}={answer}'``,
