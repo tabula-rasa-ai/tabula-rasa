@@ -1,0 +1,51 @@
+site_name: Tabula Rasa
+site_description: Blank-slate developmental AI — learning arithmetic from scratch
+site_url: https://matrix-research-ai.github.io/tabula-rasa/
+repo_url: https://github.com/Matrix-Research-Ai/tabula-rasa
+edit_uri: blob/main/docs/
+
+theme:
+  name: material
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.expand
+    - search.highlight
+  palette:
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            show_source: true
+            show_bases: true
+            show_docstring_description: true
+            docstring_style: google
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Quickstart: quickstart.md
+  - API Reference:
+      - Config: api/config.md
+      - Model: api/model.md
+      - Tokenizer: api/tokenizer.md
+      - Training: api/training.md
+      - Evaluation: api/eval.md
+  - Architecture: architecture.md
+  - Research: research.md

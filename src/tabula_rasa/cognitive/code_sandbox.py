@@ -4,6 +4,11 @@ code_sandbox.py — The "Chess Board" for Code AlphaZero.
 In AlphaZero, the environment is the Chess board.
 For the Code Specialist, the environment is a Sandboxed Python REPL.
 
+**Security note:** This sandbox uses subprocess isolation with a timeout and
+import blacklist only. It is NOT hardened against malicious code.
+For multi-user or production use, wrap in bubblewrap/nsjail/firejail
+with seccomp, CPU/memory limits, and no network access.
+
 Components:
   1. ast.parse() — "Rules Engine": instantly flags Syntax Errors (illegal moves)
   2. subprocess isolation — Sandboxed execution with timeout and import blacklist
