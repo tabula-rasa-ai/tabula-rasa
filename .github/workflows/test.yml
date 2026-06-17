@@ -40,7 +40,7 @@ jobs:
           python -m venv /tmp/venv
           source /tmp/venv/bin/activate
           pip install --upgrade pip
-          pip install torch==2.2.0 --index-url https://download.pytorch.org/whl/cpu
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
           pip install "numpy<2"
           pip install -e ".[dev]"
 
