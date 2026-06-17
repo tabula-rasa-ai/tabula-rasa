@@ -182,6 +182,46 @@ SPECIALIST_CONFIG = {
     'translation':          {'temp': 0.0, 'max_tokens': 60, 'max_seq': 160, 'd_model': 128, 'n_layers': 4, 'n_heads': 8, 'd_ff': 256, 'steps': 1200},
 }
 
+# ─── Validation History ──────────────────────────────────────────
+# Module-level store for tracking validation loss across training runs.
+# Structure: {intent: [{'loss': float, 'level': int, 'timestamp': float}, ...]}
+_VALIDATION_HISTORY: dict[str, list[dict]] = {}
+
+def _get_validation_history(intent: str) -> list[dict]:
+    """Get the validation loss history for a given intent.
+
+    Args:
+        intent: The specialist intent name.
+
+    Returns:
+        List of dicts with keys 'loss', 'level', 'timestamp'.
+    """
+    return _VALIDATION_HISTORY.get(intent, [])
+
+
+def _store_validation_loss(intent: str, loss: float, level: int) -> None:
+    """Record a validation loss measurement for an intent.
+
+    Maintains a rolling window of the last 5 measurements per intent
+    to support plateau detection.
+
+    Args:
+        intent: The specialist intent name.
+        loss: The validation loss value.
+        level: The training level at which this was measured.
+    """
+    if intent not in _VALIDATION_HISTORY:
+        _VALIDATION_HISTORY[intent] = []
+    _VALIDATION_HISTORY[intent].append({
+        'loss': loss,
+        'level': level,
+        'timestamp': time.time(),
+    })
+    # Keep only the last 10 entries
+    if len(_VALIDATION_HISTORY[intent]) > 10:
+        _VALIDATION_HISTORY[intent] = _VALIDATION_HISTORY[intent][-10:]
+
+
 def scale_config(intent, level=0):
     """Scale model config by level. Each level increases d_model aggressively."""
     base = SPECIALIST_CONFIG.get(intent, SPECIALIST_CONFIG['greeting'])
@@ -196,6 +236,98 @@ def scale_config(intent, level=0):
     scaled['steps'] = base['steps'] + level * 500
     scaled['max_seq'] = min(base['max_seq'] + level * 32, 320)
     return scaled
+
+
+def scale_config_with_validation(
+    intent: str,
+    level: int = 0,
+    validation_loss: float | None = None,
+) -> dict:
+    """Scale model config with validation-loss-aware plateau detection.
+
+    Extends ``scale_config`` by adding a validation check: if the
+    validation loss is still dropping significantly (>10%% improvement
+    since last check), the current scale is kept -- scaling is *deferred*
+    until the loss plateaus (change < 5%% over the last 3 checks).
+
+    This prevents unnecessary model scaling when the current architecture
+    is still effectively learning from existing data, saving compute and
+    avoiding premature capacity increases.
+
+    Args:
+        intent: The specialist intent name (used to look up history).
+        level: Requested training level (may be reduced if plateau not
+            reached).
+        validation_loss: The most recent validation loss measurement.
+            If ``None``, the function falls back to the original
+            ``scale_config`` behaviour.
+
+    Returns:
+        Scaled config dict (same keys as ``scale_config``), possibly
+        with a reduced level if validation loss is still dropping.
+    """
+    if validation_loss is None:
+        # No validation data -- fall back to original behaviour
+        return scale_config(intent, level)
+
+    # Record this measurement
+    _store_validation_loss(intent, validation_loss, level)
+    history = _get_validation_history(intent)
+
+    # Need at least 2 measurements to detect improvement
+    if len(history) < 2:
+        return scale_config(intent, level)
+
+    # --- Plateau detection ---
+    # Check if loss is still dropping (>10% improvement since last check)
+    prev_loss = history[-2]['loss']
+    current_loss = history[-1]['loss']
+
+    if prev_loss > 0 and current_loss < prev_loss:
+        improvement = (prev_loss - current_loss) / prev_loss
+        if improvement > 0.10:
+            # Loss is dropping faster than 10% -- keep current scale,
+            # do NOT increase capacity
+            effective_level = max(0, level - 1)
+            debug(
+                f"validation: {intent} loss dropped {improvement*100:.1f}% "
+                f"({prev_loss:.4f}->{current_loss:.4f}), "
+                f"holding scale at level {effective_level}"
+            )
+            return scale_config(intent, effective_level)
+
+    # --- Multi-check plateau detection ---
+    # Only increase d_model/steps when change is < 5% over 3 checks
+    if len(history) >= 4:
+        last_three = history[-4:-1]  # The 3 checks *before* current
+        if all(l['loss'] > 0 for l in last_three):
+            changes = []
+            for i in range(1, len(last_three)):
+                prev = last_three[i - 1]['loss']
+                curr = last_three[i]['loss']
+                if prev > 0:
+                    changes.append(abs(curr - prev) / prev)
+            if changes and all(c < 0.05 for c in changes):
+                # Plateau confirmed -- allow full scaling
+                debug(
+                    f"validation: {intent} plateau detected "
+                    f"(change < 5%% over 3 checks), allowing full scale"
+                )
+                return scale_config(intent, level)
+
+        # Not plateaued yet -- check the most recent pair
+        prev_prev = history[-3]['loss']
+        prev = history[-2]['loss']
+        curr = history[-1]['loss']
+        if prev > 0 and prev_prev > 0:
+            recent_change_1 = abs(curr - prev) / prev
+            recent_change_2 = abs(prev - prev_prev) / prev_prev
+            if recent_change_1 < 0.05 and recent_change_2 < 0.05:
+                # Recent changes are small -- allow scaling
+                return scale_config(intent, level)
+
+    # Default: conservative -- don't scale more than requested
+    return scale_config(intent, max(0, level - 1))
 
 def load_dataset(intent):
     """Load QA pairs from datasets/<intent>.json. Returns list of (question, answer)."""
@@ -244,6 +376,7 @@ class SkillManager:
         self.training_progress = {}  # intent -> {step, total, loss, status}
         self.skill_levels = {}  # intent -> level (auto-increments on retrain)
         self._query_count = {}  # intent -> query counter for auto-retrain
+        self._validation_losses = {}  # intent -> most recent validation loss (float)
         self.pending_question = None  # {prompt, intent, timestamp} — last unanswered question
         self.last_answer = None  # {answer, prompt, skill} — last answer given
         # Shared base model + LoRA adapters (for USE_LORA_FOR_CHAT mode)
@@ -1068,8 +1201,10 @@ class SkillManager:
         if retrain:
             level += 1
         self.skill_levels[intent] = level
-        sc = scale_config(intent, level)
-        debug(f"train: {intent} level={level} config={sc}")
+        # Use validation-aware scaling if we have stored validation loss for this intent
+        val_loss = self._validation_losses.get(intent, None)
+        sc = scale_config_with_validation(intent, level, validation_loss=val_loss)
+        debug(f"train: {intent} level={level} val_loss={val_loss} config={sc}")
 
         # Try to get CPU count
         try:
@@ -1212,6 +1347,34 @@ class SkillManager:
                         xs.append(torch.tensor(ids[:-1]))
                         ys.append(torch.tensor(ids[1:]))
 
+                    # Hold out up to 1 pair for validation (if we have enough data)
+                    val_xs, val_ys = None, None
+                    if len(pairs) >= 3:
+                        # Use the last pair as validation
+                        val_xs = xs[-1].unsqueeze(0)
+                        val_ys = ys[-1].unsqueeze(0)
+                        xs = xs[:-1]
+                        ys = ys[:-1]
+                    elif len(pairs) >= 2:
+                        # Use the last pair as validation
+                        val_xs = xs[-1].unsqueeze(0)
+                        val_ys = ys[-1].unsqueeze(0)
+                        xs = xs[:-1]
+                        ys = ys[:-1]
+
+                    if not xs:
+                        # Fallback: use all data for training, no validation
+                        xs, ys = [], []
+                        for q, a in pairs:
+                            text = f"{q}={a}"
+                            ids = tok.encode(text, add_special_tokens=True)
+                            ids = (ids + [tok.pad_id] * tok.max_seq_len)[
+                                : tok.max_seq_len
+                            ]
+                            xs.append(torch.tensor(ids[:-1]))
+                            ys.append(torch.tensor(ids[1:]))
+                        val_xs, val_ys = None, None
+
                     x = torch.stack(xs)
                     y = torch.stack(ys)
                     dataset = torch.utils.data.TensorDataset(x, y)
@@ -1241,6 +1404,17 @@ class SkillManager:
                             )
 
                     model.eval()
+
+                    # Compute validation loss on held-out pair (if available)
+                    val_loss_value = None
+                    if val_xs is not None and val_ys is not None:
+                        with torch.no_grad():
+                            _, val_loss, _ = model(val_xs, val_ys)
+                            val_loss_value = val_loss.item()
+                            self._validation_losses[intent] = val_loss_value
+                            debug(
+                                f"train: {intent} validation loss={val_loss_value:.4f}"
+                            )
 
                     # Save LoRA adapter (small file — just A and B matrices)
                     save_dir = Path(f"specialists/{intent}")
@@ -1341,6 +1515,30 @@ class SkillManager:
                     xs.append(torch.tensor(ids[:-1]))
                     ys.append(torch.tensor(ids[1:]))
 
+                # Hold out 1 pair for validation (if we have enough data)
+                val_xs, val_ys_full = None, None
+                if len(pairs) >= 3:
+                    val_xs = xs[-1].unsqueeze(0)
+                    val_ys_full = ys[-1].unsqueeze(0)
+                    xs = xs[:-1]
+                    ys = ys[:-1]
+                elif len(pairs) >= 2:
+                    val_xs = xs[-1].unsqueeze(0)
+                    val_ys_full = ys[-1].unsqueeze(0)
+                    xs = xs[:-1]
+                    ys = ys[:-1]
+
+                if not xs:
+                    # Fallback: use all data for training
+                    xs, ys = [], []
+                    for q, a in pairs:
+                        text = f"{q}={a}"
+                        ids = tok.encode(text, add_special_tokens=True)
+                        ids = (ids + [tok.pad_id] * cfg.max_seq_len)[:cfg.max_seq_len]
+                        xs.append(torch.tensor(ids[:-1]))
+                        ys.append(torch.tensor(ids[1:]))
+                    val_xs, val_ys_full = None, None
+
                 x = torch.stack(xs)
                 y = torch.stack(ys)
                 dataset = torch.utils.data.TensorDataset(x, y)
@@ -1370,6 +1568,16 @@ class SkillManager:
                         )
 
                 model.eval()
+
+                # Compute validation loss on held-out pair (if available)
+                if val_xs is not None and val_ys_full is not None:
+                    with torch.no_grad():
+                        _, val_loss_full, _ = model(val_xs, val_ys_full)
+                        val_loss_value = val_loss_full.item()
+                        self._validation_losses[intent] = val_loss_value
+                        debug(
+                            f"train: {intent} validation loss={val_loss_value:.4f}"
+                        )
 
                 save_dir = Path(f"specialists/{intent}")
                 save_dir.mkdir(parents=True, exist_ok=True)
