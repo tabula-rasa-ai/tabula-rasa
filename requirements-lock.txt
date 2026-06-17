@@ -1,4 +1,4 @@
-numpy==2.4.6
+numpy==1.26.4
 psutil==6.1.1
 requests==2.34.2
 setuptools==81.0.0
