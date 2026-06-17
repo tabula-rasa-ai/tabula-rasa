@@ -336,7 +336,10 @@ class RequestHandler(BaseHTTPRequestHandler):
     """HTTP request handler."""
 
     def log_message(self, format, *args):
-        sys.stderr.write(f"  [*] {args[0]} {args[1]} {args[2]}\n")
+        try:
+            sys.stderr.write(f"  [*] {args[0]} {args[1]} {args[2]}\n")
+        except (IndexError, TypeError):
+            sys.stderr.write(f"  [*] {' '.join(str(a) for a in args)}\n")
 
     def _send_json(self, data: dict, status: int = 200):
         body = json.dumps(data, ensure_ascii=False)
@@ -363,19 +366,17 @@ class RequestHandler(BaseHTTPRequestHandler):
             self.send_header("Access-Control-Allow-Origin", "*")
             self.send_header("Connection", "keep-alive")
             self.end_headers()
-            # Send initial keepalive
             self.wfile.write(b": connected\n\n")
             self.wfile.flush()
             while True:
                 try:
                     data = q.get(timeout=30)
-                    if data is None:  # shutdown signal
+                    if data is None:
                         break
                     msg = f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
                     self.wfile.write(msg.encode())
                     self.wfile.flush()
                 except queue.Empty:
-                    # Send keepalive comment every 30s
                     self.wfile.write(b": keepalive\n\n")
                     self.wfile.flush()
         except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError, OSError):
@@ -383,24 +384,6 @@ class RequestHandler(BaseHTTPRequestHandler):
         finally:
             if client in SSE_CLIENTS:
                 SSE_CLIENTS.remove(client)
-
-
-def broadcast_sse(event: str | dict) -> None:
-    """Broadcast an event to all connected SSE clients.
-
-    Args:
-        event: Event data (dict is JSON-serialized, str sent as-is).
-    """
-    dead = []
-    for client in SSE_CLIENTS:
-        try:
-            client[0].put_nowait(event)
-            client[1] += 1
-        except Exception:
-            dead.append(client)
-    for c in dead:
-        if c in SSE_CLIENTS:
-            SSE_CLIENTS.remove(c)
 
     def do_OPTIONS(self):
         self.send_response(204)
@@ -791,6 +774,24 @@ def broadcast_sse(event: str | dict) -> None:
 
         else:
             self._send_json({"error": "Not found"}, 404)
+
+
+def broadcast_sse(event: str | dict) -> None:
+    """Broadcast an event to all connected SSE clients.
+
+    Args:
+        event: Event data (dict is JSON-serialized, str sent as-is).
+    """
+    dead = []
+    for client in SSE_CLIENTS:
+        try:
+            client[0].put_nowait(event)
+            client[1] += 1
+        except Exception:
+            dead.append(client)
+    for c in dead:
+        if c in SSE_CLIENTS:
+            SSE_CLIENTS.remove(c)
 
 
 TRAIN_JOBS = {}

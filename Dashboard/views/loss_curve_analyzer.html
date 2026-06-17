@@ -132,7 +132,7 @@
 </div>
 
 <script>
-var API = 'http://localhost:8000';
+var API = window.location.protocol + '//' + window.location.hostname + ':' + window.location.port;
 var lossData = []; var evalData = []; var smoothData = [];
 
 // Parse log content

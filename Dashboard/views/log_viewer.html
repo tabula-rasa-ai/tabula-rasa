@@ -29,7 +29,7 @@ h1 span{color:var(--muted);font-weight:400;font-size:13px}
 <div id="log"><span class="s">Waiting for training.log...</span></div>
 
 <script>
-const API = 'http://localhost:8000';
+const API = window.location.protocol + '//' + window.location.hostname + ':' + window.location.port;
 let timer = null;
 
 async function refresh() {

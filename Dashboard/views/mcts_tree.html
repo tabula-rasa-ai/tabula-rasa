@@ -51,7 +51,7 @@ canvas { display: block; width: 100%; height: 100%; }
 </div>
 
 <script>
-var API = 'http://localhost:8000';
+var API = window.location.protocol + '//' + window.location.hostname + ':' + window.location.port;
 var canvas = document.getElementById('tree-canvas');
 var ctx = canvas.getContext('2d');
 var tooltip = document.getElementById('tooltip');

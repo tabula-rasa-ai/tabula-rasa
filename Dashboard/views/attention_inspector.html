@@ -150,7 +150,7 @@
 </div>
 
 <script>
-var API = 'http://localhost:8000';
+var API = window.location.protocol + '//' + window.location.hostname + ':' + window.location.port;
 var currentMatrix = null;
 
 function generateHeatmap() {

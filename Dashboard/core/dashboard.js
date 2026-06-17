@@ -1,8 +1,8 @@
 // Tabula Rasa Dashboard — Shared JS (V1.3)
 // Include via: <script src="../core/dashboard.js"></script>
 
-var API = 'http://localhost:8000';
-var API2 = 'http://localhost:8002';
+var API = window.location.protocol + '//' + window.location.hostname + ':' + window.location.port;
+var API2 = API;
 
 function $(id) { return document.getElementById(id); }
 

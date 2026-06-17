@@ -128,8 +128,9 @@
     </div>
 
     <script>
-    var API2 = 'http://localhost:8002';
-    var API1 = 'http://localhost:8000';
+    var API2 = (window.location.port === '8000' || window.location.port === '8002')
+        ? 'http://localhost:8002' : window.location.protocol + '//' + window.location.hostname + ':' + window.location.port;
+    var API1 = API2;
     var autoTeach = false, busy = false, totalCorrections = 0;
     var currentSessionId = null;
 
@@ -279,15 +280,22 @@
     }
 
     async function askMath(prompt) {
+        // Try the math lookup server first, fall back to the API server
         try {
             var r = await fetch('http://localhost:8084/compute', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ prompt: prompt })
             });
-            return await r.json();
+            if (r.ok) return await r.json();
         } catch(e) {
-            return {error: e.message};
+            // Lookup server unavailable — fall through to API server
         }
+        // Fallback: use the API server's /generate endpoint
+        var r = await fetch(API1 + '/generate', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt: prompt, temperature: 0.0, top_k: 3 })
+        });
+        return await r.json();
     }
 
     function parseScratchpad(raw) {
