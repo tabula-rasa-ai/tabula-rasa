@@ -47,6 +47,8 @@ def run_one(
         cmd.extend(['--pos-encoding', pe])
     if scratchpad:
         pass  # scratchpad is ON by default, no CLI flag
+    # Use --test-hard to get OOD eval at max_digits+1 from training built-in
+    cmd.append('--test-hard')
 
     t0 = time.time()
     result = subprocess.run(cmd, cwd=str(PROJECT), capture_output=True, text=True, timeout=7200)
@@ -65,34 +67,17 @@ def run_one(
                     except ValueError:
                         pass
 
-    # Run OOD eval on longer digits (with retry and longer timeout)
+    # Parse OOD accuracy from training --test-hard output
     ood_acc = 0.0
-    for attempt in range(3):
-        try:
-            eval_cmd = [
-                _PY, '-m', 'tabula_rasa.eval',
-                f'specialists/math/{op}/best.pt',
-                str(eval_digits),
-            ]
-            eval_result = subprocess.run(
-                eval_cmd, cwd=str(PROJECT),
-                capture_output=True, text=True, timeout=600,
-            )
-            eval_out = eval_result.stdout or ''
-            for line in eval_out.splitlines():
-                if 'accuracy' in line.lower():
-                    for p in line.split():
-                        if p.endswith('%') or p.rstrip('%').replace('.','').isdigit():
-                            try:
-                                ood_acc = float(p.rstrip('%'))
-                            except ValueError:
-                                pass
-            break
-        except (subprocess.TimeoutExpired, FileNotFoundError):
-            if attempt < 2:
-                time.sleep(10)
-                continue
-            ood_acc = -1.0  # signal failure
+    for line in (result.stdout or '').splitlines():
+        if 'hard' in line and '%' in line:
+            # e.g. "1d:100% 2d:100% hard:50%"
+            for p in line.split():
+                if p.startswith('hard:'):
+                    try:
+                        ood_acc = float(p.split(':')[1].rstrip('%'))
+                    except (ValueError, IndexError):
+                        pass
 
     return {
         'op': op,
