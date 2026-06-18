@@ -2,26 +2,26 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://matrix-research-ai.github.io/tabula-rasa/</loc>
-         <lastmod>2026-06-17</lastmod>
+         <lastmod>2026-06-18</lastmod>
     </url>
     <url>
          <loc>https://matrix-research-ai.github.io/tabula-rasa/api/config/</loc>
-         <lastmod>2026-06-17</lastmod>
+         <lastmod>2026-06-18</lastmod>
     </url>
     <url>
          <loc>https://matrix-research-ai.github.io/tabula-rasa/api/eval/</loc>
-         <lastmod>2026-06-17</lastmod>
+         <lastmod>2026-06-18</lastmod>
     </url>
     <url>
          <loc>https://matrix-research-ai.github.io/tabula-rasa/api/model/</loc>
-         <lastmod>2026-06-17</lastmod>
+         <lastmod>2026-06-18</lastmod>
     </url>
     <url>
          <loc>https://matrix-research-ai.github.io/tabula-rasa/api/tokenizer/</loc>
-         <lastmod>2026-06-17</lastmod>
+         <lastmod>2026-06-18</lastmod>
     </url>
     <url>
          <loc>https://matrix-research-ai.github.io/tabula-rasa/api/training/</loc>
-         <lastmod>2026-06-17</lastmod>
+         <lastmod>2026-06-18</lastmod>
     </url>
 </urlset>
