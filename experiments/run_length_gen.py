@@ -64,25 +64,34 @@ def run_one(
                     except ValueError:
                         pass
 
-    # Run OOD eval on longer digits
-    eval_cmd = [
-        _PY, '-m', 'tabula_rasa.eval',
-        f'specialists/math/{op}/best.pt',
-        str(eval_digits),
-    ]
-    eval_result = subprocess.run(eval_cmd, cwd=str(PROJECT), capture_output=True, text=True, timeout=300)
-    eval_out = eval_result.stdout or ''
-
-    # Parse OOD accuracy
+    # Run OOD eval on longer digits (with retry and longer timeout)
     ood_acc = 0.0
-    for line in eval_out.splitlines():
-        if 'OOD:' in line or 'ood' in line.lower():
-            for p in line.split():
-                if p.endswith('%') or p.rstrip('%').replace('.', '').isdigit():
-                    try:
-                        ood_acc = float(p.rstrip('%'))
-                    except ValueError:
-                        pass
+    for attempt in range(3):
+        try:
+            eval_cmd = [
+                _PY, '-m', 'tabula_rasa.eval',
+                f'specialists/math/{op}/best.pt',
+                str(eval_digits),
+            ]
+            eval_result = subprocess.run(
+                eval_cmd, cwd=str(PROJECT),
+                capture_output=True, text=True, timeout=600,
+            )
+            eval_out = eval_result.stdout or ''
+            for line in eval_out.splitlines():
+                if 'accuracy' in line.lower():
+                    for p in line.split():
+                        if p.endswith('%') or p.rstrip('%').replace('.','').isdigit():
+                            try:
+                                ood_acc = float(p.rstrip('%'))
+                            except ValueError:
+                                pass
+            break
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            if attempt < 2:
+                time.sleep(10)
+                continue
+            ood_acc = -1.0  # signal failure
 
     return {
         'op': op,
