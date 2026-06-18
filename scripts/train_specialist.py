@@ -868,9 +868,10 @@ def train_specialist(
             f"  Grad Accum: {cfg.gradient_accumulation_steps} steps (effective batch: {cfg.batch_size * cfg.gradient_accumulation_steps})"
         )
 
-    # ── Disable scratchpad/reversed for mul/div ──
-    if op not in ("add", "sub"):
+    # ── Disable scratchpad/reversed for div ──
+    if op not in ("add", "sub", "mul"):
         cfg.use_scratchpad = False
+    if op not in ("add", "sub"):
         cfg.use_reversed = False
 
     # ── Curriculum setup ──
