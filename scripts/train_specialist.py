@@ -500,11 +500,13 @@ def _validate_config(cfg, op):
     """Check for known bad configurations before wasting compute."""
     warnings = []
 
-    if cfg.use_scratchpad and op not in ("add", "sub"):
-        warnings.append(f"Scratchpad only works for add/sub, not {op}. Disabling.")
+    if cfg.use_scratchpad and op not in ("add", "sub", "mul"):
+        warnings.append(f"Scratchpad only works for add/sub/mul, not {op}. Disabling.")
+        cfg.use_scratchpad = False
 
     if cfg.cot_scratchpad and op not in ("add", "sub"):
         warnings.append(f"CoT scratchpad only works for add/sub, not {op}. Disabling.")
+        cfg.cot_scratchpad = False
 
     if cfg.cot_scratchpad and not cfg.use_scratchpad:
         warnings.append("cot_scratchpad=True requires use_scratchpad=True. Enabling.")
