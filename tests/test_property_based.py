@@ -10,8 +10,7 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from tabula_rasa.eval import parse_mult_scratchpad
-from tabula_rasa.training.mult_scratchpad import generate_mult_scratchpad
+from tabula_rasa.training.mult_scratchpad import generate_mult_scratchpad, parse_mult_scratchpad
 
 # ── Pure-logic tests (no model) ──────────────────────────────────────
 
