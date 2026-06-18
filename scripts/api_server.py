@@ -1369,7 +1369,6 @@ class Handler(BaseHTTPRequestHandler):
                     resp = urllib.request.urlopen(req, timeout=10)
                     ai_result = json.loads(resp.read())
                     ans = ai_result.get("answer", "")
-                    debug(f"/generate fwd to AI: prompt={prompt!r} answer={ans!r}")
                     return self._json({
                         "prompt": prompt,
                         "result": ai_result.get("answer", ""),
